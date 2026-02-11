@@ -1,0 +1,7 @@
+.DS_Store
+node_modules
+webview/node_modules
+dist
+out
+webview/dist
+bun.lockb

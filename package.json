@@ -1,0 +1,60 @@
+{
+  "name": "markdown-editor-optimized",
+  "displayName": "Markdown Editor Optimized",
+  "description": "Native VS Code markdown editor with a focused, fast webview experience.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "markdownEditorOptimized.open",
+        "title": "Markdown Editor Optimized: Open With Editor",
+        "icon": "$(book)"
+      },
+      {
+        "command": "markdownEditorOptimized.toggleFocus",
+        "title": "Markdown Editor Optimized: Toggle Focus Mode",
+        "icon": "$(screen-full)"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "markdownEditorOptimized.editor",
+        "displayName": "Markdown Editor Optimized",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "install:all": "bun install && bun run install:webview",
+    "install:webview": "bun install --cwd webview",
+    "watch:webview": "bun run --cwd webview build-watch",
+    "build": "bun run build:webview && bun run build:extension",
+    "build:webview": "bun run --cwd webview build",
+    "build:extension": "bun build src/extension.ts --target=node --format=cjs --outfile=dist/extension.js -e vscode --sourcemap=inline",
+    "vscode:prepublish": "bun run package",
+    "package": "bun run build:extension && bun run build:webview"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.8.3"
+  }
+}

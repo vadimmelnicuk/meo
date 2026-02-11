@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "watch",
+      "dependsOn": [
+        "build:extension",
+        "watch:webview"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "build:extension",
+      "type": "shell",
+      "command": "bun run build:extension 2>/dev/null",
+      "problemMatcher": [],
+      "isBackground": false,
+      "presentation": {
+        "group": "build-tasks"
+      }
+    },
+    {
+      "label": "watch:webview",
+      "type": "shell",
+      "command": "bun run watch:webview 2>/dev/null",
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(?!error: script.*was terminated by signal)(error|warning): (.*)$",
+            "severity": 1,
+            "message": 2
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "build started\\.{3}",
+            "endsPattern": "built in .*ms\\."
+          }
+        }
+      ],
+      "isBackground": true,
+      "presentation": {
+        "group": "build-tasks"
+      }
+    },
+    {
+      "label": "kill",
+      "type": "shell",
+      "command": "pkill -TERM -f 'vite build --watch'",
+      "problemMatcher": [],
+      "isBackground": false,
+      "presentation": {
+        "group": "build-tasks"
+      },
+    }
+  ]
+}
