@@ -25,20 +25,7 @@
       "label": "watch:webview",
       "type": "shell",
       "command": "bun run watch:webview 2>/dev/null",
-      "problemMatcher": [
-        {
-          "pattern": {
-            "regexp": "^(?!error: script.*was terminated by signal)(error|warning): (.*)$",
-            "severity": 1,
-            "message": 2
-          },
-          "background": {
-            "activeOnStart": true,
-            "beginsPattern": "build started\\.{3}",
-            "endsPattern": "built in .*ms\\."
-          }
-        }
-      ],
+      "problemMatcher": [],
       "isBackground": true,
       "presentation": {
         "group": "build-tasks"
@@ -47,12 +34,12 @@
     {
       "label": "kill",
       "type": "shell",
-      "command": "pkill -TERM -f 'vite build --watch'",
+      "command": "pkill -TERM -f 'bun build webview/src/index.js.*--watch'",
       "problemMatcher": [],
       "isBackground": false,
       "presentation": {
         "group": "build-tasks"
-      },
+      }
     }
   ]
 }
