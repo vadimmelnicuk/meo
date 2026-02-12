@@ -11,8 +11,9 @@ import {
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
+import { classHighlighter, tags } from '@lezer/highlight';
 import { liveModeExtensions } from './liveDecorations';
+import { resolveCodeLanguage } from './codeBlockHighlight';
 
 export function createEditor({ parent, text, onApplyChanges }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
@@ -315,9 +316,11 @@ function sourceMode() {
     markdown({
       // Use the GFM-capable parser as the baseline source-mode language.
       base: markdownLanguage,
-      addKeymap: false
+      addKeymap: false,
+      codeLanguages: resolveCodeLanguage
     }),
     syntaxHighlighting(markdownHighlightStyle),
+    syntaxHighlighting(classHighlighter),
     sourceCodeBlockField
   ];
 }
@@ -359,7 +362,7 @@ function computeSourceCodeBlockLines(state) {
   return ranges.finish();
 }
 
-const markdownHighlightStyle = HighlightStyle.define([
+export const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.heading, color: 'var(--vscode-editor-foreground)', fontWeight: '600' },
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strong, fontWeight: '700' },
@@ -374,3 +377,5 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.list, color: 'var(--vscode-editor-foreground)' },
   { tag: tags.atom, color: 'var(--vscode-descriptionForeground)' }
 ]);
+
+export { classHighlighter };

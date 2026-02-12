@@ -1,7 +1,9 @@
 import { StateField } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
+import { resolveCodeLanguage } from './codeBlockHighlight';
+import { classHighlighter, markdownHighlightStyle } from './editor.js';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -143,6 +145,7 @@ function addFenceOpeningLineMarker(builder, state, from, activeLines) {
     return;
   }
 
+  // Show fence markers on all lines (not just active)
   if (activeLines.has(line.number)) {
     addRange(builder, line.from, line.to, activeLineMarkerDeco);
     return;
@@ -286,10 +289,15 @@ function buildDecorations(state) {
       }
 
       const line = state.doc.lineAt(node.from);
-      if (activeLines.has(line.number)) {
+      if (isFenceMarker(state, node.from, node.to)) {
+        // Show fence markers on all lines (not just active)
+        if (activeLines.has(line.number)) {
+          addRange(ranges, node.from, node.to, activeLineMarkerDeco);
+        } else {
+          addRange(ranges, node.from, node.to, fenceMarkerDeco);
+        }
+      } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, activeLineMarkerDeco);
-      } else if (isFenceMarker(state, node.from, node.to)) {
-        addRange(ranges, node.from, node.to, fenceMarkerDeco);
       } else {
         addRange(ranges, node.from, node.to, markerDeco);
       }
@@ -320,7 +328,12 @@ const liveDecorationField = StateField.define({
 });
 
 export function liveModeExtensions() {
-  return [markdown({ base: markdownLanguage, addKeymap: false }), liveDecorationField];
+  return [
+    markdown({ base: markdownLanguage, addKeymap: false, codeLanguages: resolveCodeLanguage }),
+    syntaxHighlighting(markdownHighlightStyle),
+    syntaxHighlighting(classHighlighter),
+    liveDecorationField
+  ];
 }
 
 function isEmptyDecorationSet(set) {

@@ -14,6 +14,7 @@ body {
   font-family: var(--vscode-font-family);
   color: var(--vscode-editor-foreground);
   background: var(--vscode-editor-background);
+  line-height: 1.5em;
 }
 
 #app {
@@ -117,6 +118,7 @@ body {
 
 .cm-editor .cm-line {
   padding-left: 0;
+  line-height: 1.5em;
 }
 
 .cm-editor .cm-content ::selection,
@@ -145,6 +147,16 @@ body {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
+.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker,
+.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker * {
+  color: transparent !important;
+}
+
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-marker-active,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-marker-active * {
+  color: var(--vscode-editor-foreground) !important;
+}
+
 .cm-editor .cm-cursor,
 .cm-editor .cm-dropCursor {
   border-left-style: solid !important;
@@ -159,10 +171,6 @@ body {
 
 .cm-editor.meo-mode-live .meo-md-marker {
   display: none;
-}
-
-.cm-editor.meo-mode-live .meo-md-fence-marker {
-  color: transparent;
 }
 
 .cm-editor.meo-mode-live .meo-md-marker-active {
@@ -249,14 +257,16 @@ body {
 }
 
 .cm-editor .meo-md-inline-code {
-  color: var(--vscode-textPreformat-foreground);
   background: transparent;
 }
 
 .cm-editor .meo-md-code-block {
-  color: var(--vscode-textPreformat-foreground);
   background: var(--vscode-textCodeBlock-background);
   padding-left: 2ch;
+}
+
+.cm-editor.meo-mode-live .meo-md-code-block {
+  margin-right: 12px;
 }
 
 .cm-editor .meo-md-link {
@@ -279,11 +289,177 @@ body {
   width: 4ch;
   height: 100%;
   border-left: 1px solid var(--vscode-panel-border);
-  vertical-align: top;
   box-sizing: border-box;
 }
 
 .cm-editor .meo-md-list-marker-task {
   min-width: 3ch;
   letter-spacing: -0.02em;
+}
+
+/* Code block syntax highlighting tokens - Monokai theme */
+/* Classic Monokai colors */
+.meo-src-code-block .tok-keyword,
+.meo-md-code-block .tok-keyword {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-string,
+.meo-md-code-block .tok-string {
+  color: #e6db74;
+}
+
+.meo-src-code-block .tok-string-2,
+.meo-md-code-block .tok-string-2 {
+  color: #e6db74;
+}
+
+.meo-src-code-block .tok-number,
+.meo-md-code-block .tok-number {
+  color: #ae81ff;
+}
+
+.meo-src-code-block .tok-comment,
+.meo-md-code-block .tok-comment {
+  color: #75715e;
+}
+
+.meo-src-code-block .tok-function,
+.meo-md-code-block .tok-function {
+  color: #a6e22e;
+}
+
+.meo-src-code-block .tok-functionVariable,
+.meo-md-code-block .tok-functionVariable {
+  color: #fd971f;
+}
+
+.meo-src-code-block .tok-variableName,
+.meo-md-code-block .tok-variableName {
+  color: #f8f8f2;
+}
+
+.meo-src-code-block .tok-typeName,
+.meo-md-code-block .tok-typeName {
+  color: #66d9ef;
+}
+
+.meo-src-code-block .tok-className,
+.meo-md-code-block .tok-className {
+  color: #66d9ef;
+}
+
+.meo-src-code-block .tok-operator,
+.meo-md-code-block .tok-operator {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-punctuation,
+.meo-md-code-block .tok-punctuation {
+  color: #f8f8f2;
+}
+
+.meo-src-code-block .tok-propertyName,
+.meo-md-code-block .tok-propertyName {
+  color: #a6e22e;
+}
+
+.meo-src-code-block .tok-atom,
+.meo-md-code-block .tok-atom {
+  color: #ae81ff;
+}
+
+.meo-src-code-block .tok-bool,
+.meo-md-code-block .tok-bool {
+  color: #ae81ff;
+}
+
+.meo-src-code-block .tok-null,
+.meo-md-code-block .tok-null {
+  color: #ae81ff;
+}
+
+.meo-src-code-block .tok-definition,
+.meo-md-code-block .tok-definition {
+  color: #66d9ef;
+}
+
+.meo-src-code-block .tok-labelName,
+.meo-md-code-block .tok-labelName {
+  color: #f8f8f2;
+}
+
+.meo-src-code-block .tok-tagName,
+.meo-md-code-block .tok-tagName {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-attributeName,
+.meo-md-code-block .tok-attributeName {
+  color: #a6e22e;
+}
+
+.meo-src-code-block .tok-attributeValue,
+.meo-md-code-block .tok-attributeValue {
+  color: #e6db74;
+}
+
+.meo-src-code-block .tok-meta,
+.meo-md-code-block .tok-meta {
+  color: #f8f8f2;
+}
+
+.meo-src-code-block .tok-heading,
+.meo-md-code-block .tok-heading {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-escapedChar,
+.meo-md-code-block .tok-escapedChar {
+  color: #ae81ff;
+}
+
+.meo-src-code-block .tok-special,
+.meo-md-code-block .tok-special {
+  color: #66d9ef;
+}
+
+.meo-src-code-block .tok-contentSeparator,
+.meo-md-code-block .tok-contentSeparator {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-strong,
+.meo-md-code-block .tok-strong {
+  font-weight: bold;
+}
+
+.meo-src-code-block .tok-emphasis,
+.meo-md-code-block .tok-emphasis {
+  font-style: italic;
+}
+
+.meo-src-code-block .tok-deleted,
+.meo-md-code-block .tok-deleted {
+  color: #e06c75;
+}
+
+.meo-src-code-block .tok-inserted,
+.meo-md-code-block .tok-inserted {
+  color: #a6e22e;
+}
+
+.meo-src-code-block .tok-link,
+.meo-md-code-block .tok-link {
+  color: #66d9ef;
+}
+
+.meo-src-code-block .tok-url,
+.meo-md-code-block .tok-url {
+  color: #e6db74;
+}
+
+.meo-src-code-block .tok-processingInstruction,
+.meo-md-code-block .tok-processingInstruction {
+  color: #75715e;
 }
