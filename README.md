@@ -1,24 +1,25 @@
 # MEO - Markdown Editor Optimized
 
-A native VS Code custom editor for Markdown files powered by Vue 3, Vite, and `md-editor-v3`.
+A native VS Code custom editor for Markdown files powered by CodeMirror 6 with live preview mode.
 
 ## Features
 - Custom editor for `.md` files with live preview and modern toolbar
 - Uses VS Code color tokens and layout guidance
+- Live mode hides markdown syntax markers outside active blocks
+- Source mode with full syntax highlighting
 
 ## Development
 
 Install dependencies:
 
 ```bash
-bun install
-bun run install:webview
+bun install:all
 ```
 
 Build the extension and webview:
 
 ```bash
-bun run compile
+bun run build
 ```
 
 Run extension in development mode:

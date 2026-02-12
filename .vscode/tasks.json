@@ -2,6 +2,17 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "build",
+      "type": "shell",
+      "command": "bun run build 2>/dev/null",
+      "problemMatcher": [],
+      "isBackground": false,
+      "group": "build",
+      "presentation": {
+        "group": "build-tasks"
+      }
+    },
+    {
       "label": "watch",
       "dependsOn": [
         "build:extension",

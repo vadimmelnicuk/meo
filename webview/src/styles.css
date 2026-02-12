@@ -1,0 +1,289 @@
+:root {
+  color-scheme: light dark;
+  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 90%, #000);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+
+#app {
+  height: 100%;
+}
+
+.editor-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.mode-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #000);
+}
+
+.editor-root[data-mode='live'] .mode-group {
+  border-color: var(--vscode-focusBorder);
+}
+
+.mode-group {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.mode-button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  border: 0;
+  border-radius: 5px;
+  padding: 5px 10px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.mode-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.mode-button.is-active {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.mode-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.editor-host {
+  min-height: 0;
+  flex: 1;
+}
+
+.cm-editor {
+  height: 100%;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.cm-scroller {
+  font-family: inherit;
+}
+
+.cm-editor .cm-gutters {
+  background: var(--vscode-editor-background);
+  border-right: 0;
+  width: 55px;
+  margin-right: 24px;
+}
+
+.cm-lineNumbers {
+  width: 100%;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)) 82%, transparent);
+}
+
+.cm-editor .cm-gutter.cm-lineNumbers {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cm-editor .cm-gutterElement.cm-activeLineGutter {
+  background: transparent !important;
+  color: var(--vscode-editor-foreground) !important;
+}
+
+.cm-editor .cm-line {
+  padding-left: 0;
+}
+
+.cm-editor .cm-content ::selection,
+.cm-editor .cm-line::selection,
+.cm-editor .cm-line > span::selection {
+  background-color: transparent;
+}
+
+.cm-editor .cm-selectionLayer .cm-selectionBackground {
+  background-color: var(--vscode-editor-selectionBackground) !important;
+}
+
+.cm-editor.cm-focused .cm-activeLine {
+  background-color: var(--meo-active-line-bg);
+}
+
+.cm-editor:not(.cm-focused) .cm-activeLine {
+  background-color: var(--meo-active-line-bg);
+}
+
+.cm-editor.has-selection .cm-activeLine {
+  background-color: transparent;
+}
+
+.cm-editor .cm-activeLine.meo-md-code-block {
+  background-color: var(--vscode-textCodeBlock-background);
+}
+
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-left-style: solid !important;
+  border-left-width: 2px !important;
+  border-left-color: var(--vscode-editorCursor-foreground, #ffffff) !important;
+  opacity: 1 !important;
+}
+
+.cm-editor .cm-content {
+  caret-color: var(--vscode-editorCursor-foreground, #ffffff);
+}
+
+.cm-editor.meo-mode-live .meo-md-marker {
+  display: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-fence-marker {
+  color: transparent;
+}
+
+.cm-editor.meo-mode-live .meo-md-marker-active {
+  display: inline !important;
+  color: var(--vscode-editor-foreground);
+  line-height: inherit;
+}
+
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-em,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-strong,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-strike,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-inline-code,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-link {
+  display: inline !important;
+}
+
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h1,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h2,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h3,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h4,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h5,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h6,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-quote,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-code-block,
+.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-list-line {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  color: inherit !important;
+  border-left: none !important;
+  background: inherit !important;
+}
+
+.cm-editor.meo-mode-live .cm-content {
+  text-rendering: optimizeLegibility;
+}
+
+.cm-editor .meo-md-h1 {
+  font-size: 1.8em;
+  font-weight: 700;
+}
+
+.cm-editor .meo-md-h2 {
+  font-size: 1.55em;
+  font-weight: 700;
+}
+
+.cm-editor .meo-md-h3 {
+  font-size: 1.3em;
+  font-weight: 650;
+}
+
+.cm-editor .meo-md-h4,
+.cm-editor .meo-md-h5,
+.cm-editor .meo-md-h6 {
+  font-weight: 650;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-h1:not(.cm-activeLine),
+.cm-editor.meo-mode-live .cm-line.meo-md-h2:not(.cm-activeLine),
+.cm-editor.meo-mode-live .cm-line.meo-md-h3:not(.cm-activeLine),
+.cm-editor.meo-mode-live .cm-line.meo-md-h4:not(.cm-activeLine),
+.cm-editor.meo-mode-live .cm-line.meo-md-h5:not(.cm-activeLine),
+.cm-editor.meo-mode-live .cm-line.meo-md-h6:not(.cm-activeLine) {
+  margin-left: 0 !important;
+  text-indent: 0 !important;
+}
+
+.cm-editor .meo-md-em {
+  font-style: italic;
+}
+
+.cm-editor .meo-md-strong {
+  font-weight: 700;
+}
+
+.cm-editor .meo-md-strike {
+  text-decoration: line-through;
+}
+
+.cm-editor .meo-md-quote {
+  color: var(--vscode-descriptionForeground);
+  border-left: 2px solid var(--vscode-textBlockQuote-border);
+  padding-left: 0.65rem;
+}
+
+.cm-editor .meo-md-inline-code {
+  color: var(--vscode-textPreformat-foreground);
+  background: transparent;
+}
+
+.cm-editor .meo-md-code-block {
+  color: var(--vscode-textPreformat-foreground);
+  background: var(--vscode-textCodeBlock-background);
+  padding-left: 2ch;
+}
+
+.cm-editor .meo-md-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+}
+
+.cm-editor .meo-md-list-marker {
+  display: inline-block;
+  min-width: 2ch;
+  color: color-mix(in srgb, var(--vscode-editor-foreground) 72%, transparent);
+}
+
+.cm-editor .meo-md-list-marker-ordered {
+  min-width: 3ch;
+}
+
+.cm-editor .meo-md-list-border {
+  display: inline-block;
+  width: 4ch;
+  height: 100%;
+  border-left: 1px solid var(--vscode-panel-border);
+  vertical-align: top;
+  box-sizing: border-box;
+}
+
+.cm-editor .meo-md-list-marker-task {
+  min-width: 3ch;
+  letter-spacing: -0.02em;
+}

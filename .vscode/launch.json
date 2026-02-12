@@ -12,8 +12,7 @@
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"
       ],
-      "preLaunchTask": "watch",
-      "postDebugTask": "kill"
+      "preLaunchTask": "build"
     }
   ]
 }

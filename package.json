@@ -1,7 +1,7 @@
 {
   "name": "markdown-editor-optimized",
   "displayName": "Markdown Editor Optimized",
-  "description": "Minimal VS Code custom editor with an empty Bun-built webview.",
+  "description": "VS Code custom editor for Markdown files with live preview mode powered by CodeMirror 6.",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.97.0"
@@ -38,10 +38,18 @@
     ]
   },
   "scripts": {
+    "install:all": "bun install && (cd webview && bun install)",
     "build": "bun run build:webview && bun run build:extension",
-    "build:webview": "mkdir -p webview/dist && bun build webview/src/index.js --outfile webview/dist/index.js --target=browser --minify",
-    "watch:webview": "mkdir -p webview/dist && bun build webview/src/index.js --outfile webview/dist/index.js --target=browser --minify --watch",
+    "build:webview": "rm -rf webview/dist && mkdir -p webview/dist && bun build webview/src/index.js --target=browser --format=iife --minify --outfile=webview/dist/index.js && cp webview/src/styles.css webview/dist/index.css",
     "build:extension": "bun build src/extension.ts --target=node --format=cjs --outfile=dist/extension.js -e vscode --sourcemap=inline",
     "vscode:prepublish": "bun run build"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.4",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.36.4",
+    "@lezer/highlight": "^1.2.3"
   }
 }
