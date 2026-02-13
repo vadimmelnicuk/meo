@@ -3,7 +3,8 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { resolveCodeLanguage } from './codeBlockHighlight';
-import { classHighlighter, markdownHighlightStyle } from './editor.js';
+import { markdownHighlightStyle } from './editor.js';
+import { monokaiHighlightStyle } from './monokai';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -45,6 +46,63 @@ class ListMarkerWidget extends WidgetType {
     marker.className = `meo-md-list-marker ${this.classes}`;
     marker.textContent = this.text;
     return marker;
+  }
+}
+
+class CopyCodeButtonWidget extends WidgetType {
+  constructor(codeContent) {
+    super();
+    this.codeContent = codeContent;
+  }
+
+  eq(other) {
+    return other.codeContent === this.codeContent;
+  }
+
+  toDOM() {
+    const container = document.createElement('span');
+    container.className = 'meo-copy-code-btn';
+    container.setAttribute('aria-label', 'Copy code');
+    container.setAttribute('role', 'button');
+    container.setAttribute('tabindex', '0');
+    container.textContent = 'copy';
+
+    const updateText = (copied) => {
+      container.textContent = copied ? 'copied' : 'copy';
+      container.classList.toggle('copied', copied);
+    };
+
+    container.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(this.codeContent);
+        updateText(true);
+        setTimeout(() => updateText(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    });
+
+    container.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(this.codeContent);
+          updateText(true);
+          setTimeout(() => updateText(false), 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      }
+    });
+
+    return container;
+  }
+
+  ignoreEvent(event) {
+    return event !== 'pointerover' && event !== 'pointerout';
   }
 }
 
@@ -128,6 +186,42 @@ function addFenceOpeningLineMarker(builder, state, from, activeLines) {
     return;
   }
   addRange(builder, line.from, line.to, fenceMarkerDeco);
+}
+
+function addCopyCodeButton(builder, state, from, to) {
+  const startLine = state.doc.lineAt(from);
+  const endLine = state.doc.lineAt(Math.max(to - 1, from));
+
+  let codeContent = '';
+  for (let lineNum = startLine.number + 1; lineNum <= endLine.number; lineNum++) {
+    const line = state.doc.line(lineNum);
+    const lineText = state.doc.sliceString(line.from, line.to);
+
+    if (lineNum === endLine.number) {
+      const fenceMatch = /^[ \t]*[`~]{3,}.*$/.exec(lineText);
+      if (fenceMatch) {
+        continue;
+      }
+    }
+
+    if (codeContent) {
+      codeContent += '\n';
+    }
+    codeContent += lineText;
+  }
+
+  if (!codeContent) {
+    return;
+  }
+
+  const widget = new CopyCodeButtonWidget(codeContent);
+  builder.push(
+    Decoration.widget({
+      widget,
+      side: 1,
+      class: 'meo-copy-code-btn'
+    }).range(startLine.to)
+  );
 }
 
 export function listMarkerData(lineText, orderedDisplayIndex = null) {
@@ -228,6 +322,7 @@ function buildDecorations(state) {
         if (node.name === 'FencedCode') {
           addFenceOpeningLineMarker(ranges, state, node.from, activeLines);
         }
+        addCopyCodeButton(ranges, state, node.from, node.to);
       } else if (
         node.name === 'ListItem' ||
         node.name === 'BulletList' ||
@@ -310,7 +405,7 @@ export function liveModeExtensions() {
   return [
     markdown({ base: markdownLanguage, addKeymap: false, codeLanguages: resolveCodeLanguage }),
     syntaxHighlighting(markdownHighlightStyle),
-    syntaxHighlighting(classHighlighter),
+    syntaxHighlighting(monokaiHighlightStyle),
     liveDecorationField
   ];
 }

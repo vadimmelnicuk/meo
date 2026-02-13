@@ -53,7 +53,7 @@ body {
   line-height: 1.2;
   border: 0;
   border-radius: 5px;
-  padding: 5px 10px;
+  padding: 2px 5px;
   color: var(--vscode-foreground);
   background: transparent;
   cursor: pointer;
@@ -263,6 +263,37 @@ body {
 .cm-editor .meo-md-code-block {
   background: var(--vscode-textCodeBlock-background);
   padding-left: 2ch;
+  position: relative;
+}
+
+.meo-copy-code-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family);
+  padding: 0 8px;
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  height: 1.5em;
+  box-sizing: border-box;
+}
+
+.meo-copy-code-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.meo-copy-code-btn:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.meo-copy-code-btn.copied {
+  color: var(--vscode-terminal-ansiGreen);
 }
 
 .cm-editor .meo-md-link {
@@ -282,7 +313,6 @@ body {
 .cm-editor .meo-md-list-border {
   display: inline-block;
   box-sizing: border-box;
-  width: 4ch;
   height: 100%;
   border-left: 1px solid var(--vscode-panel-border);
 }
@@ -292,136 +322,135 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* Code block syntax highlighting tokens - Monokai theme */
-/* Classic Monokai colors */
+/* Code block syntax highlighting tokens - VS Code theme */
 .meo-src-code-block .tok-keyword,
 .meo-md-code-block .tok-keyword {
-  color: #e06c75;
+  color: var(--tok-keyword, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-string,
 .meo-md-code-block .tok-string {
-  color: #e6db74;
+  color: var(--tok-string, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-string-2,
 .meo-md-code-block .tok-string-2 {
-  color: #e6db74;
+  color: var(--tok-string-2, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-number,
 .meo-md-code-block .tok-number {
-  color: #ae81ff;
+  color: var(--tok-number, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-comment,
 .meo-md-code-block .tok-comment {
-  color: #75715e;
+  color: var(--tok-comment, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-function,
 .meo-md-code-block .tok-function {
-  color: #a6e22e;
+  color: var(--tok-function, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-functionVariable,
 .meo-md-code-block .tok-functionVariable {
-  color: #fd971f;
+  color: var(--tok-functionVariable, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-variableName,
 .meo-md-code-block .tok-variableName {
-  color: #f8f8f2;
+  color: var(--tok-variableName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-typeName,
 .meo-md-code-block .tok-typeName {
-  color: #66d9ef;
+  color: var(--tok-typeName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-className,
 .meo-md-code-block .tok-className {
-  color: #66d9ef;
+  color: var(--tok-className, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-operator,
 .meo-md-code-block .tok-operator {
-  color: #e06c75;
+  color: var(--tok-operator, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-punctuation,
 .meo-md-code-block .tok-punctuation {
-  color: #f8f8f2;
+  color: var(--tok-punctuation, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-propertyName,
 .meo-md-code-block .tok-propertyName {
-  color: #a6e22e;
+  color: var(--tok-propertyName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-atom,
 .meo-md-code-block .tok-atom {
-  color: #ae81ff;
+  color: var(--tok-atom, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-bool,
 .meo-md-code-block .tok-bool {
-  color: #ae81ff;
+  color: var(--tok-bool, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-null,
 .meo-md-code-block .tok-null {
-  color: #ae81ff;
+  color: var(--tok-null, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-definition,
 .meo-md-code-block .tok-definition {
-  color: #66d9ef;
+  color: var(--tok-definition, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-labelName,
 .meo-md-code-block .tok-labelName {
-  color: #f8f8f2;
+  color: var(--tok-labelName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-tagName,
 .meo-md-code-block .tok-tagName {
-  color: #e06c75;
+  color: var(--tok-tagName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-attributeName,
 .meo-md-code-block .tok-attributeName {
-  color: #a6e22e;
+  color: var(--tok-attributeName, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-attributeValue,
 .meo-md-code-block .tok-attributeValue {
-  color: #e6db74;
+  color: var(--tok-attributeValue, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-meta,
 .meo-md-code-block .tok-meta {
-  color: #f8f8f2;
+  color: var(--tok-meta, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-heading,
 .meo-md-code-block .tok-heading {
-  color: #e06c75;
+  color: var(--tok-heading, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-escapedChar,
 .meo-md-code-block .tok-escapedChar {
-  color: #ae81ff;
+  color: var(--tok-escapedChar, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-special,
 .meo-md-code-block .tok-special {
-  color: #66d9ef;
+  color: var(--tok-special, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-contentSeparator,
 .meo-md-code-block .tok-contentSeparator {
-  color: #e06c75;
+  color: var(--tok-contentSeparator, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-strong,
@@ -436,25 +465,25 @@ body {
 
 .meo-src-code-block .tok-deleted,
 .meo-md-code-block .tok-deleted {
-  color: #e06c75;
+  color: var(--tok-deleted, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-inserted,
 .meo-md-code-block .tok-inserted {
-  color: #a6e22e;
+  color: var(--tok-inserted, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-link,
 .meo-md-code-block .tok-link {
-  color: #66d9ef;
+  color: var(--tok-link, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-url,
 .meo-md-code-block .tok-url {
-  color: #e6db74;
+  color: var(--tok-url, var(--vscode-editor-foreground));
 }
 
 .meo-src-code-block .tok-processingInstruction,
 .meo-md-code-block .tok-processingInstruction {
-  color: #75715e;
+  color: var(--tok-processingInstruction, var(--vscode-editor-foreground));
 }

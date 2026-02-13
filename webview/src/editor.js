@@ -10,9 +10,10 @@ import {
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { classHighlighter, tags } from '@lezer/highlight';
+import { tags } from '@lezer/highlight';
 import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
+import { monokaiHighlightStyle } from './monokai';
 
 export function createEditor({ parent, text, onApplyChanges }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
@@ -317,7 +318,7 @@ function sourceMode() {
       codeLanguages: resolveCodeLanguage
     }),
     syntaxHighlighting(markdownHighlightStyle),
-    syntaxHighlighting(classHighlighter),
+    syntaxHighlighting(monokaiHighlightStyle),
     sourceCodeBlockField,
     sourceListBorderField
   ];
@@ -412,5 +413,3 @@ export const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.list, color: 'var(--vscode-editor-foreground)' },
   { tag: tags.atom, color: 'var(--vscode-descriptionForeground)' }
 ]);
-
-export { classHighlighter };
