@@ -1,6 +1,6 @@
 :root {
   color-scheme: light dark;
-  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 90%, #000);
+  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 75%, #000);
 }
 
 html,
@@ -122,13 +122,13 @@ body {
 }
 
 .cm-editor .cm-content ::selection,
-.cm-editor .cm-line::selection,
-.cm-editor .cm-line > span::selection {
-  background-color: transparent;
+.cm-editor .cm-content *::selection {
+  background-color: var(--vscode-editor-selectionBackground) !important;
+  color: var(--vscode-editor-selectionForeground) !important;
 }
 
-.cm-editor .cm-selectionLayer .cm-selectionBackground {
-  background-color: var(--vscode-editor-selectionBackground) !important;
+.cm-editor .cm-selectionLayer {
+  display: none;
 }
 
 .cm-editor.cm-focused .cm-activeLine {
@@ -263,10 +263,6 @@ body {
 .cm-editor .meo-md-code-block {
   background: var(--vscode-textCodeBlock-background);
   padding-left: 2ch;
-}
-
-.cm-editor.meo-mode-live .meo-md-code-block {
-  margin-right: 12px;
 }
 
 .cm-editor .meo-md-link {

@@ -3,7 +3,6 @@ import {
   EditorView,
   Decoration,
   keymap,
-  drawSelection,
   highlightActiveLine,
   lineNumbers,
   highlightActiveLineGutter
@@ -80,7 +79,6 @@ export function createEditor({ parent, text, onApplyChanges }) {
       indentUnit.of('	'),
       keymap.of([indentWithTab, ...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
       history(),
-      drawSelection(),
       highlightActiveLine(),
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -314,7 +312,6 @@ function collectOrderedListRenumberChanges(state) {
 function sourceMode() {
   return [
     markdown({
-      // Use the GFM-capable parser as the baseline source-mode language.
       base: markdownLanguage,
       addKeymap: false,
       codeLanguages: resolveCodeLanguage
