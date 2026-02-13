@@ -11,7 +11,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { classHighlighter, tags } from '@lezer/highlight';
-import { liveModeExtensions } from './liveDecorations';
+import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
 
 export function createEditor({ parent, text, onApplyChanges }) {
@@ -318,7 +318,8 @@ function sourceMode() {
     }),
     syntaxHighlighting(markdownHighlightStyle),
     syntaxHighlighting(classHighlighter),
-    sourceCodeBlockField
+    sourceCodeBlockField,
+    sourceListBorderField
   ];
 }
 
@@ -354,6 +355,43 @@ function computeSourceCodeBlockLines(state) {
         line = state.doc.line(line.number + 1);
       }
       return false;
+    }
+  });
+  return ranges.finish();
+}
+
+const sourceListBorderDeco = Decoration.mark({ class: 'meo-md-list-border' });
+
+const sourceListBorderField = StateField.define({
+  create(state) {
+    return computeSourceListBorders(state);
+  },
+  update(borders, transaction) {
+    if (!transaction.docChanged) {
+      return borders;
+    }
+    return computeSourceListBorders(transaction.state);
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
+
+function computeSourceListBorders(state) {
+  const ranges = new RangeSetBuilder();
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== 'ListItem') {
+        return;
+      }
+      const line = state.doc.lineAt(node.from);
+      const lineText = state.doc.sliceString(line.from, line.to);
+      const marker = listMarkerData(lineText);
+      if (!marker || marker.fromOffset === 0) {
+        return;
+      }
+      const indentEnd = line.from + marker.fromOffset;
+      for (let pos = line.from; pos < indentEnd; pos++) {
+        ranges.add(pos, pos + 1, sourceListBorderDeco);
+      }
     }
   });
   return ranges.finish();

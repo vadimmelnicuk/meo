@@ -271,8 +271,7 @@ body {
 }
 
 .cm-editor .meo-md-list-marker {
-  display: inline-block;
-  min-width: 2ch;
+  display: inline;
   color: color-mix(in srgb, var(--vscode-editor-foreground) 72%, transparent);
 }
 
@@ -282,10 +281,10 @@ body {
 
 .cm-editor .meo-md-list-border {
   display: inline-block;
+  box-sizing: border-box;
   width: 4ch;
   height: 100%;
   border-left: 1px solid var(--vscode-panel-border);
-  box-sizing: border-box;
 }
 
 .cm-editor .meo-md-list-marker-task {

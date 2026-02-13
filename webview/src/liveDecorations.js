@@ -48,30 +48,7 @@ class ListMarkerWidget extends WidgetType {
   }
 }
 
-class NestedListBorderWidget extends WidgetType {
-  constructor(nestingLevel) {
-    super();
-    this.nestingLevel = nestingLevel;
-  }
 
-  eq(other) {
-    return other.nestingLevel === this.nestingLevel;
-  }
-
-  toDOM() {
-    const container = document.createElement('span');
-    container.style.display = 'inline-block';
-    
-    const borderCount = Math.floor(this.nestingLevel);
-    for (let i = 0; i < borderCount; i++) {
-      const border = document.createElement('span');
-      border.className = 'meo-md-list-border';
-      border.textContent = ' ';
-      container.appendChild(border);
-    }
-    return container;
-  }
-}
 
 function addRange(builder, from, to, deco) {
   if (to <= from) {
@@ -153,7 +130,7 @@ function addFenceOpeningLineMarker(builder, state, from, activeLines) {
   addRange(builder, line.from, line.to, fenceMarkerDeco);
 }
 
-function listMarkerData(lineText, orderedDisplayIndex = null) {
+export function listMarkerData(lineText, orderedDisplayIndex = null) {
   const match = /^(\s*)(?:([-+*])|(\d+)([.)]))\s+(?:\[([ xX])\]\s+)?/.exec(lineText);
   if (!match) {
     return null;
@@ -177,8 +154,12 @@ function listMarkerData(lineText, orderedDisplayIndex = null) {
     classes = 'meo-md-list-marker-task';
   }
 
+  const markerCharLength = match[2]?.length ?? (orderedNumber?.length ?? 0) + (orderedSuffix?.length ?? 0);
+  const markerEndOffset = indent + markerCharLength;
+
   return {
     fromOffset: indent,
+    markerEndOffset,
     toOffset: match[0].length,
     markerText,
     classes
@@ -193,28 +174,26 @@ function addListMarkerDecoration(builder, state, from, activeLines, orderedDispl
     return;
   }
 
-  const fromPos = line.from;
-  const toPos = line.from + marker.toOffset;
-  if (toPos <= fromPos) {
-    return;
-  }
+  const indentEnd = line.from + marker.fromOffset;
+  const markerEnd = line.from + marker.markerEndOffset;
 
   if (!activeLines.has(line.number)) {
-    builder.push(
-      Decoration.replace({
-        widget: new ListMarkerWidget(marker.markerText, marker.classes),
-        inclusive: false
-      }).range(fromPos, toPos)
-    );
+    if (markerEnd > indentEnd) {
+      builder.push(
+        Decoration.replace({
+          widget: new ListMarkerWidget(marker.markerText, marker.classes),
+          inclusive: false
+        }).range(indentEnd, markerEnd)
+      );
+    }
   }
 
-  if (!activeLines.has(line.number) && marker.fromOffset > 0) {
-    builder.push(
-      Decoration.widget({
-        widget: new NestedListBorderWidget(marker.fromOffset),
-        side: -1
-      }).range(line.from)
-    );
+  if (marker.fromOffset > 0) {
+    for (let pos = line.from; pos < indentEnd; pos++) {
+      builder.push(
+        Decoration.mark({ class: 'meo-md-list-border' }).range(pos, pos + 1)
+      );
+    }
   }
 }
 
