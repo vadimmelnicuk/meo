@@ -206,7 +206,7 @@ const queueChanges = (nextText) => {
   pendingDebounce = window.setTimeout(() => {
     pendingDebounce = null;
     flushChanges();
-  }, 125);
+  }, 100);
 };
 
 const handleInit = (message) => {

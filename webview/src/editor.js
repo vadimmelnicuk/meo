@@ -223,9 +223,14 @@ export function createEditor({ parent, text, onApplyChanges }) {
         return;
       }
 
+      const { anchor, head } = view.state.selection.main;
+      const newLength = textValue.length;
+      const clampedAnchor = Math.min(anchor, newLength);
+      const clampedHead = Math.min(head, newLength);
       applyingExternal = true;
       view.dispatch({
         changes: syncChange,
+        selection: { anchor: clampedAnchor, head: clampedHead },
         annotations: Transaction.addToHistory.of(false)
       });
       applyingExternal = false;
