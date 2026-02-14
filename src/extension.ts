@@ -85,6 +85,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     let mode: EditorMode = 'source';
     let applyQueue: Promise<void> = Promise.resolve();
     let initDelivered = false;
+    let isApplyingOwnChange = false;
 
     const enqueue = (task: () => Promise<void>): Promise<void> => {
       applyQueue = applyQueue.then(task, task);
@@ -140,18 +141,26 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           await openExternalLink(raw.href);
           return;
         case 'applyChanges':
+          isApplyingOwnChange = true;
           await enqueue(() => applyDocumentChanges(document, raw, sendDocChanged, sendApplied));
+          isApplyingOwnChange = false;
           return;
         case 'saveDocument':
+          isApplyingOwnChange = true;
           await enqueue(async () => {
             await document.save();
           });
+          isApplyingOwnChange = false;
           return;
       }
     });
 
     const documentChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document.uri.toString() !== document.uri.toString()) {
+        return;
+      }
+
+      if (isApplyingOwnChange) {
         return;
       }
 

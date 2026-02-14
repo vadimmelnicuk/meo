@@ -1,16 +1,8 @@
 import { EditorState, Compartment, Transaction, StateField, RangeSetBuilder } from '@codemirror/state';
-import {
-  EditorView,
-  Decoration,
-  keymap,
-  highlightActiveLine,
-  lineNumbers,
-  highlightActiveLineGutter
-} from '@codemirror/view';
+import { EditorView, Decoration, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
-import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
+import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
 import { monokaiHighlightStyle } from './monokai';
@@ -78,7 +70,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
     doc: text,
     extensions: [
       indentUnit.of('	'),
-      keymap.of([indentWithTab, ...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
+      keymap.of([indentWithTab, { key: 'Enter', run: handleEnterBeforeNestedList }, ...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
       history(),
       highlightActiveLine(),
       lineNumbers(),
@@ -246,6 +238,60 @@ export function createEditor({ parent, text, onApplyChanges }) {
   };
 }
 
+function handleEnterBeforeNestedList(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const position = selection.head;
+  const line = state.doc.lineAt(position);
+  if (position !== line.to || line.number >= state.doc.lines) {
+    return false;
+  }
+
+  const currentText = state.doc.sliceString(line.from, line.to);
+  const nextLine = state.doc.line(line.number + 1);
+  const nextText = state.doc.sliceString(nextLine.from, nextLine.to);
+
+  if (!/^[ \t]+(?:[-+*]|\d+[.)])\s+/.test(nextText)) {
+    return false;
+  }
+
+  const marker = continuedListMarker(currentText);
+  if (!marker) {
+    return false;
+  }
+
+  const insert = `\n${marker}`;
+  view.dispatch({
+    changes: { from: position, insert },
+    selection: { anchor: position + insert.length }
+  });
+  return true;
+}
+
+function continuedListMarker(lineText) {
+  const taskMatch = /^([-+*])\s+\[[ xX]\]\s+\S/.exec(lineText);
+  if (taskMatch) {
+    return `${taskMatch[1]} [ ] `;
+  }
+
+  const bulletMatch = /^([-+*])\s+\S/.exec(lineText);
+  if (bulletMatch) {
+    return `${bulletMatch[1]} `;
+  }
+
+  const orderedMatch = /^(\d+)([.)])\s+\S/.exec(lineText);
+  if (!orderedMatch) {
+    return null;
+  }
+
+  const nextNumber = Number.parseInt(orderedMatch[1], 10) + 1;
+  return `${nextNumber}${orderedMatch[2]} `;
+}
+
 function findSyncChange(previousText, nextText) {
   if (previousText === nextText) {
     return null;
@@ -322,7 +368,6 @@ function sourceMode() {
       addKeymap: false,
       codeLanguages: resolveCodeLanguage
     }),
-    syntaxHighlighting(markdownHighlightStyle),
     syntaxHighlighting(monokaiHighlightStyle),
     sourceCodeBlockField,
     sourceListBorderField
@@ -373,9 +418,6 @@ const sourceListBorderField = StateField.define({
     return computeSourceListBorders(state);
   },
   update(borders, transaction) {
-    if (!transaction.docChanged) {
-      return borders;
-    }
     return computeSourceListBorders(transaction.state);
   },
   provide: (field) => EditorView.decorations.from(field)
@@ -383,7 +425,8 @@ const sourceListBorderField = StateField.define({
 
 function computeSourceListBorders(state) {
   const ranges = new RangeSetBuilder();
-  syntaxTree(state).iterate({
+  const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
+  tree.iterate({
     enter(node) {
       if (node.name !== 'ListItem') {
         return;
@@ -402,19 +445,3 @@ function computeSourceListBorders(state) {
   });
   return ranges.finish();
 }
-
-export const markdownHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--vscode-editor-foreground)', fontWeight: '600' },
-  { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.strong, fontWeight: '700' },
-  { tag: tags.strikethrough, textDecoration: 'line-through' },
-  { tag: [tags.quote, tags.contentSeparator], color: 'var(--vscode-descriptionForeground)' },
-  {
-    tag: [tags.monospace, tags.processingInstruction],
-    color: 'var(--vscode-textPreformat-foreground)'
-  },
-  { tag: tags.labelName, color: 'var(--vscode-editorCodeLens-foreground)' },
-  { tag: [tags.link, tags.url], color: 'var(--vscode-textLink-foreground)' },
-  { tag: tags.list, color: 'var(--vscode-editor-foreground)' },
-  { tag: tags.atom, color: 'var(--vscode-descriptionForeground)' }
-]);

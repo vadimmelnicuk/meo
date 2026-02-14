@@ -1,10 +1,10 @@
 :root {
   color-scheme: light dark;
   --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 75%, #000);
+  --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent);
 }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -17,60 +17,13 @@ body {
   line-height: 1.5em;
 }
 
-#app {
+#app, .editor-root, .cm-editor {
   height: 100%;
 }
 
 .editor-root {
-  height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.mode-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #000);
-}
-
-.editor-root[data-mode='live'] .mode-group {
-  border-color: var(--vscode-focusBorder);
-}
-
-.mode-group {
-  display: inline-flex;
-  gap: 2px;
-  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
-  border-radius: 7px;
-  padding: 2px;
-}
-
-.mode-button {
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.2;
-  border: 0;
-  border-radius: 5px;
-  padding: 2px 5px;
-  color: var(--vscode-foreground);
-  background: transparent;
-  cursor: pointer;
-}
-
-.mode-button:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
-.mode-button.is-active {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-}
-
-.mode-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
 }
 
 .editor-host {
@@ -79,13 +32,61 @@ body {
 }
 
 .cm-editor {
-  height: 100%;
-  font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
 }
 
-.cm-scroller {
-  font-family: inherit;
+.mode-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px 14px 8px 0;
+  background-color: var(--vscode-sideBar-background);
+}
+
+.mode-group {
+  display: inline-flex;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  padding: 2px;
+  background: transparent;
+}
+
+.meo-copy-code-btn,
+.meo-btn,
+.mode-button {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-toolbar-hoverBackground);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.mode-button {
+  min-width: 52px;
+  background: transparent;
+}
+
+.meo-copy-code-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 0 8px;
+  z-index: 10;
+  background-color: transparent;
+  color: var(--vscode-editor-foreground);
+  font-size: 12px;
+}
+
+.meo-copy-code-btn:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.mode-button.is-active {
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .cm-editor .cm-gutters {
@@ -95,25 +96,21 @@ body {
   margin-right: 24px;
 }
 
-.cm-lineNumbers {
-  width: 100%;
-}
-
-.cm-editor .cm-lineNumbers .cm-gutterElement {
-  width: 100%;
-  box-sizing: border-box;
-  text-align: right;
-  color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)) 82%, transparent);
-}
-
 .cm-editor .cm-gutter.cm-lineNumbers {
   user-select: none;
   -webkit-user-select: none;
 }
 
+.cm-lineNumbers, .cm-editor .cm-lineNumbers .cm-gutterElement {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
 .cm-editor .cm-gutterElement.cm-activeLineGutter {
   background: transparent !important;
-  color: var(--vscode-editor-foreground) !important;
+  color: var(--vscode-editor-foreground);
 }
 
 .cm-editor .cm-line {
@@ -123,18 +120,14 @@ body {
 
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content *::selection {
-  background-color: var(--vscode-editor-selectionBackground) !important;
-  color: var(--vscode-editor-selectionForeground) !important;
+  background-color: var(--vscode-editor-selectionBackground);
 }
 
 .cm-editor .cm-selectionLayer {
   display: none;
 }
 
-.cm-editor.cm-focused .cm-activeLine {
-  background-color: var(--meo-active-line-bg);
-}
-
+.cm-editor.cm-focused .cm-activeLine,
 .cm-editor:not(.cm-focused) .cm-activeLine {
   background-color: var(--meo-active-line-bg);
 }
@@ -147,14 +140,8 @@ body {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
-.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker,
-.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker * {
-  color: transparent !important;
-}
-
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-marker-active,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-marker-active * {
-  color: var(--vscode-editor-foreground) !important;
+.cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
+  background-color: var(--meo-code-block-active-line-bg-live);
 }
 
 .cm-editor .cm-cursor,
@@ -166,7 +153,12 @@ body {
 }
 
 .cm-editor .cm-content {
+  padding-top: 0;
   caret-color: var(--vscode-editorCursor-foreground, #ffffff);
+}
+
+.cm-editor.meo-mode-live .cm-content {
+  text-rendering: optimizeLegibility;
 }
 
 .cm-editor.meo-mode-live .meo-md-marker {
@@ -175,83 +167,22 @@ body {
 
 .cm-editor.meo-mode-live .meo-md-marker-active {
   display: inline !important;
-  color: var(--vscode-editor-foreground);
   line-height: inherit;
 }
 
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-em,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-strong,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-strike,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-inline-code,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-link {
-  display: inline !important;
+.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker,
+.cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker * {
+  color: transparent !important;
 }
 
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h1,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h2,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h3,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h4,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h5,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-h6,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-quote,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-code-block,
-.cm-editor.meo-mode-live.cm-focused .cm-activeLine .meo-md-list-line {
-  font-size: inherit !important;
-  font-weight: inherit !important;
-  color: inherit !important;
-  border-left: none !important;
-  background: inherit !important;
-}
-
-.cm-editor.meo-mode-live .cm-content {
-  text-rendering: optimizeLegibility;
-}
-
-.cm-editor .meo-md-h1 {
-  font-size: 1.8em;
-  font-weight: 700;
-}
-
-.cm-editor .meo-md-h2 {
-  font-size: 1.55em;
-  font-weight: 700;
-}
-
-.cm-editor .meo-md-h3 {
-  font-size: 1.3em;
-  font-weight: 650;
-}
-
-.cm-editor .meo-md-h4,
-.cm-editor .meo-md-h5,
-.cm-editor .meo-md-h6 {
-  font-weight: 650;
-}
-
-.cm-editor.meo-mode-live .cm-line.meo-md-h1:not(.cm-activeLine),
-.cm-editor.meo-mode-live .cm-line.meo-md-h2:not(.cm-activeLine),
-.cm-editor.meo-mode-live .cm-line.meo-md-h3:not(.cm-activeLine),
-.cm-editor.meo-mode-live .cm-line.meo-md-h4:not(.cm-activeLine),
-.cm-editor.meo-mode-live .cm-line.meo-md-h5:not(.cm-activeLine),
-.cm-editor.meo-mode-live .cm-line.meo-md-h6:not(.cm-activeLine) {
-  margin-left: 0 !important;
-  text-indent: 0 !important;
-}
-
-.cm-editor .meo-md-em {
-  font-style: italic;
-}
-
-.cm-editor .meo-md-strong {
-  font-weight: 700;
-}
-
-.cm-editor .meo-md-strike {
-  text-decoration: line-through;
-}
+.cm-editor .meo-md-h1 { font-size: 1.8em; }
+.cm-editor .meo-md-h2 { font-size: 1.55em; }
+.cm-editor .meo-md-h3 { font-size: 1.3em; }
+.cm-editor .meo-md-em { font-style: italic; }
+.cm-editor .meo-md-strike { text-decoration: line-through; }
+.cm-editor .meo-md-link { text-decoration: underline; }
 
 .cm-editor .meo-md-quote {
-  color: var(--vscode-descriptionForeground);
   border-left: 3px solid var(--vscode-textBlockQuote-border);
   padding-left: 0.65rem;
 }
@@ -266,49 +197,17 @@ body {
   position: relative;
 }
 
-.meo-copy-code-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 12px;
-  font-family: var(--vscode-editor-font-family);
-  padding: 0 8px;
-  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
-  border-radius: 4px;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  height: 1.5em;
-  box-sizing: border-box;
-}
-
-.meo-copy-code-btn:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
-.meo-copy-code-btn:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-
-.meo-copy-code-btn.copied {
-  color: var(--vscode-terminal-ansiGreen);
-}
-
-.cm-editor .meo-md-link {
-  color: var(--vscode-textLink-foreground);
-  text-decoration: underline;
-}
-
 .cm-editor .meo-md-list-marker {
   display: inline;
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 50%, transparent);
 }
 
-.cm-editor .meo-md-list-marker-ordered {
+.cm-editor .meo-md-list-marker-ordered,
+.cm-editor .meo-md-list-marker-task {
   min-width: 3ch;
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 50%, transparent);
+}
+
+.cm-editor .meo-md-list-marker-task {
+  letter-spacing: -0.02em;
 }
 
 .cm-editor .meo-md-list-border {
@@ -316,9 +215,4 @@ body {
   box-sizing: border-box;
   height: 100%;
   border-left: 1px solid var(--vscode-panel-border);
-}
-
-.cm-editor .meo-md-list-marker-task {
-  min-width: 3ch;
-  letter-spacing: -0.02em;
 }

@@ -108,6 +108,8 @@ const flushChanges = () => {
 
   inFlight = true;
   inFlightText = nextText;
+  syncedText = nextText;
+  documentVersion++;
   vscode.postMessage(message);
 };
 
