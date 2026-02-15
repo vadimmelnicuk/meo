@@ -72,13 +72,14 @@ body {
 
 .meo-copy-code-btn {
   position: absolute;
-  top: 5px;
+  top: 4px;
   right: 5px;
-  padding: 0 8px;
+  padding: 2px 8px;
   z-index: 10;
   background-color: transparent;
   color: var(--vscode-editor-foreground);
   font-size: 12px;
+  line-height: 1em;
 }
 
 .meo-copy-code-btn:hover {
@@ -187,6 +188,26 @@ body {
   padding-left: 0.65rem;
 }
 
+.cm-editor .meo-md-hr {
+  position: relative;
+}
+
+.cm-editor .meo-md-hr::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--vscode-panel-border);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-hr .meo-md-marker {
+  display: none;
+}
+
 .cm-editor .meo-md-inline-code {
   background: transparent;
 }
@@ -220,22 +241,77 @@ body {
 .cm-editor .meo-mermaid-block {
   background: var(--vscode-textCodeBlock-background);
   padding: 12px;
-  overflow-x: auto;
   position: relative;
+  overflow: hidden;
+  user-select: none;
   text-align: center;
+  cursor: grab;
 }
 
-.cm-editor .meo-mermaid-block svg {
-  display: inline-block;
-  width: auto;
-  height: auto;
+.cm-editor .meo-mermaid-svg-wrapper {
+  display: block;
+  transform-origin: center center;
+  margin: 0 auto;
+}
+
+.cm-editor .meo-mermaid-svg-wrapper svg {
+  display: block;
   max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.cm-editor .meo-mermaid-zoom-controls {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: auto;
+}
+
+.cm-editor .meo-mermaid-block:hover .meo-mermaid-zoom-controls,
+.cm-editor .meo-mermaid-dragging .meo-mermaid-zoom-controls {
+  opacity: 1;
+}
+
+.cm-editor .meo-mermaid-zoom-btn {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  font-size: 16px;
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: auto;
+  outline: none;
+}
+
+.cm-editor .meo-mermaid-zoom-btn:focus {
+  outline: none;
+}
+
+.cm-editor .meo-mermaid-zoom-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #505050);
+}
+
+.cm-editor .meo-mermaid-zoom-btn:active {
+  transform: scale(0.95);
 }
 
 .cm-editor .meo-mermaid-loading {
   color: var(--vscode-descriptionForeground);
   font-style: italic;
-  padding: 8px;
+  padding: 12px;
 }
 
 .cm-editor .meo-mermaid-fallback {

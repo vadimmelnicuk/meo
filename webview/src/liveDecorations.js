@@ -24,6 +24,12 @@ class MermaidDiagramWidget extends WidgetType {
   constructor(diagramText) {
     super();
     this.diagramText = diagramText;
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+    this.isDragging = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
   }
 
   eq(other) {
@@ -40,9 +46,7 @@ class MermaidDiagramWidget extends WidgetType {
       if (cached.error) {
         this.renderError(container, cached.error);
       } else {
-        const svgContainer = document.createElement('div');
-        svgContainer.innerHTML = cached.svg;
-        container.appendChild(svgContainer);
+        this.renderSvg(container, cached.svg);
       }
       return container;
     }
@@ -60,9 +64,7 @@ class MermaidDiagramWidget extends WidgetType {
         mermaidCache.set(this.diagramText, { svg });
         if (container.contains(loading)) {
           container.removeChild(loading);
-          const svgContainer = document.createElement('div');
-          svgContainer.innerHTML = svg;
-          container.appendChild(svgContainer);
+          this.renderSvg(container, svg);
         }
       } catch (err) {
         const errorMsg = err.message || String(err);
@@ -75,6 +77,121 @@ class MermaidDiagramWidget extends WidgetType {
     })();
 
     return container;
+  }
+
+  renderSvg(container, svgContent) {
+    const svgWrapper = document.createElement('div');
+    svgWrapper.className = 'meo-mermaid-svg-wrapper';
+    svgWrapper.innerHTML = svgContent;
+
+    container.appendChild(svgWrapper);
+
+    const controls = this.createZoomControls(svgWrapper);
+    container.appendChild(controls);
+
+    this.attachInteractions(svgWrapper, container);
+  }
+
+  createZoomControls(svgContainer) {
+    const controls = document.createElement('div');
+    controls.className = 'meo-mermaid-zoom-controls';
+
+    const zoomIn = document.createElement('button');
+    zoomIn.type = 'button';
+    zoomIn.className = 'meo-mermaid-zoom-btn';
+    zoomIn.textContent = '+';
+    zoomIn.setAttribute('aria-label', 'Zoom in');
+
+    const zoomOut = document.createElement('button');
+    zoomOut.type = 'button';
+    zoomOut.className = 'meo-mermaid-zoom-btn';
+    zoomOut.textContent = '−';
+    zoomOut.setAttribute('aria-label', 'Zoom out');
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'meo-mermaid-zoom-btn';
+    reset.textContent = '↺';
+    reset.setAttribute('aria-label', 'Reset zoom');
+
+    zoomIn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.setZoom(svgContainer, Math.min(4, this.zoom + 0.5));
+    });
+
+    zoomOut.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.setZoom(svgContainer, Math.max(0.25, this.zoom - 0.5));
+    });
+
+    reset.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.zoom = 1;
+      this.panX = 0;
+      this.panY = 0;
+      this.applyTransform(svgContainer);
+    });
+
+    controls.appendChild(zoomIn);
+    controls.appendChild(zoomOut);
+    controls.appendChild(reset);
+
+    return controls;
+  }
+
+  setZoom(svgContainer, newZoom, centerX = null, centerY = null) {
+    if (centerX !== null && centerY !== null) {
+      const rect = svgContainer.getBoundingClientRect();
+      const containerRect = svgContainer.parentElement.getBoundingClientRect();
+      
+      const pointX = centerX - (rect.left - containerRect.left);
+      const pointY = centerY - (rect.top - containerRect.top);
+      
+      const scale = newZoom / this.zoom;
+      this.panX = pointX - (pointX - this.panX) * scale;
+      this.panY = pointY - (pointY - this.panY) * scale;
+    }
+    
+    this.zoom = newZoom;
+    this.applyTransform(svgContainer);
+  }
+
+  applyTransform(svgContainer) {
+    svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+  }
+
+  attachInteractions(svgWrapper, container) {
+    container.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.meo-mermaid-zoom-controls')) return;
+      if (e.target.closest('.meo-mermaid-zoom-btn')) return;
+      if (e.button !== 0) return;
+      
+      container.style.cursor = 'grabbing';
+      container.classList.add('meo-mermaid-dragging');
+      this.isDragging = true;
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    const onMouseMove = (e) => {
+      if (!this.isDragging) return;
+      const dx = e.clientX - this.lastMouseX;
+      const dy = e.clientY - this.lastMouseY;
+      this.panX += dx;
+      this.panY += dy;
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+      this.applyTransform(svgWrapper);
+    };
+
+    const onMouseUp = () => {
+      this.isDragging = false;
+      container.style.cursor = 'grab';
+      container.classList.remove('meo-mermaid-dragging');
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   }
 
   renderError(container, errorMsg) {
@@ -110,7 +227,8 @@ const lineStyleDecos = {
   h6: Decoration.line({ class: 'meo-md-h6' }),
   quote: Decoration.line({ class: 'meo-md-quote' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
-  list: Decoration.line({ class: 'meo-md-list-line' })
+  list: Decoration.line({ class: 'meo-md-list-line' }),
+  hr: Decoration.line({ class: 'meo-md-hr' })
 };
 
 const inlineStyleDecos = {
@@ -486,6 +604,11 @@ function buildDecorations(state) {
       } else if (node.name === 'SetextHeading2') {
         if (!shouldSuppressTransientSetextHeading(state, node, activeLines)) {
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos.h2);
+        }
+      } else if (node.name === 'HorizontalRule') {
+        addLineClass(ranges, state, node.from, node.to, lineStyleDecos.hr);
+        if (!activeLines.has(state.doc.lineAt(node.from).number)) {
+          addRange(ranges, node.from, node.to, markerDeco);
         }
       } else if (node.name === 'Blockquote') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);

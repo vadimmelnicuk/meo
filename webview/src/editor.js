@@ -2,7 +2,7 @@ import { EditorState, Compartment, Transaction, StateField, RangeSetBuilder } fr
 import { EditorView, Decoration, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
-import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree, forceParsing } from '@codemirror/language';
 import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
 import { monokaiHighlightStyle } from './monokai';
@@ -87,6 +87,10 @@ export function createEditor({ parent, text, onApplyChanges }) {
             return false;
           }
 
+          if (target instanceof Element && target.closest('.meo-mermaid-zoom-controls')) {
+            return false;
+          }
+
           inlineCodeClick = {
             pointerId: event.pointerId,
             inInlineCode:
@@ -141,8 +145,8 @@ export function createEditor({ parent, text, onApplyChanges }) {
           return false;
         }
       }),
-      modeCompartment.of(sourceMode()),
-      EditorView.updateListener.of((update) => {
+    modeCompartment.of(sourceMode()),
+    EditorView.updateListener.of((update) => {
         syncModeClasses();
 
         if (update.selectionSet) {
@@ -233,6 +237,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
       view.dispatch({
         effects: modeCompartment.reconfigure(mode === 'live' ? liveModeExtensions() : sourceMode())
       });
+      forceParsing(view, view.state.doc.length, 500);
       syncModeClasses();
     }
   };
