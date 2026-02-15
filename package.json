@@ -45,6 +45,7 @@
     "vscode:prepublish": "bun run build"
   },
   "dependencies": {
+    "mermaid": "^11.4.1",
     "@codemirror/commands": "6.8.1",
     "@codemirror/lang-cpp": "^6.0.3",
     "@codemirror/lang-css": "^6.3.1",

@@ -216,3 +216,48 @@ body {
   height: 100%;
   border-left: 1px solid var(--vscode-panel-border);
 }
+
+.cm-editor .meo-mermaid-block {
+  background: var(--vscode-textCodeBlock-background);
+  padding: 12px;
+  overflow-x: auto;
+  position: relative;
+  text-align: center;
+}
+
+.cm-editor .meo-mermaid-block svg {
+  display: inline-block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+}
+
+.cm-editor .meo-mermaid-loading {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  padding: 8px;
+}
+
+.cm-editor .meo-mermaid-fallback {
+  margin: 0;
+  padding: 8px;
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.cm-editor .meo-mermaid-fallback code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.cm-editor .meo-mermaid-error-badge {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-inputValidation-errorForeground, #ffffff);
+  padding: 6px 10px;
+  margin-top: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family);
+}

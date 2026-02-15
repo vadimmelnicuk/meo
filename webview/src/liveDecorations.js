@@ -4,6 +4,98 @@ import { ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/la
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { resolveCodeLanguage } from './codeBlockHighlight';
 import { monokaiHighlightStyle, base02 } from './monokai';
+import mermaid from 'mermaid';
+
+let mermaidInitialized = false;
+const mermaidCache = new Map();
+let mermaidIdCounter = 0;
+
+function initMermaid() {
+  if (mermaidInitialized) return;
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: 'dark'
+  });
+  mermaidInitialized = true;
+}
+
+class MermaidDiagramWidget extends WidgetType {
+  constructor(diagramText) {
+    super();
+    this.diagramText = diagramText;
+  }
+
+  eq(other) {
+    return other.diagramText === this.diagramText;
+  }
+
+  toDOM() {
+    initMermaid();
+    const container = document.createElement('div');
+    container.className = 'meo-mermaid-block';
+
+    const cached = mermaidCache.get(this.diagramText);
+    if (cached) {
+      if (cached.error) {
+        this.renderError(container, cached.error);
+      } else {
+        const svgContainer = document.createElement('div');
+        svgContainer.innerHTML = cached.svg;
+        container.appendChild(svgContainer);
+      }
+      return container;
+    }
+
+    const loading = document.createElement('div');
+    loading.className = 'meo-mermaid-loading';
+    loading.textContent = 'Rendering diagram...';
+    container.appendChild(loading);
+
+    const id = `mermaid-${++mermaidIdCounter}`;
+    
+    (async () => {
+      try {
+        const { svg } = await mermaid.render(id, this.diagramText);
+        mermaidCache.set(this.diagramText, { svg });
+        if (container.contains(loading)) {
+          container.removeChild(loading);
+          const svgContainer = document.createElement('div');
+          svgContainer.innerHTML = svg;
+          container.appendChild(svgContainer);
+        }
+      } catch (err) {
+        const errorMsg = err.message || String(err);
+        mermaidCache.set(this.diagramText, { error: errorMsg });
+        if (container.contains(loading)) {
+          container.removeChild(loading);
+          this.renderError(container, errorMsg);
+        }
+      }
+    })();
+
+    return container;
+  }
+
+  renderError(container, errorMsg) {
+    const fallback = document.createElement('pre');
+    fallback.className = 'meo-mermaid-fallback';
+    const code = document.createElement('code');
+    code.textContent = this.diagramText;
+    fallback.appendChild(code);
+
+    const badge = document.createElement('div');
+    badge.className = 'meo-mermaid-error-badge';
+    badge.textContent = `Mermaid error: ${errorMsg}`;
+    
+    container.appendChild(fallback);
+    container.appendChild(badge);
+  }
+
+  ignoreEvent() {
+    return false;
+  }
+}
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -174,6 +266,45 @@ function isFenceMarker(state, from, to) {
   return /^`{3,}$/.test(text) || /^~{3,}$/.test(text);
 }
 
+function getFencedCodeInfo(state, node) {
+  let codeInfo = null;
+  for (let child = node.node.firstChild; child; child = child.nextSibling) {
+    if (child.name === 'CodeInfo') {
+      codeInfo = state.doc.sliceString(child.from, child.to).trim().toLowerCase();
+      break;
+    }
+  }
+  return codeInfo;
+}
+
+function getFencedCodeContent(state, node) {
+  const startLine = state.doc.lineAt(node.from);
+  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
+  
+  const lines = [];
+  let inContent = false;
+  
+  for (let lineNum = startLine.number; lineNum <= endLine.number; lineNum++) {
+    const line = state.doc.line(lineNum);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    
+    if (!inContent) {
+      if (/^[ \t]{0,3}(?:`{3,}|~{3,})/.test(lineText)) {
+        inContent = true;
+      }
+      continue;
+    }
+    
+    if (/^[ \t]{0,3}(?:`{3,}|~{3,})/.test(lineText)) {
+      break;
+    }
+    
+    lines.push(lineText);
+  }
+  
+  return lines.join('\n');
+}
+
 function addFenceOpeningLineMarker(builder, state, from, activeLines) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -187,6 +318,46 @@ function addFenceOpeningLineMarker(builder, state, from, activeLines) {
     return;
   }
   addRange(builder, line.from, line.to, fenceMarkerDeco);
+}
+
+function addMermaidDiagram(builder, state, node) {
+  const diagramText = getFencedCodeContent(state, node);
+  if (!diagramText.trim()) {
+    return;
+  }
+
+  const startLine = state.doc.lineAt(node.from);
+  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
+
+  if (startLine.number >= endLine.number) {
+    return;
+  }
+
+  const contentStartLine = state.doc.line(startLine.number + 1);
+  const contentEndLine = state.doc.line(endLine.number - 1);
+
+  if (contentStartLine.from >= contentEndLine.to) {
+    return;
+  }
+
+  const fullBlockText = state.doc.sliceString(startLine.from, endLine.to);
+  const copyWidget = new CopyCodeButtonWidget(fullBlockText);
+  builder.push(
+    Decoration.widget({
+      widget: copyWidget,
+      side: 1,
+      class: 'meo-copy-code-btn'
+    }).range(startLine.to)
+  );
+
+  const widget = new MermaidDiagramWidget(diagramText);
+  
+  builder.push(
+    Decoration.replace({
+      widget,
+      block: true
+    }).range(contentStartLine.from, contentEndLine.to)
+  );
 }
 
 function addCopyCodeButton(builder, state, from, to) {
@@ -322,6 +493,12 @@ function buildDecorations(state) {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.codeBlock);
         if (node.name === 'FencedCode') {
           addFenceOpeningLineMarker(ranges, state, node.from, activeLines);
+          
+          const codeInfo = getFencedCodeInfo(state, node);
+          if (codeInfo === 'mermaid') {
+            addMermaidDiagram(ranges, state, node);
+            return;
+          }
         }
         addCopyCodeButton(ranges, state, node.from, node.to);
       } else if (
