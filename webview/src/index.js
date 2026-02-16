@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree } from 'lucide';
 
 const vscode = acquireVsCodeApi();
 
@@ -75,21 +75,76 @@ taskBtn.dataset.action = 'task';
 taskBtn.title = 'Task';
 taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
 
-const separator = document.createElement('div');
-separator.className = 'format-separator';
-
 let autoSaveEnabled = true;
 
 const autoSaveBtn = document.createElement('button');
 autoSaveBtn.type = 'button';
 autoSaveBtn.className = 'format-button is-active';
 autoSaveBtn.dataset.action = 'autoSave';
-autoSaveBtn.title = 'Auto Save: On';
+autoSaveBtn.title = 'Auto Save';
 autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
+
+let outlineVisible = false;
+
+const outlineBtn = document.createElement('button');
+outlineBtn.type = 'button';
+outlineBtn.className = 'format-button';
+outlineBtn.dataset.action = 'outline';
+outlineBtn.title = 'Toggle Outline';
+outlineBtn.appendChild(createElement(ListTree, { width: 18, height: 18 }));
+
+const outlineSidebar = document.createElement('div');
+outlineSidebar.className = 'outline-sidebar';
+outlineSidebar.setAttribute('role', 'navigation');
+outlineSidebar.setAttribute('aria-label', 'Document outline');
+
+const outlineContent = document.createElement('div');
+outlineContent.className = 'outline-content';
+outlineSidebar.appendChild(outlineContent);
 
 const updateAutoSaveUI = () => {
   autoSaveBtn.classList.toggle('is-active', autoSaveEnabled);
-  autoSaveBtn.title = `Auto Save: ${autoSaveEnabled ? 'On' : 'Off'}`;
+  autoSaveBtn.title = `Auto Save`;
+};
+
+const updateOutlineUI = () => {
+  outlineBtn.classList.toggle('is-active', outlineVisible);
+  root.classList.toggle('outline-visible', outlineVisible);
+};
+
+const toggleOutline = () => {
+  outlineVisible = !outlineVisible;
+  updateOutlineUI();
+  if (outlineVisible && editor) {
+    updateOutline();
+  }
+};
+
+const updateOutline = () => {
+  if (!editor) return;
+  const headings = editor.getHeadings();
+  outlineContent.innerHTML = '';
+  
+  if (headings.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'outline-empty';
+    emptyMsg.textContent = 'No headings';
+    outlineContent.appendChild(emptyMsg);
+    return;
+  }
+  
+  for (const heading of headings) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `outline-item outline-level-${heading.level}`;
+    item.textContent = heading.text;
+    item.addEventListener('click', () => {
+      if (editor) {
+        editor.scrollToLine(heading.line);
+      }
+    });
+    outlineContent.appendChild(item);
+  }
 };
 
 const toggleAutoSave = () => {
@@ -98,7 +153,11 @@ const toggleAutoSave = () => {
   vscode.postMessage({ type: 'setAutoSave', enabled: autoSaveEnabled });
 };
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, autoSaveBtn);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn);
+
+const rightGroup = document.createElement('div');
+rightGroup.className = 'right-group';
+rightGroup.append(outlineBtn, autoSaveBtn);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -120,12 +179,16 @@ sourceButton.textContent = 'Source';
 sourceButton.setAttribute('role', 'tab');
 
 modeGroup.append(liveButton, sourceButton);
-toolbar.append(formatGroup, modeGroup);
+toolbar.append(formatGroup, rightGroup, modeGroup);
 
 const editorHost = document.createElement('div');
 editorHost.className = 'editor-host';
 
-root.append(toolbar, editorHost);
+const editorWrapper = document.createElement('div');
+editorWrapper.className = 'editor-wrapper';
+
+editorWrapper.append(editorHost, outlineSidebar);
+root.append(toolbar, editorWrapper);
 
 let editor = null;
 let documentVersion = 0;
@@ -294,6 +357,10 @@ const queueChanges = (nextText) => {
     pendingDebounce = null;
     flushChanges();
   }, 100);
+  
+  if (outlineVisible) {
+    updateOutline();
+  }
 };
 
 const handleInit = (message) => {
@@ -310,6 +377,9 @@ const handleInit = (message) => {
   if (typeof message.autoSave === 'boolean') {
     autoSaveEnabled = message.autoSave;
     updateAutoSaveUI();
+  }
+  if (outlineVisible) {
+    updateOutline();
   }
 };
 
@@ -472,6 +542,7 @@ bulletListBtn.addEventListener('click', () => handleFormatAction('bulletList'));
 numberedListBtn.addEventListener('click', () => handleFormatAction('numberedList'));
 taskBtn.addEventListener('click', () => handleFormatAction('task'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
+outlineBtn.addEventListener('click', toggleOutline);
 
 vscode.setState({ mode: currentMode });
 vscode.postMessage({ type: 'setMode', mode: currentMode });

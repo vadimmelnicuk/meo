@@ -7,6 +7,47 @@ import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
 import { highlightStyle } from './theme';
 
+function extractHeadings(state) {
+  const headings = [];
+  const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
+  
+  tree.iterate({
+    enter(node) {
+      const headingLevel = headingLevelFromName(node.name);
+      if (headingLevel !== null) {
+        const line = state.doc.lineAt(node.from);
+        let text = state.doc.sliceString(node.from, node.to);
+        text = text.replace(/^#{1,6}\s+/, '').replace(/\s+#+$/, '').trim();
+        headings.push({
+          level: headingLevel,
+          text,
+          line: line.number,
+          from: node.from
+        });
+      }
+      if (node.name === 'SetextHeading1') {
+        const line = state.doc.lineAt(node.from);
+        const text = state.doc.sliceString(line.from, line.to).trim();
+        headings.push({ level: 1, text, line: line.number, from: node.from });
+      } else if (node.name === 'SetextHeading2') {
+        const line = state.doc.lineAt(node.from);
+        const text = state.doc.sliceString(line.from, line.to).trim();
+        headings.push({ level: 2, text, line: line.number, from: node.from });
+      }
+    }
+  });
+  
+  return headings;
+}
+
+function headingLevelFromName(name) {
+  if (!name.startsWith('ATXHeading')) {
+    return null;
+  }
+  const level = Number.parseInt(name.slice('ATXHeading'.length), 10);
+  return Number.isInteger(level) && level >= 1 && level <= 6 ? level : null;
+}
+
 export function createEditor({ parent, text, onApplyChanges }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
@@ -322,6 +363,17 @@ export function createEditor({ parent, text, onApplyChanges }) {
         changes: { from: contentStart, to: contentStart + oldMarkerLen, insert },
         selection: { anchor: newCursorPos }
       });
+    },
+    getHeadings() {
+      return extractHeadings(view.state);
+    },
+    scrollToLine(lineNumber) {
+      const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
+      view.dispatch({
+        selection: { anchor: line.from },
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+      });
+      view.focus();
     }
   };
 }
