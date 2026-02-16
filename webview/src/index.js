@@ -1,5 +1,12 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table } from 'lucide';
+
+import * as colors from './theme';
+for (const [name, value] of Object.entries(colors)) {
+  if (typeof value === 'string') {
+    document.documentElement.style.setProperty(`--meo-color-${name}`, value);
+  }
+}
 
 const vscode = acquireVsCodeApi();
 
@@ -153,7 +160,46 @@ const toggleAutoSave = () => {
   vscode.postMessage({ type: 'setAutoSave', enabled: autoSaveEnabled });
 };
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn);
+const separator = document.createElement('div');
+separator.className = 'format-separator';
+separator.setAttribute('role', 'separator');
+
+const codeBlockBtn = document.createElement('button');
+codeBlockBtn.type = 'button';
+codeBlockBtn.className = 'format-button';
+codeBlockBtn.dataset.action = 'codeBlock';
+codeBlockBtn.title = 'Code Block';
+codeBlockBtn.appendChild(createElement(Code, { width: 18, height: 18 }));
+
+const inlineCodeBtn = document.createElement('button');
+inlineCodeBtn.type = 'button';
+inlineCodeBtn.className = 'format-button';
+inlineCodeBtn.dataset.action = 'inlineCode';
+inlineCodeBtn.title = 'Inline Code';
+inlineCodeBtn.appendChild(createElement(Terminal, { width: 18, height: 18 }));
+
+const quoteBtn = document.createElement('button');
+quoteBtn.type = 'button';
+quoteBtn.className = 'format-button';
+quoteBtn.dataset.action = 'quote';
+quoteBtn.title = 'Quote';
+quoteBtn.appendChild(createElement(Quote, { width: 18, height: 18 }));
+
+const hrBtn = document.createElement('button');
+hrBtn.type = 'button';
+hrBtn.className = 'format-button';
+hrBtn.dataset.action = 'hr';
+hrBtn.title = 'Horizontal Rule';
+hrBtn.appendChild(createElement(Minus, { width: 18, height: 18 }));
+
+const tableBtn = document.createElement('button');
+tableBtn.type = 'button';
+tableBtn.className = 'format-button';
+tableBtn.dataset.action = 'table';
+tableBtn.title = 'Table';
+tableBtn.appendChild(createElement(Table, { width: 18, height: 18 }));
+
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn, tableBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -356,7 +402,7 @@ const queueChanges = (nextText) => {
   pendingDebounce = window.setTimeout(() => {
     pendingDebounce = null;
     flushChanges();
-  }, 100);
+  }, 1000);
   
   if (outlineVisible) {
     updateOutline();
@@ -541,6 +587,11 @@ headingDropdown.addEventListener('click', (event) => {
 bulletListBtn.addEventListener('click', () => handleFormatAction('bulletList'));
 numberedListBtn.addEventListener('click', () => handleFormatAction('numberedList'));
 taskBtn.addEventListener('click', () => handleFormatAction('task'));
+codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
+inlineCodeBtn.addEventListener('click', () => handleFormatAction('inlineCode'));
+quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
+hrBtn.addEventListener('click', () => handleFormatAction('hr'));
+tableBtn.addEventListener('click', () => handleFormatAction('table'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
 

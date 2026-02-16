@@ -4,7 +4,8 @@
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent);
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -17,22 +18,27 @@ body {
   line-height: 1.5em;
 }
 
-#app, .editor-root, .cm-editor {
+#app,
+.editor-root,
+.cm-editor {
   height: 100%;
 }
 
 .editor-root {
+  position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.editor-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 .editor-host {
   min-height: 0;
   flex: 1;
-}
-
-.cm-editor {
-  font-size: var(--vscode-editor-font-size);
 }
 
 .mode-toolbar {
@@ -43,15 +49,14 @@ body {
   background-color: var(--vscode-sideBar-background);
 }
 
-.format-group {
-  display: inline-flex;
-  gap: 4px;
-}
-
+.format-group,
 .right-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.right-group {
   margin-left: auto;
   margin-right: 12px;
 }
@@ -59,35 +64,9 @@ body {
 .format-separator {
   width: 1px;
   height: 18px;
-  background-color: var(--vscode-panel-border);
   margin: 3px 4px;
   align-self: center;
-}
-
-.format-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--vscode-editor-foreground);
-  background-color: transparent;
-}
-
-.format-button:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
-}
-
-.format-button[data-action="autoSave"]:not(.is-active) {
-  color: var(--vscode-panel-border);
-}
-
-.format-button svg {
-  display: block;
+  background-color: var(--vscode-panel-border);
 }
 
 .heading-wrapper {
@@ -96,10 +75,10 @@ body {
 
 .heading-dropdown-wrapper {
   position: absolute;
-  top: calc(100%);
+  top: 100%;
   left: calc(50% + 1px);
   transform: translateX(-50%);
-  padding: 5px 25px 5px 25px;
+  padding: 5px 25px;
   z-index: 100;
   opacity: 0;
   pointer-events: none;
@@ -121,7 +100,9 @@ body {
   pointer-events: auto;
 }
 
-.heading-dropdown-option {
+.format-button,
+.heading-dropdown-option,
+.meo-mermaid-zoom-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,21 +112,31 @@ body {
   border: 0;
   border-radius: 6px;
   cursor: pointer;
-  color: var(--vscode-editor-foreground);
-  background-color: transparent;
-  transition: background-color 0.12s ease;
 }
 
+.format-button,
+.heading-dropdown-option {
+  color: var(--vscode-editor-foreground);
+  background-color: transparent;
+}
+
+.format-button svg,
 .heading-dropdown-option svg {
   display: block;
 }
 
+.format-button:hover,
 .heading-dropdown-option:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-.heading-dropdown-option:active {
-  transform: scale(0.95);
+.format-button[data-action='autoSave']:not(.is-active),
+.format-button[data-action='outline']:not(.is-active) {
+  color: var(--vscode-panel-border);
+}
+
+.heading-dropdown-option {
+  transition: background-color 0.12s ease;
 }
 
 .mode-group {
@@ -156,13 +147,10 @@ body {
   background: transparent;
 }
 
-.meo-copy-code-btn,
-.meo-btn,
-.mode-button {
+.mode-button,
+.meo-copy-code-btn {
   padding: 4px 8px;
   font-size: 12px;
-  color: var(--vscode-foreground);
-  background-color: var(--vscode-toolbar-hoverBackground);
   border: 0;
   border-radius: 6px;
   cursor: pointer;
@@ -172,34 +160,38 @@ body {
 
 .mode-button {
   min-width: 52px;
+  color: var(--vscode-foreground);
   background: transparent;
-}
-
-.meo-copy-code-btn {
-  position: absolute;
-  top: 4px;
-  right: 5px;
-  padding: 2px 8px;
-  z-index: 10;
-  background-color: transparent;
-  color: var(--vscode-editor-foreground);
-  font-size: 12px;
-  line-height: 1em;
-}
-
-.meo-copy-code-btn:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .mode-button.is-active {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
+.meo-copy-code-btn {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 10;
+  padding: 2px 8px;
+  line-height: 1em;
+  color: var(--vscode-editor-foreground);
+  background-color: transparent;
+}
+
+.meo-copy-code-btn:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.cm-editor {
+  font-size: var(--vscode-editor-font-size);
+}
+
 .cm-editor .cm-gutters {
-  background: var(--vscode-editor-background);
-  border-right: 0;
   width: 55px;
   margin-right: 24px;
+  background: var(--vscode-editor-background);
+  border-right: 0;
 }
 
 .cm-editor .cm-gutter.cm-lineNumbers {
@@ -214,10 +206,10 @@ body {
 }
 
 .cm-editor .cm-lineNumbers .cm-gutterElement {
-  text-align: right;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
+  text-align: right;
 }
 
 .cm-editor .cm-gutterElement.cm-activeLineGutter {
@@ -225,9 +217,18 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+.cm-editor.meo-mode-live .cm-lineNumbers .cm-gutterElement.meo-md-hide-line-number {
+  color: transparent !important;
+}
+
 .cm-editor .cm-line {
   padding-left: 0;
   line-height: 1.5em;
+}
+
+.cm-editor .cm-content {
+  padding-top: 0;
+  caret-color: var(--vscode-editorCursor-foreground, #ffffff);
 }
 
 .cm-editor .cm-content ::selection,
@@ -252,11 +253,6 @@ body {
   background-color: var(--meo-code-block-active-line-bg-live);
 }
 
-.cm-editor .cm-content {
-  padding-top: 0;
-  caret-color: var(--vscode-editorCursor-foreground, #ffffff);
-}
-
 .cm-editor.meo-mode-live .cm-content {
   text-rendering: optimizeLegibility;
 }
@@ -275,16 +271,50 @@ body {
   color: transparent !important;
 }
 
-.cm-editor .meo-md-h1 { font-size: 1.6em; }
-.cm-editor .meo-md-h2 { font-size: 1.5em; }
-.cm-editor .meo-md-h3 { font-size: 1.3em; }
-.cm-editor .meo-md-h4 { font-size: 1.2em; }
-.cm-editor .meo-md-h5 { font-size: 1.1em; }
-.cm-editor .meo-md-h6 { font-size: 1em; }
-.cm-editor .meo-md-em { font-style: italic; }
-.cm-editor .meo-md-strong { font-weight: 600; }
-.cm-editor .meo-md-strike { text-decoration: line-through; }
-.cm-editor .meo-md-link { text-decoration: underline; }
+.cm-editor .meo-md-h1 {
+  font-size: 1.6em;
+}
+
+.cm-editor .meo-md-h2 {
+  font-size: 1.5em;
+}
+
+.cm-editor .meo-md-h3 {
+  font-size: 1.3em;
+}
+
+.cm-editor .meo-md-h4 {
+  font-size: 1.2em;
+}
+
+.cm-editor .meo-md-h5 {
+  font-size: 1.1em;
+}
+
+.cm-editor .meo-md-h6 {
+  font-size: 1em;
+}
+
+.cm-editor .meo-md-em {
+  font-style: italic;
+}
+
+.cm-editor .meo-md-strong {
+  font-weight: 600;
+}
+
+.cm-editor .meo-md-strike {
+  text-decoration: line-through !important;
+}
+
+.cm-editor .meo-md-strike-marker,
+.cm-editor .meo-md-strike-marker-active {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor .meo-md-link {
+  text-decoration: underline;
+}
 
 .cm-editor .meo-md-quote {
   border-left: 3px solid var(--vscode-textBlockQuote-border);
@@ -298,9 +328,9 @@ body {
 .cm-editor .meo-md-hr::after {
   content: '';
   position: absolute;
+  top: 50%;
   left: 0;
   right: 0;
-  top: 50%;
   height: 2px;
   background: var(--vscode-panel-border);
   transform: translateY(-50%);
@@ -321,8 +351,8 @@ body {
 
 .cm-editor .meo-md-code-block,
 .cm-editor .meo-mermaid-block {
-  background: var(--vscode-textCodeBlock-background);
   position: relative;
+  background: var(--vscode-textCodeBlock-background);
 }
 
 .cm-editor .meo-md-code-block {
@@ -347,7 +377,7 @@ body {
   -webkit-appearance: none;
   width: 17px;
   height: 17px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 60%, #000 40%);;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 60%, #000 40%);
   border-radius: 4px;
   background: var(--vscode-sideBar-background);
   cursor: pointer;
@@ -388,9 +418,7 @@ body {
 }
 
 .cm-editor .meo-mermaid-block {
-  background: var(--vscode-textCodeBlock-background);
   padding: 12px;
-  position: relative;
   overflow: hidden;
   user-select: none;
   text-align: center;
@@ -450,19 +478,10 @@ body {
 }
 
 .meo-mermaid-zoom-btn {
-  display: flex;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
   font-size: 16px;
+  line-height: 1;
   color: var(--vscode-foreground);
   background-color: var(--vscode-editor-background);
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
   pointer-events: auto;
 }
 
@@ -474,18 +493,14 @@ body {
   background: var(--vscode-button-secondaryHoverBackground, #505050);
 }
 
-.meo-mermaid-zoom-btn:active {
-  transform: scale(0.95);
-}
-
 .meo-mermaid-exit-btn {
   font-size: 12px;
 }
 
 .cm-editor .meo-mermaid-loading {
+  padding: 12px;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
-  padding: 12px;
 }
 
 .cm-editor .meo-mermaid-fallback {
@@ -502,22 +517,19 @@ body {
 }
 
 .cm-editor .meo-mermaid-error-badge {
-  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
   border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
   color: var(--vscode-inputValidation-errorForeground, #ffffff);
-  padding: 6px 10px;
-  margin-top: 8px;
-  border-radius: 4px;
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
   font-size: 12px;
   font-family: var(--vscode-editor-font-family);
 }
 
 .meo-mermaid-fullscreen-scrim {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 9999;
   background-color: var(--vscode-editor-background);
 }
@@ -533,24 +545,14 @@ body {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
-.editor-root {
-  position: relative;
-}
-
-.editor-wrapper {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
 .outline-sidebar {
   width: 240px;
   height: 100%;
-  background-color: var(--vscode-sideBar-background);
   display: none;
+  flex-shrink: 0;
   flex-direction: column;
   overflow: hidden;
-  flex-shrink: 0;
+  background-color: var(--vscode-sideBar-background);
 }
 
 .editor-root.outline-visible .outline-sidebar {
@@ -579,16 +581,16 @@ body {
   display: block;
   width: 100%;
   padding: 6px 14px;
+  border: none;
   font-size: 12px;
   line-height: 1.4;
   text-align: left;
-  border: none;
-  background: transparent;
-  color: var(--vscode-sideBar-foreground);
-  cursor: pointer;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
+  color: var(--vscode-sideBar-foreground);
+  background: transparent;
+  cursor: pointer;
 }
 
 .outline-item:hover {
@@ -596,8 +598,8 @@ body {
 }
 
 .outline-item:active {
-  background-color: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
+  background-color: var(--vscode-list-activeSelectionBackground);
 }
 
 .outline-item.outline-level-1 {
@@ -626,5 +628,89 @@ body {
 .outline-item.outline-level-6 {
   padding-left: 64px;
   font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+}
+
+.cm-editor .meo-md-table-line {
+  font-family: var(--vscode-editor-font-family);
+}
+
+.cm-editor .meo-md-table-header-line {
+  font-weight: 600;
+}
+
+.cm-editor .cm-line.meo-md-table-delim-line {
+  color: var(--vscode-panel-border);
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-delim-line {
+  display: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-table-cell {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-sizing: border-box;
+  border-left: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  min-height: 1lh;
+  line-height: inherit;
+  vertical-align: top;
+  padding-left: 1ch;
+  padding-right: 1ch;
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-line:not(.meo-md-table-delim-line) .meo-md-table-cell.meo-md-table-cell-last {
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell {
+  border-top: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-sideBar-background);
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-line:not(.meo-md-table-delim-line) {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  min-height: 1lh;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line {
+  font-weight: 600;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell,
+.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell * {
+  color: var(--vscode-editor-foreground) !important;
+}
+
+.cm-editor.meo-mode-source .meo-md-source-table-header-cell,
+.cm-editor.meo-mode-source .meo-md-source-table-header-cell * {
+  color: var(--vscode-editor-foreground) !important;
+}
+
+.cm-editor.meo-mode-live .meo-md-table-line .meo-md-marker-active,
+.cm-editor.meo-mode-live .meo-md-table-line .meo-md-strike-marker-active {
+  display: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-table-pad-space {
+  font-size: 0;
+}
+
+.cm-editor .meo-md-table-line:hover .meo-table-add-row-btn,
+.cm-editor .meo-md-table-line.cm-activeLine .meo-table-add-row-btn {
+  opacity: 1;
+}
+
+.cm-editor .meo-md-table-header-line:hover .meo-table-add-col-btn,
+.cm-editor .meo-md-table-header-line.cm-activeLine .meo-table-add-col-btn {
+  opacity: 1;
 }

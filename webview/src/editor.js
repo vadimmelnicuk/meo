@@ -1,52 +1,15 @@
-import { EditorState, Compartment, Transaction, StateField, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, Decoration, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd } from '@codemirror/view';
+import { EditorState, Compartment, Transaction } from '@codemirror/state';
+import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
-import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree, forceParsing } from '@codemirror/language';
-import { liveModeExtensions, listMarkerData } from './liveDecorations';
-import { resolveCodeLanguage } from './codeBlockHighlight';
+import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
 import { highlightStyle } from './theme';
-
-function extractHeadings(state) {
-  const headings = [];
-  const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
-  
-  tree.iterate({
-    enter(node) {
-      const headingLevel = headingLevelFromName(node.name);
-      if (headingLevel !== null) {
-        const line = state.doc.lineAt(node.from);
-        let text = state.doc.sliceString(node.from, node.to);
-        text = text.replace(/^#{1,6}\s+/, '').replace(/\s+#+$/, '').trim();
-        headings.push({
-          level: headingLevel,
-          text,
-          line: line.number,
-          from: node.from
-        });
-      }
-      if (node.name === 'SetextHeading1') {
-        const line = state.doc.lineAt(node.from);
-        const text = state.doc.sliceString(line.from, line.to).trim();
-        headings.push({ level: 1, text, line: line.number, from: node.from });
-      } else if (node.name === 'SetextHeading2') {
-        const line = state.doc.lineAt(node.from);
-        const text = state.doc.sliceString(line.from, line.to).trim();
-        headings.push({ level: 2, text, line: line.number, from: node.from });
-      }
-    }
-  });
-  
-  return headings;
-}
-
-function headingLevelFromName(name) {
-  if (!name.startsWith('ATXHeading')) {
-    return null;
-  }
-  const level = Number.parseInt(name.slice('ATXHeading'.length), 10);
-  return Number.isInteger(level) && level >= 1 && level <= 6 ? level : null;
-}
+import { liveModeExtensions } from './liveMode';
+import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
+import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
+import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
+import { sourceListBorderField, handleEnterBeforeNestedList, collectOrderedListRenumberChanges } from './helpers/listMarkers';
+import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 
 export function createEditor({ parent, text, onApplyChanges }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
@@ -112,7 +75,15 @@ export function createEditor({ parent, text, onApplyChanges }) {
     doc: text,
     extensions: [
       indentUnit.of('	'),
-      keymap.of([indentWithTab, { key: 'Enter', run: handleEnterBeforeNestedList }, ...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
+      keymap.of([
+        indentWithTab,
+        { key: 'Backspace', run: deleteTableCellLineBreakBackward },
+        { key: 'Enter', run: handleEnterBeforeNestedList },
+        { key: 'Shift-Enter', run: insertTableCellLineBreak },
+        ...markdownKeymap,
+        ...defaultKeymap,
+        ...historyKeymap
+      ]),
       history(),
       highlightActiveLine(),
       lineNumbers(),
@@ -126,15 +97,19 @@ export function createEditor({ parent, text, onApplyChanges }) {
           }
 
           const target = event.target;
+          const targetElement =
+            target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
           if (!(target instanceof Node) || !view.contentDOM.contains(target)) {
             return false;
           }
 
-          if (target instanceof Element && target.closest('.meo-mermaid-zoom-controls')) {
-            return false;
+          if (targetElement && targetElement.closest('.meo-mermaid-zoom-controls')) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
           }
 
-          if (target instanceof Element && target.closest('.meo-task-checkbox')) {
+          if (targetElement && targetElement.closest('.meo-task-checkbox')) {
             checkboxClick = { pointerId: event.pointerId };
             return false;
           }
@@ -143,8 +118,8 @@ export function createEditor({ parent, text, onApplyChanges }) {
             pointerId: event.pointerId,
             inInlineCode:
               currentMode === 'live' &&
-              target instanceof Element &&
-              target.closest('.meo-md-inline-code') !== null
+              targetElement &&
+              targetElement.closest('.meo-md-inline-code') !== null
           };
 
           if (view.dom.setPointerCapture) {
@@ -185,8 +160,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
           if (currentMode === 'live') {
             const { head, empty } = view.state.selection.main;
             if (empty) {
-              ensureSyntaxTree(view.state, view.state.doc.length, 50);
-              const node = syntaxTree(view.state).resolveInner(head, -1);
+              const node = resolvedSyntaxTree(view.state).resolveInner(head, -1);
               if (node.name === 'HorizontalRule') {
                 const line = view.state.doc.lineAt(head);
                 const lineText = view.state.doc.sliceString(line.from, line.to);
@@ -230,7 +204,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
           return;
         }
 
-        const renumberChanges = collectOrderedListRenumberChanges(update.state);
+        const renumberChanges = collectOrderedListRenumberChanges(update.state, syntaxTree(update.state));
         if (renumberChanges.length) {
           applyingRenumber = true;
           view.dispatch({
@@ -353,6 +327,16 @@ export function createEditor({ parent, text, onApplyChanges }) {
         case 'task':
           insert = '- [ ] ';
           break;
+        case 'codeBlock':
+          return insertCodeBlock(view, selection);
+        case 'inlineCode':
+          return insertInlineCode(view, selection);
+        case 'quote':
+          return insertQuote(view, selection);
+        case 'hr':
+          return insertHr(view, selection);
+        case 'table':
+          return insertTable(view, selection);
       }
 
       const newMarkerLen = insert.length;
@@ -378,58 +362,60 @@ export function createEditor({ parent, text, onApplyChanges }) {
   };
 }
 
-function handleEnterBeforeNestedList(view) {
+function insertTableCellLineBreak(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!isInsideTableCell(state, selection.from) || !isInsideTableCell(state, selection.to)) {
+    return false;
+  }
+
+  const insert = '<br>';
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert },
+    selection: { anchor: selection.from + insert.length }
+  });
+  return true;
+}
+
+function deleteTableCellLineBreakBackward(view) {
   const { state } = view;
   const selection = state.selection.main;
   if (!selection.empty) {
     return false;
   }
 
-  const position = selection.head;
-  const line = state.doc.lineAt(position);
-  if (position !== line.to || line.number >= state.doc.lines) {
+  const pos = selection.from;
+  if (!isInsideTableCell(state, pos)) {
     return false;
   }
 
-  const currentText = state.doc.sliceString(line.from, line.to);
-  const nextLine = state.doc.line(line.number + 1);
-  const nextText = state.doc.sliceString(nextLine.from, nextLine.to);
-
-  if (!/^[ \t]+(?:[-+*]|\d+[.)])\s+/.test(nextText)) {
+  const from = Math.max(0, pos - 8);
+  const before = state.doc.sliceString(from, pos);
+  const match = /<br\s*\/?>$/i.exec(before);
+  if (!match) {
     return false;
   }
 
-  const marker = continuedListMarker(currentText);
-  if (!marker) {
-    return false;
-  }
-
-  const insert = `\n${marker}`;
+  const start = pos - match[0].length;
   view.dispatch({
-    changes: { from: position, insert },
-    selection: { anchor: position + insert.length }
+    changes: { from: start, to: pos },
+    selection: { anchor: start }
   });
   return true;
 }
 
-function continuedListMarker(lineText) {
-  const taskMatch = /^([-+*])\s+\[[ xX]\]\s+\S/.exec(lineText);
-  if (taskMatch) {
-    return `${taskMatch[1]} [ ] `;
+function isInsideTableCell(state, position) {
+  let node = syntaxTree(state).resolveInner(position, -1);
+  while (node) {
+    if (node.name === 'TableCell') {
+      return true;
+    }
+    if (node.name === 'TableDelimiter' || node.name === 'Table') {
+      return false;
+    }
+    node = node.parent;
   }
-
-  const bulletMatch = /^([-+*])\s+\S/.exec(lineText);
-  if (bulletMatch) {
-    return `${bulletMatch[1]} `;
-  }
-
-  const orderedMatch = /^(\d+)([.)])\s+\S/.exec(lineText);
-  if (!orderedMatch) {
-    return null;
-  }
-
-  const nextNumber = Number.parseInt(orderedMatch[1], 10) + 1;
-  return `${nextNumber}${orderedMatch[2]} `;
+  return false;
 }
 
 function findSyncChange(previousText, nextText) {
@@ -461,44 +447,60 @@ function findSyncChange(previousText, nextText) {
   };
 }
 
-function collectOrderedListRenumberChanges(state) {
-  const changes = [];
-
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name !== 'OrderedList') {
-        return;
-      }
-
-      let index = 1;
-      for (let child = node.node.firstChild; child; child = child.nextSibling) {
-        if (child.name !== 'ListItem') {
-          continue;
-        }
-
-        const line = state.doc.lineAt(child.from);
-        const lineText = state.doc.sliceString(line.from, line.to);
-        const match = /^(\s*)(\d+)([.)])\s+/.exec(lineText);
-        if (!match) {
-          continue;
-        }
-
-        const expected = String(index);
-        if (match[2] !== expected) {
-          const from = line.from + match[1].length;
-          changes.push({
-            from,
-            to: from + match[2].length,
-            insert: expected
-          });
-        }
-
-        index += 1;
-      }
-    }
+function insertInlineCode(view, selection) {
+  const { state } = view;
+  
+  if (!selection.empty) {
+    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    const insert = `\`${selectedText}\``;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length }
+    });
+    return;
+  }
+  
+  const insert = '``';
+  view.dispatch({
+    changes: { from: selection.from, insert },
+    selection: { anchor: selection.from + 1 }
   });
+}
 
-  return changes;
+function insertQuote(view, selection) {
+  const { state } = view;
+  const line = state.doc.lineAt(selection.from);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  
+  const existingQuote = /^(\s*)(>\s*)/.exec(lineText);
+  if (existingQuote) {
+    return;
+  }
+  
+  const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
+  const insert = '> ';
+  const contentStart = line.from + leadingWhitespace.length;
+  const cursorOffset = selection.from - contentStart;
+  
+  view.dispatch({
+    changes: { from: contentStart, insert },
+    selection: { anchor: contentStart + insert.length + cursorOffset }
+  });
+}
+
+function insertHr(view, selection) {
+  const { state } = view;
+  const line = state.doc.lineAt(selection.from);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
+  
+  const insert = `\n${leadingWhitespace}---\n`;
+  const cursorPos = line.to + insert.length;
+  
+  view.dispatch({
+    changes: { from: line.to, insert },
+    selection: { anchor: cursorPos }
+  });
 }
 
 function sourceMode() {
@@ -510,78 +512,8 @@ function sourceMode() {
     }),
     syntaxHighlighting(highlightStyle),
     sourceCodeBlockField,
-    sourceListBorderField
+    sourceListBorderField,
+    sourceStrikeMarkerField,
+    sourceTableHeaderLineField
   ];
-}
-
-const sourceCodeBlockLine = Decoration.line({ class: 'meo-src-code-block' });
-
-const sourceCodeBlockField = StateField.define({
-  create(state) {
-    return computeSourceCodeBlockLines(state);
-  },
-  update(lines, transaction) {
-    if (!transaction.docChanged) {
-      return lines;
-    }
-    return computeSourceCodeBlockLines(transaction.state);
-  },
-  provide: (field) => EditorView.decorations.from(field)
-});
-
-function computeSourceCodeBlockLines(state) {
-  const ranges = new RangeSetBuilder();
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
-        return;
-      }
-      let line = state.doc.lineAt(node.from);
-      const end = state.doc.lineAt(Math.max(node.to - 1, node.from)).number;
-      while (line.number <= end) {
-        ranges.add(line.from, line.from, sourceCodeBlockLine);
-        if (line.number === end) {
-          break;
-        }
-        line = state.doc.line(line.number + 1);
-      }
-      return false;
-    }
-  });
-  return ranges.finish();
-}
-
-const sourceListBorderDeco = Decoration.mark({ class: 'meo-md-list-border' });
-
-const sourceListBorderField = StateField.define({
-  create(state) {
-    return computeSourceListBorders(state);
-  },
-  update(borders, transaction) {
-    return computeSourceListBorders(transaction.state);
-  },
-  provide: (field) => EditorView.decorations.from(field)
-});
-
-function computeSourceListBorders(state) {
-  const ranges = new RangeSetBuilder();
-  const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
-  tree.iterate({
-    enter(node) {
-      if (node.name !== 'ListItem') {
-        return;
-      }
-      const line = state.doc.lineAt(node.from);
-      const lineText = state.doc.sliceString(line.from, line.to);
-      const marker = listMarkerData(lineText);
-      if (!marker || marker.fromOffset === 0) {
-        return;
-      }
-      const indentEnd = line.from + marker.fromOffset;
-      for (let pos = line.from; pos < indentEnd; pos++) {
-        ranges.add(pos, pos + 1, sourceListBorderDeco);
-      }
-    }
-  });
-  return ranges.finish();
 }
