@@ -1,4 +1,5 @@
 import { createEditor } from './editor';
+import { createElement, Heading, List, ListOrdered, ListTodo } from 'lucide';
 
 const vscode = acquireVsCodeApi();
 
@@ -13,7 +14,42 @@ root.className = 'editor-root';
 const toolbar = document.createElement('div');
 toolbar.className = 'mode-toolbar';
 toolbar.setAttribute('role', 'toolbar');
-toolbar.setAttribute('aria-label', 'Editor mode');
+toolbar.setAttribute('aria-label', 'Editor toolbar');
+
+const formatGroup = document.createElement('div');
+formatGroup.className = 'format-group';
+formatGroup.setAttribute('role', 'group');
+formatGroup.setAttribute('aria-label', 'Formatting');
+
+const headingBtn = document.createElement('button');
+headingBtn.type = 'button';
+headingBtn.className = 'format-button';
+headingBtn.dataset.action = 'heading';
+headingBtn.title = 'Heading';
+headingBtn.appendChild(createElement(Heading, { width: 18, height: 18 }));
+
+const bulletListBtn = document.createElement('button');
+bulletListBtn.type = 'button';
+bulletListBtn.className = 'format-button';
+bulletListBtn.dataset.action = 'bulletList';
+bulletListBtn.title = 'Bullet List';
+bulletListBtn.appendChild(createElement(List, { width: 18, height: 18 }));
+
+const numberedListBtn = document.createElement('button');
+numberedListBtn.type = 'button';
+numberedListBtn.className = 'format-button';
+numberedListBtn.dataset.action = 'numberedList';
+numberedListBtn.title = 'Numbered List';
+numberedListBtn.appendChild(createElement(ListOrdered, { width: 18, height: 18 }));
+
+const taskBtn = document.createElement('button');
+taskBtn.type = 'button';
+taskBtn.className = 'format-button';
+taskBtn.dataset.action = 'task';
+taskBtn.title = 'Task';
+taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
+
+formatGroup.append(headingBtn, bulletListBtn, numberedListBtn, taskBtn);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -35,7 +71,7 @@ sourceButton.textContent = 'Source';
 sourceButton.setAttribute('role', 'tab');
 
 modeGroup.append(liveButton, sourceButton);
-toolbar.append(modeGroup);
+toolbar.append(formatGroup, modeGroup);
 
 const editorHost = document.createElement('div');
 editorHost.className = 'editor-host';
@@ -355,6 +391,17 @@ liveButton.addEventListener('click', () => {
 sourceButton.addEventListener('click', () => {
   applyMode('source', { userTriggered: true });
 });
+
+const handleFormatAction = (action) => {
+  if (!editor) return;
+  editor.insertFormat(action);
+  editor.focus();
+};
+
+headingBtn.addEventListener('click', () => handleFormatAction('heading'));
+bulletListBtn.addEventListener('click', () => handleFormatAction('bulletList'));
+numberedListBtn.addEventListener('click', () => handleFormatAction('numberedList'));
+taskBtn.addEventListener('click', () => handleFormatAction('task'));
 
 vscode.setState({ mode: currentMode });
 vscode.postMessage({ type: 'setMode', mode: currentMode });

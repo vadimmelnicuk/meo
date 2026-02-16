@@ -234,6 +234,9 @@ export function createEditor({ parent, text, onApplyChanges }) {
     hasFocus() {
       return view.hasFocus;
     },
+    focus() {
+      view.focus();
+    },
     destroy() {
       if (capturedPointerId !== null) {
         if (view.dom.releasePointerCapture && view.dom.hasPointerCapture(capturedPointerId)) {
@@ -270,6 +273,58 @@ export function createEditor({ parent, text, onApplyChanges }) {
       });
       forceParsing(view, view.state.doc.length, 500);
       syncModeClasses();
+    },
+    insertFormat(action) {
+      const { state } = view;
+      const selection = state.selection.main;
+      const line = state.doc.lineAt(selection.from);
+      const lineText = state.doc.sliceString(line.from, line.to);
+
+      const existingMarker = /^(\s*)([-+*]|\d+[.)]|[-+*]\s+\[[ xX]\])\s+/.exec(lineText);
+      const existingHeading = /^(\s*)(#{1,6})\s+/.exec(lineText);
+      const leadingWhitespace = existingMarker?.[1] ?? existingHeading?.[1] ?? /^(\s*)/.exec(lineText)[1];
+
+      const contentStart = line.from + leadingWhitespace.length;
+      let oldMarkerLen = 0;
+      if (existingMarker) {
+        oldMarkerLen = existingMarker[0].length - leadingWhitespace.length;
+      } else if (existingHeading) {
+        oldMarkerLen = existingHeading[0].length - leadingWhitespace.length;
+      }
+
+      let insert = '';
+      switch (action) {
+        case 'heading':
+          if (existingHeading) {
+            const level = existingHeading[2].length;
+            if (level < 6) {
+              insert = '# ';
+            } else {
+              insert = '###### ';
+            }
+          } else {
+            insert = '# ';
+          }
+          break;
+        case 'bulletList':
+          insert = '- ';
+          break;
+        case 'numberedList':
+          insert = '1. ';
+          break;
+        case 'task':
+          insert = '- [ ] ';
+          break;
+      }
+
+      const newMarkerLen = insert.length;
+      const cursorOffset = selection.from - (contentStart + oldMarkerLen);
+      const newCursorPos = contentStart + newMarkerLen + Math.max(0, cursorOffset);
+
+      view.dispatch({
+        changes: { from: contentStart, to: contentStart + oldMarkerLen, insert },
+        selection: { anchor: newCursorPos }
+      });
     }
   };
 }

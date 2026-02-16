@@ -37,10 +37,42 @@ body {
 
 .mode-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  padding: 8px 14px 8px 0;
+  padding: 8px 14px 8px 72px;
   background-color: var(--vscode-sideBar-background);
+}
+
+.format-group {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.format-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--vscode-editor-foreground);
+  background-color: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.format-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.format-button:active {
+  transform: scale(0.95);
+}
+
+.format-button svg {
+  display: block;
 }
 
 .mode-group {

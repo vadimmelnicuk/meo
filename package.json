@@ -45,7 +45,6 @@
     "vscode:prepublish": "bun run build"
   },
   "dependencies": {
-    "mermaid": "^11.4.1",
     "@codemirror/commands": "6.8.1",
     "@codemirror/lang-cpp": "^6.0.3",
     "@codemirror/lang-css": "^6.3.1",
@@ -58,6 +57,8 @@
     "@codemirror/state": "6.5.2",
     "@codemirror/view": "6.36.4",
     "@lezer/highlight": "^1.2.3",
-    "@types/vscode": "^1.109.0"
+    "@types/vscode": "^1.109.0",
+    "lucide": "^0.564.0",
+    "mermaid": "^11.4.1"
   }
 }
