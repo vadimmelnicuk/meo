@@ -5,7 +5,7 @@ import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-mar
 import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree, forceParsing } from '@codemirror/language';
 import { liveModeExtensions, listMarkerData } from './liveDecorations';
 import { resolveCodeLanguage } from './codeBlockHighlight';
-import { monokaiHighlightStyle } from './monokai';
+import { highlightStyle } from './theme';
 
 export function createEditor({ parent, text, onApplyChanges }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
@@ -16,6 +16,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
   let applyingExternal = false;
   let capturedPointerId = null;
   let inlineCodeClick = null;
+  let checkboxClick = null;
   let view = null;
   let currentMode = 'source';
   let applyingRenumber = false;
@@ -91,6 +92,11 @@ export function createEditor({ parent, text, onApplyChanges }) {
             return false;
           }
 
+          if (target instanceof Element && target.closest('.meo-task-checkbox')) {
+            checkboxClick = { pointerId: event.pointerId };
+            return false;
+          }
+
           inlineCodeClick = {
             pointerId: event.pointerId,
             inInlineCode:
@@ -106,6 +112,11 @@ export function createEditor({ parent, text, onApplyChanges }) {
           return false;
         },
         pointerup(event, view) {
+          if (checkboxClick?.pointerId === event.pointerId) {
+            checkboxClick = null;
+            return false;
+          }
+
           if (capturedPointerId !== event.pointerId) {
             return false;
           }
@@ -129,6 +140,25 @@ export function createEditor({ parent, text, onApplyChanges }) {
             }
           }
 
+          if (currentMode === 'live') {
+            const { head, empty } = view.state.selection.main;
+            if (empty) {
+              ensureSyntaxTree(view.state, view.state.doc.length, 50);
+              const node = syntaxTree(view.state).resolveInner(head, -1);
+              if (node.name === 'HorizontalRule') {
+                const line = view.state.doc.lineAt(head);
+                const lineText = view.state.doc.sliceString(line.from, line.to);
+                const hrMatch = /^[ \t]*(-{3,}|\*{3,}|_{3,})/.exec(lineText);
+                if (hrMatch) {
+                  const cursorEnd = line.from + hrMatch[0].length;
+                  if (head !== cursorEnd) {
+                    view.dispatch({ selection: { anchor: cursorEnd } });
+                  }
+                }
+              }
+            }
+          }
+
           inlineCodeClick = null;
           return false;
         },
@@ -142,6 +172,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
           }
           capturedPointerId = null;
           inlineCodeClick = null;
+          checkboxClick = null;
           return false;
         }
       }),
@@ -373,7 +404,7 @@ function sourceMode() {
       addKeymap: false,
       codeLanguages: resolveCodeLanguage
     }),
-    syntaxHighlighting(monokaiHighlightStyle),
+    syntaxHighlighting(highlightStyle),
     sourceCodeBlockField,
     sourceListBorderField
   ];

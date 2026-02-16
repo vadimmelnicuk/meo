@@ -3,7 +3,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { resolveCodeLanguage } from './codeBlockHighlight';
-import { monokaiHighlightStyle, base02 } from './monokai';
+import { highlightStyle, base02 } from './theme';
 import mermaid from 'mermaid';
 
 let mermaidInitialized = false;
@@ -30,6 +30,10 @@ class MermaidDiagramWidget extends WidgetType {
     this.isDragging = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
+    this.isFullscreen = false;
+    this.fullscreenOverlay = null;
+    this.svgContent = null;
+    this.fullscreenBaseScale = 1;
   }
 
   eq(other) {
@@ -114,6 +118,12 @@ class MermaidDiagramWidget extends WidgetType {
     reset.textContent = '↺';
     reset.setAttribute('aria-label', 'Reset zoom');
 
+    const fullscreen = document.createElement('button');
+    fullscreen.type = 'button';
+    fullscreen.className = 'meo-mermaid-zoom-btn';
+    fullscreen.textContent = '⛶';
+    fullscreen.setAttribute('aria-label', 'Fullscreen');
+
     zoomIn.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       this.setZoom(svgContainer, Math.min(4, this.zoom + 0.5));
@@ -132,11 +142,221 @@ class MermaidDiagramWidget extends WidgetType {
       this.applyTransform(svgContainer);
     });
 
+    fullscreen.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.toggleFullscreen(svgContainer);
+    });
+
     controls.appendChild(zoomIn);
     controls.appendChild(zoomOut);
     controls.appendChild(reset);
+    controls.appendChild(fullscreen);
 
     return controls;
+  }
+
+  toggleFullscreen(svgContainer) {
+    if (this.isFullscreen) {
+      this.exitFullscreen();
+    } else {
+      this.enterFullscreen(svgContainer);
+    }
+  }
+
+  enterFullscreen(svgContainer) {
+    if (this.isFullscreen) return;
+    this.isFullscreen = true;
+    this.svgContent = svgContainer.innerHTML;
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'meo-mermaid-fullscreen-scrim';
+    
+    const fullscreenContainer = document.createElement('div');
+    fullscreenContainer.className = 'meo-mermaid-fullscreen';
+    
+    const svgWrapper = document.createElement('div');
+    svgWrapper.className = 'meo-mermaid-svg-wrapper';
+    svgWrapper.innerHTML = this.svgContent;
+    
+    fullscreenContainer.appendChild(svgWrapper);
+    
+    const controls = this.createFullscreenControls(svgWrapper);
+    fullscreenContainer.appendChild(controls);
+    
+    this.attachFullscreenInteractions(svgWrapper, fullscreenContainer);
+    
+    overlay.appendChild(fullscreenContainer);
+    document.body.appendChild(overlay);
+    
+    requestAnimationFrame(() => {
+      const svg = svgWrapper.querySelector('svg');
+      if (svg) {
+        const containerRect = fullscreenContainer.getBoundingClientRect();
+        const padding = 80;
+        const availableWidth = containerRect.width - padding;
+        const availableHeight = containerRect.height - padding;
+        
+        const svgWidth = svg.getBoundingClientRect().width || svg.viewBox.baseVal.width;
+        const svgHeight = svg.getBoundingClientRect().height || svg.viewBox.baseVal.height;
+        
+        if (svgWidth > 0 && svgHeight > 0) {
+          const scaleX = availableWidth / svgWidth;
+          const scaleY = availableHeight / svgHeight;
+          this.fullscreenBaseScale = Math.min(scaleX, scaleY);
+        } else {
+          this.fullscreenBaseScale = 1;
+        }
+        
+        svgWrapper.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.fullscreenBaseScale * this.zoom})`;
+      }
+    });
+    
+    this.fullscreenOverlay = overlay;
+    this.fullscreenSvgWrapper = svgWrapper;
+    
+    this.exitFullscreenHandler = (e) => {
+      if (e.key === 'Escape') {
+        this.exitFullscreen();
+      }
+    };
+    document.addEventListener('keydown', this.exitFullscreenHandler);
+  }
+
+  createFullscreenControls(svgContainer) {
+    const controls = document.createElement('div');
+    controls.className = 'meo-mermaid-zoom-controls meo-mermaid-fullscreen-controls';
+
+    const zoomIn = document.createElement('button');
+    zoomIn.type = 'button';
+    zoomIn.className = 'meo-mermaid-zoom-btn';
+    zoomIn.textContent = '+';
+    zoomIn.setAttribute('aria-label', 'Zoom in');
+
+    const zoomOut = document.createElement('button');
+    zoomOut.type = 'button';
+    zoomOut.className = 'meo-mermaid-zoom-btn';
+    zoomOut.textContent = '−';
+    zoomOut.setAttribute('aria-label', 'Zoom out');
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'meo-mermaid-zoom-btn';
+    reset.textContent = '↺';
+    reset.setAttribute('aria-label', 'Reset zoom');
+
+    const exitBtn = document.createElement('button');
+    exitBtn.type = 'button';
+    exitBtn.className = 'meo-mermaid-zoom-btn meo-mermaid-exit-btn';
+    exitBtn.textContent = '✕';
+    exitBtn.setAttribute('aria-label', 'Exit fullscreen');
+
+    zoomIn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.zoom = Math.min(4, this.zoom + 0.5);
+      const scale = (this.fullscreenBaseScale || 1) * this.zoom;
+      svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${scale})`;
+    });
+
+    zoomOut.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.zoom = Math.max(0.25, this.zoom - 0.5);
+      const scale = (this.fullscreenBaseScale || 1) * this.zoom;
+      svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${scale})`;
+    });
+
+    reset.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.zoom = 1;
+      this.panX = 0;
+      this.panY = 0;
+      const scale = (this.fullscreenBaseScale || 1) * this.zoom;
+      svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${scale})`;
+    });
+
+    exitBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.exitFullscreen();
+    });
+
+    controls.appendChild(zoomIn);
+    controls.appendChild(zoomOut);
+    controls.appendChild(reset);
+    controls.appendChild(exitBtn);
+
+    return controls;
+  }
+
+  attachFullscreenInteractions(svgWrapper, container) {
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    container.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.meo-mermaid-zoom-controls')) return;
+      if (e.target.closest('.meo-mermaid-zoom-btn')) return;
+      if (e.button !== 0) return;
+      
+      container.style.cursor = 'grabbing';
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      this.panX += dx;
+      this.panY += dy;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      const scale = (this.fullscreenBaseScale || 1) * this.zoom;
+      svgWrapper.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${scale})`;
+    };
+
+    const onMouseUp = () => {
+      isDragging = false;
+      container.style.cursor = 'grab';
+    };
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.25 : 0.25;
+      this.zoom = Math.max(0.25, Math.min(4, this.zoom + delta));
+      const scale = (this.fullscreenBaseScale || 1) * this.zoom;
+      svgWrapper.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${scale})`;
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    
+    this.fullscreenCleanup = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      container.removeEventListener('wheel', onWheel);
+    };
+  }
+
+  exitFullscreen() {
+    if (!this.isFullscreen) return;
+    this.isFullscreen = false;
+    
+    if (this.fullscreenCleanup) {
+      this.fullscreenCleanup();
+      this.fullscreenCleanup = null;
+    }
+    
+    if (this.fullscreenOverlay) {
+      this.fullscreenOverlay.remove();
+      this.fullscreenOverlay = null;
+      this.fullscreenSvgWrapper = null;
+    }
+    
+    if (this.exitFullscreenHandler) {
+      document.removeEventListener('keydown', this.exitFullscreenHandler);
+      this.exitFullscreenHandler = null;
+    }
   }
 
   setZoom(svgContainer, newZoom, centerX = null, centerY = null) {
@@ -217,6 +437,7 @@ class MermaidDiagramWidget extends WidgetType {
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
+const hrMarkerDeco = Decoration.mark({ class: 'meo-md-hr-marker' });
 
 const lineStyleDecos = {
   h1: Decoration.line({ class: 'meo-md-h1' }),
@@ -254,9 +475,45 @@ class ListMarkerWidget extends WidgetType {
     const marker = document.createElement('span');
     marker.className = `meo-md-list-marker ${this.classes}`;
     marker.style.color = base02;
-    // marker.contentEditable = false;
     marker.textContent = this.text;
     return marker;
+  }
+}
+
+class CheckboxWidget extends WidgetType {
+  constructor(checked, bracketStart) {
+    super();
+    this.checked = checked;
+    this.bracketStart = bracketStart;
+  }
+
+  eq(other) {
+    return other.checked === this.checked && other.bracketStart === this.bracketStart;
+  }
+
+  toDOM(view) {
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'meo-task-checkbox';
+    checkbox.checked = this.checked;
+    checkbox.setAttribute('aria-label', this.checked ? 'Mark task as incomplete' : 'Mark task as complete');
+
+    checkbox.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+    });
+
+    checkbox.addEventListener('change', () => {
+      const newChar = checkbox.checked ? 'x' : ' ';
+      view.dispatch({
+        changes: { from: this.bracketStart + 1, to: this.bracketStart + 2, insert: newChar }
+      });
+    });
+
+    return checkbox;
+  }
+
+  ignoreEvent() {
+    return false;
   }
 }
 
@@ -533,21 +790,23 @@ export function listMarkerData(lineText, orderedDisplayIndex = null) {
     classes = 'meo-md-list-marker-ordered';
   }
 
-  if (taskState !== undefined) {
-    markerText = taskState.toLowerCase() === 'x' ? '[x]' : '[ ]';
-    classes = 'meo-md-list-marker-task';
-  }
-
   const markerCharLength = match[2]?.length ?? (orderedNumber?.length ?? 0) + (orderedSuffix?.length ?? 0);
   const markerEndOffset = indent + markerCharLength;
 
-  return {
+  const result = {
     fromOffset: indent,
     markerEndOffset,
     toOffset: match[0].length,
     markerText,
     classes
   };
+
+  if (taskState !== undefined) {
+    result.taskBracketStart = markerEndOffset + 1;
+    result.taskState = taskState.toLowerCase() === 'x';
+  }
+
+  return result;
 }
 
 function addListMarkerDecoration(builder, state, from, activeLines, orderedDisplayIndex = null) {
@@ -561,15 +820,30 @@ function addListMarkerDecoration(builder, state, from, activeLines, orderedDispl
   const indentEnd = line.from + marker.fromOffset;
   const markerEnd = line.from + marker.markerEndOffset;
 
-  if (!activeLines.has(line.number)) {
-    if (markerEnd > indentEnd) {
-      builder.push(
-        Decoration.replace({
-          widget: new ListMarkerWidget(marker.markerText, marker.classes),
-          inclusive: false
-        }).range(indentEnd, markerEnd)
-      );
+  if (marker.taskBracketStart !== undefined) {
+    const bracketStart = line.from + marker.taskBracketStart;
+    const fullEnd = line.from + marker.toOffset - 1;
+    builder.push(
+      Decoration.replace({
+        widget: new CheckboxWidget(marker.taskState, bracketStart),
+        inclusive: false
+      }).range(indentEnd, fullEnd)
+    );
+    if (marker.taskState) {
+      const textStart = line.from + marker.toOffset;
+      if (textStart < line.to) {
+        builder.push(
+          Decoration.mark({ class: 'meo-task-complete' }).range(textStart, line.to)
+        );
+      }
     }
+  } else if (markerEnd > indentEnd) {
+    builder.push(
+      Decoration.replace({
+        widget: new ListMarkerWidget(marker.markerText, marker.classes),
+        inclusive: false
+      }).range(indentEnd, markerEnd)
+    );
   }
 
   if (marker.fromOffset > 0) {
@@ -607,8 +881,10 @@ function buildDecorations(state) {
         }
       } else if (node.name === 'HorizontalRule') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.hr);
-        if (!activeLines.has(state.doc.lineAt(node.from).number)) {
-          addRange(ranges, node.from, node.to, markerDeco);
+        if (activeLines.has(state.doc.lineAt(node.from).number)) {
+          addRange(ranges, node.from, node.to, activeLineMarkerDeco);
+        } else {
+          addRange(ranges, node.from, node.to, hrMarkerDeco);
         }
       } else if (node.name === 'Blockquote') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);
@@ -705,7 +981,7 @@ const liveDecorationField = StateField.define({
 export function liveModeExtensions() {
   return [
     markdown({ base: markdownLanguage, addKeymap: false, codeLanguages: resolveCodeLanguage }),
-    syntaxHighlighting(monokaiHighlightStyle),
+    syntaxHighlighting(highlightStyle),
     liveDecorationField
   ];
 }

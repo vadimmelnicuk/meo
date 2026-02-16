@@ -1,6 +1,7 @@
 import { HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 
+// Monokai-inspired color palette adapted for VS Code's theming system
 const base01 = 'var(--vscode-editor-foreground)';
 const base02 = '#676f7d';
 const base03 = 'var(--vscode-descriptionForeground)';
@@ -13,7 +14,7 @@ const base09 = '#98c379';
 
 export { base01, base02, base03, base04, base05, base06, base07, base08, base09 };
 
-export const monokaiHighlightStyle = HighlightStyle.define([
+export const highlightStyle = HighlightStyle.define([
   // Code block syntax highlighting
   { tag: t.keyword, color: base04, fontWeight: 'bold' },
   { tag: t.controlKeyword, color: base04, fontWeight: 'bold' },
@@ -60,11 +61,12 @@ export const monokaiHighlightStyle = HighlightStyle.define([
   // Markdown tag hgihlighting
   { tag: t.monospace, color: base07 },
   { tag: t.heading, color: base04, fontWeight: '600' },
-  { tag: t.processingInstruction, color: base02 },
   { tag: t.emphasis, fontStyle: 'italic' },
-  { tag: t.strong, fontWeight: '700' },
+  { tag: t.strong, color: base07, fontWeight: '700' },
+  { tag: t.processingInstruction, color: base02 },
   { tag: t.strikethrough, textDecoration: 'line-through' },
-  { tag: [t.quote, t.contentSeparator], color: base07 },
+  { tag: [t.quote], color: base07 },
+  { tag: t.contentSeparator, color: base02 },
   { tag: t.link, color: base05 },
   { tag: t.url, color: base05 },
 ]);
