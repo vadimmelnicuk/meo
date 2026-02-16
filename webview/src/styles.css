@@ -48,7 +48,72 @@ body {
   gap: 4px;
 }
 
+.format-separator {
+  width: 1px;
+  height: 18px;
+  background-color: var(--vscode-panel-border);
+  margin: 3px 4px;
+  align-self: center;
+}
+
 .format-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--vscode-editor-foreground);
+  background-color: transparent;
+}
+
+.format-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.format-button[data-action="autoSave"]:not(.is-active) {
+  color: var(--vscode-panel-border);
+}
+
+.format-button svg {
+  display: block;
+}
+
+.heading-wrapper {
+  position: relative;
+}
+
+.heading-dropdown-wrapper {
+  position: absolute;
+  top: calc(100%);
+  left: calc(50% + 1px);
+  transform: translateX(-50%);
+  padding: 5px 25px 5px 25px;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.heading-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background-color: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+}
+
+.heading-wrapper:hover .heading-dropdown-wrapper {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.heading-dropdown-option {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -63,16 +128,16 @@ body {
   transition: background-color 0.12s ease;
 }
 
-.format-button:hover {
+.heading-dropdown-option svg {
+  display: block;
+}
+
+.heading-dropdown-option:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-.format-button:active {
+.heading-dropdown-option:active {
   transform: scale(0.95);
-}
-
-.format-button svg {
-  display: block;
 }
 
 .mode-group {
@@ -202,9 +267,12 @@ body {
   color: transparent !important;
 }
 
-.cm-editor .meo-md-h1 { font-size: 1.8em; }
-.cm-editor .meo-md-h2 { font-size: 1.55em; }
+.cm-editor .meo-md-h1 { font-size: 1.6em; }
+.cm-editor .meo-md-h2 { font-size: 1.5em; }
 .cm-editor .meo-md-h3 { font-size: 1.3em; }
+.cm-editor .meo-md-h4 { font-size: 1.2em; }
+.cm-editor .meo-md-h5 { font-size: 1.1em; }
+.cm-editor .meo-md-h6 { font-size: 1em; }
 .cm-editor .meo-md-em { font-style: italic; }
 .cm-editor .meo-md-strong { font-weight: 600; }
 .cm-editor .meo-md-strike { text-decoration: line-through; }

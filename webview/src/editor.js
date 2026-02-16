@@ -1,5 +1,5 @@
 import { EditorState, Compartment, Transaction, StateField, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, Decoration, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
+import { EditorView, Decoration, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, ensureSyntaxTree, syntaxTree, forceParsing } from '@codemirror/language';
@@ -77,6 +77,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
       lineNumbers(),
       highlightActiveLineGutter(),
       EditorView.lineWrapping,
+      scrollPastEnd(),
       EditorView.domEventHandlers({
         pointerdown(event, view) {
           if (event.button !== 0) {
@@ -274,13 +275,13 @@ export function createEditor({ parent, text, onApplyChanges }) {
       forceParsing(view, view.state.doc.length, 500);
       syncModeClasses();
     },
-    insertFormat(action) {
+    insertFormat(action, level) {
       const { state } = view;
       const selection = state.selection.main;
       const line = state.doc.lineAt(selection.from);
       const lineText = state.doc.sliceString(line.from, line.to);
 
-      const existingMarker = /^(\s*)([-+*]|\d+[.)]|[-+*]\s+\[[ xX]\])\s+/.exec(lineText);
+      const existingMarker = /^(\s*)([-+*]\s+\[[ xX]\]|[-+*]|\d+[.)])\s+/.exec(lineText);
       const existingHeading = /^(\s*)(#{1,6})\s+/.exec(lineText);
       const leadingWhitespace = existingMarker?.[1] ?? existingHeading?.[1] ?? /^(\s*)/.exec(lineText)[1];
 
@@ -292,19 +293,15 @@ export function createEditor({ parent, text, onApplyChanges }) {
         oldMarkerLen = existingHeading[0].length - leadingWhitespace.length;
       }
 
+      const isExistingTask = existingMarker && /^[-+*]\s+\[[ xX]\]/.test(existingMarker[0]);
+      if (action === 'task' && isExistingTask) {
+        return;
+      }
+
       let insert = '';
       switch (action) {
         case 'heading':
-          if (existingHeading) {
-            const level = existingHeading[2].length;
-            if (level < 6) {
-              insert = '# ';
-            } else {
-              insert = '###### ';
-            }
-          } else {
-            insert = '# ';
-          }
+          insert = `${'#'.repeat(level ?? 1)} `;
           break;
         case 'bulletList':
           insert = '- ';

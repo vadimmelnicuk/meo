@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, List, ListOrdered, ListTodo } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save } from 'lucide';
 
 const vscode = acquireVsCodeApi();
 
@@ -28,6 +28,32 @@ headingBtn.dataset.action = 'heading';
 headingBtn.title = 'Heading';
 headingBtn.appendChild(createElement(Heading, { width: 18, height: 18 }));
 
+const headingDropdown = document.createElement('div');
+headingDropdown.className = 'heading-dropdown';
+headingDropdown.setAttribute('role', 'menu');
+headingDropdown.setAttribute('aria-label', 'Heading levels');
+
+const headingDropdownWrapper = document.createElement('div');
+headingDropdownWrapper.className = 'heading-dropdown-wrapper';
+
+const headingIcons = [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6];
+
+for (let level = 1; level <= 6; level++) {
+  const option = document.createElement('button');
+  option.type = 'button';
+  option.className = 'heading-dropdown-option';
+  option.dataset.level = level;
+  option.title = `Heading ${level}`;
+  option.appendChild(createElement(headingIcons[level - 1], { width: 18, height: 18 }));
+  headingDropdown.appendChild(option);
+}
+
+headingDropdownWrapper.appendChild(headingDropdown);
+
+const headingWrapper = document.createElement('div');
+headingWrapper.className = 'heading-wrapper';
+headingWrapper.append(headingBtn, headingDropdownWrapper);
+
 const bulletListBtn = document.createElement('button');
 bulletListBtn.type = 'button';
 bulletListBtn.className = 'format-button';
@@ -49,7 +75,30 @@ taskBtn.dataset.action = 'task';
 taskBtn.title = 'Task';
 taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
 
-formatGroup.append(headingBtn, bulletListBtn, numberedListBtn, taskBtn);
+const separator = document.createElement('div');
+separator.className = 'format-separator';
+
+let autoSaveEnabled = true;
+
+const autoSaveBtn = document.createElement('button');
+autoSaveBtn.type = 'button';
+autoSaveBtn.className = 'format-button is-active';
+autoSaveBtn.dataset.action = 'autoSave';
+autoSaveBtn.title = 'Auto Save: On';
+autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
+
+const updateAutoSaveUI = () => {
+  autoSaveBtn.classList.toggle('is-active', autoSaveEnabled);
+  autoSaveBtn.title = `Auto Save: ${autoSaveEnabled ? 'On' : 'Off'}`;
+};
+
+const toggleAutoSave = () => {
+  autoSaveEnabled = !autoSaveEnabled;
+  updateAutoSaveUI();
+  vscode.postMessage({ type: 'setAutoSave', enabled: autoSaveEnabled });
+};
+
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, autoSaveBtn);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -258,6 +307,10 @@ const handleInit = (message) => {
     editor.setText(message.text);
   }
   editor.setMode(currentMode);
+  if (typeof message.autoSave === 'boolean') {
+    autoSaveEnabled = message.autoSave;
+    updateAutoSaveUI();
+  }
 };
 
 window.addEventListener('message', (event) => {
@@ -356,6 +409,15 @@ window.addEventListener('message', (event) => {
     inFlightText = null;
     flushChanges();
     maybeSaveAfterSync();
+    if (autoSaveEnabled && !inFlight && pendingText === syncedText) {
+      vscode.postMessage({ type: 'saveDocument' });
+    }
+    return;
+  }
+
+  if (message.type === 'autoSaveChanged') {
+    autoSaveEnabled = message.enabled;
+    updateAutoSaveUI();
     return;
   }
 });
@@ -398,10 +460,18 @@ const handleFormatAction = (action) => {
   editor.focus();
 };
 
-headingBtn.addEventListener('click', () => handleFormatAction('heading'));
+headingDropdown.addEventListener('click', (event) => {
+  const option = event.target.closest('.heading-dropdown-option');
+  if (!option || !editor) return;
+  const level = parseInt(option.dataset.level, 10);
+  editor.insertFormat('heading', level);
+  editor.focus();
+});
+
 bulletListBtn.addEventListener('click', () => handleFormatAction('bulletList'));
 numberedListBtn.addEventListener('click', () => handleFormatAction('numberedList'));
 taskBtn.addEventListener('click', () => handleFormatAction('task'));
+autoSaveBtn.addEventListener('click', toggleAutoSave);
 
 vscode.setState({ mode: currentMode });
 vscode.postMessage({ type: 'setMode', mode: currentMode });

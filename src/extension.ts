@@ -1,13 +1,20 @@
 import * as vscode from 'vscode';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
+const AUTO_SAVE_KEY = 'autoSaveEnabled';
 type EditorMode = 'live' | 'source';
+
+type AutoSaveChangedMessage = {
+  type: 'autoSaveChanged';
+  enabled: boolean;
+};
 
 type InitMessage = {
   type: 'init';
   text: string;
   version: number;
   mode: EditorMode;
+  autoSave: boolean;
 };
 
 type DocChangedMessage = {
@@ -41,9 +48,15 @@ type SaveDocumentMessage = {
   type: 'saveDocument';
 };
 
+type SetAutoSaveMessage = {
+  type: 'setAutoSave';
+  enabled: boolean;
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | SetModeMessage
+  | SetAutoSaveMessage
   | OpenLinkMessage
   | SaveDocumentMessage
   | { type: 'ready' };
@@ -68,13 +81,24 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
+  private readonly activePanels = new Set<vscode.WebviewPanel>();
+
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  private broadcastAutoSaveChanged(enabled: boolean): void {
+    const message: AutoSaveChangedMessage = { type: 'autoSaveChanged', enabled };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
 
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    this.activePanels.add(panel);
+
     panel.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist')]
@@ -93,11 +117,13 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     };
 
     const sendInit = async (): Promise<boolean> => {
+      const autoSave = this.context.globalState.get<boolean>(AUTO_SAVE_KEY, true);
       const message: InitMessage = {
         type: 'init',
         text: document.getText(),
         version: document.version,
-        mode
+        mode,
+        autoSave
       };
       return panel.webview.postMessage(message);
     };
@@ -137,6 +163,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         case 'setMode':
           mode = raw.mode;
           return;
+        case 'setAutoSave':
+          await this.context.globalState.update(AUTO_SAVE_KEY, raw.enabled);
+          this.broadcastAutoSaveChanged(raw.enabled);
+          return;
         case 'openLink':
           await openExternalLink(raw.href);
           return;
@@ -172,6 +202,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     void ensureInitDelivered();
 
     panel.onDidDispose(() => {
+      this.activePanels.delete(panel);
       messageSubscription.dispose();
       documentChangeSubscription.dispose();
     });
