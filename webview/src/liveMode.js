@@ -14,7 +14,7 @@ import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import { orderedListDisplayIndex, addListMarkerDecoration } from './helpers/listMarkers';
-import { addTableDecorations } from './helpers/tables';
+import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -27,7 +27,7 @@ const tableDelimiterGutterLineClassMarker = new class extends GutterMarker {
     return 'meo-md-hide-line-number';
   }
 }();
-const tableDelimiterLineRegex = /^\|?\s*[:]?-+[:]?\s*(\|\s*[:]?-+[:]?\s*)+\|?$/;
+const isTableContentLine = (lineText) => lineText.includes('|');
 
 const lineStyleDecos = {
   h1: Decoration.line({ class: 'meo-md-h1' }),
@@ -112,54 +112,39 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   addRange(builder, line.from, prefixTo, markerDeco);
 }
 
-function collectTableLines(state, tree) {
-  const tableLines = new Set();
-  tree.iterate({
-    enter(node) {
-      if (node.name !== 'Table') {
-        return;
-      }
-      const startLine = state.doc.lineAt(node.from).number;
-      const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from)).number;
-      for (let lineNo = startLine; lineNo <= endLine; lineNo += 1) {
-        tableLines.add(lineNo);
-      }
-    }
-  });
-  return tableLines;
-}
-
 function buildDecorations(state) {
   const ranges = [];
   const activeLines = collectActiveLines(state);
   const tree = resolvedSyntaxTree(state);
-  const tableLines = collectTableLines(state, tree);
   const orderedListItemCounts = new Map();
   const strikeRanges = collectStrikethroughRanges(tree);
+  const parsedTableRanges = [];
+  let tableDepth = 0;
 
   tree.iterate({
     enter: (node) => {
+      if (node.name === 'Table') {
+        tableDepth += 1;
+      }
+
       if (node.name === 'OrderedList') {
         orderedListItemCounts.set(node.from, 0);
       }
 
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
-        const headingLine = state.doc.lineAt(node.from).number;
-        if (!tableLines.has(headingLine)) {
+        if (tableDepth === 0) {
           addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos[`h${headingLevel}`]);
         }
       }
 
       if (node.name === 'SetextHeading1') {
-        const lineNo = state.doc.lineAt(node.from).number;
-        if (!tableLines.has(lineNo)) {
+        if (tableDepth === 0) {
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos.h1);
         }
       } else if (node.name === 'SetextHeading2') {
-        const lineNo = state.doc.lineAt(node.from).number;
-        if (!tableLines.has(lineNo) && !shouldSuppressTransientSetextHeading(state, node, activeLines)) {
+        if (tableDepth === 0 && !shouldSuppressTransientSetextHeading(state, node, activeLines)) {
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos.h2);
         }
       } else if (node.name === 'HorizontalRule') {
@@ -172,7 +157,9 @@ function buildDecorations(state) {
       } else if (node.name === 'Blockquote') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);
       } else if (node.name === 'Table') {
-        addTableDecorations(ranges, state, node, activeLines, addRange);
+        const tableInfo = parseTableInfo(state, node);
+        parsedTableRanges.push({ from: tableInfo.from, to: tableInfo.to });
+        addTableDecorations(ranges, state, node);
       } else if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.codeBlock);
         if (node.name === 'FencedCode') {
@@ -222,7 +209,7 @@ function buildDecorations(state) {
       }
 
       const line = state.doc.lineAt(node.from);
-      if (tableLines.has(line.number) && (node.name === 'HeaderMark' || node.name === 'SetextHeadingMark')) {
+      if (tableDepth > 0 && (node.name === 'HeaderMark' || node.name === 'SetextHeadingMark')) {
         return;
       }
       if (isFenceMarker(state, node.from, node.to)) {
@@ -243,9 +230,15 @@ function buildDecorations(state) {
       } else {
         addRange(ranges, node.from, node.to, markerDeco);
       }
-    }
+    },
+    leave: (node) => {
+      if (node.name === 'Table') {
+        tableDepth -= 1;
+      }
+    },
   });
 
+  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
 
   const result = Decoration.set(ranges, true);
@@ -273,23 +266,64 @@ const liveDecorationField = StateField.define({
 
 function buildLiveLineNumberMarkers(state) {
   const builder = new RangeSetBuilder();
-  const tree = resolvedSyntaxTree(state);
-  const markedLines = new Set();
-  tree.iterate({
-    enter(node) {
-      if (node.name !== 'TableDelimiter') {
-        return;
-      }
-      const line = state.doc.lineAt(node.from);
-      const lineText = state.doc.sliceString(line.from, line.to);
-      if (!tableDelimiterLineRegex.test(lineText) || markedLines.has(line.number)) {
-        return;
-      }
-      markedLines.add(line.number);
+  const tableBlocks = detectTableBlocks(state);
+  for (const block of tableBlocks) {
+    for (let lineNo = block.startLineNo; lineNo <= block.endLineNo; lineNo += 1) {
+      const line = state.doc.line(lineNo);
       builder.add(line.from, line.from, tableDelimiterGutterLineClassMarker);
     }
-  });
+  }
   return builder.finish();
+}
+
+function detectTableBlocks(state) {
+  const blocks = [];
+  for (let lineNo = 2; lineNo <= state.doc.lines; lineNo += 1) {
+    const delimiterLine = state.doc.line(lineNo);
+    const delimiterText = state.doc.sliceString(delimiterLine.from, delimiterLine.to);
+    if (!isTableDelimiterLine(delimiterText)) continue;
+
+    const headerLineNo = lineNo - 1;
+    const headerLine = state.doc.line(headerLineNo);
+    const headerText = state.doc.sliceString(headerLine.from, headerLine.to);
+    if (!isTableContentLine(headerText)) continue;
+
+    let endLineNo = lineNo;
+    for (let rowLineNo = lineNo + 1; rowLineNo <= state.doc.lines; rowLineNo += 1) {
+      const rowLine = state.doc.line(rowLineNo);
+      const rowText = state.doc.sliceString(rowLine.from, rowLine.to);
+      if (!isTableContentLine(rowText)) break;
+      endLineNo = rowLineNo;
+    }
+
+    blocks.push({ startLineNo: headerLineNo, endLineNo });
+    lineNo = endLineNo;
+  }
+  return blocks;
+}
+
+function addFallbackTableDecorations(builder, state, tree, parsedTableRanges) {
+  const tableBlocks = detectTableBlocks(state);
+  for (const block of tableBlocks) {
+    const from = state.doc.line(block.startLineNo).from;
+    const to = state.doc.line(block.endLineNo).to;
+    if (overlapsParsedTableRange(from, to, parsedTableRanges)) continue;
+    if (isInsideCodeBlock(tree, from)) continue;
+    addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo);
+  }
+}
+
+function overlapsParsedTableRange(from, to, ranges) {
+  return ranges.some((range) => from < range.to && to > range.from);
+}
+
+function isInsideCodeBlock(tree, pos) {
+  let node = tree.resolveInner(pos, 1);
+  while (node) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock') return true;
+    node = node.parent;
+  }
+  return false;
 }
 
 const liveLineNumberMarkerField = StateField.define({

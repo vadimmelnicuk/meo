@@ -24,6 +24,19 @@ export function createEditor({ parent, text, onApplyChanges }) {
   let view = null;
   let currentMode = 'source';
   let applyingRenumber = false;
+  let tableInteractionActive = false;
+  let onTableInteraction = null;
+  const targetElementFrom = (target) => (
+    target instanceof Element ? target : target instanceof Node ? target.parentElement : null
+  );
+
+  const setTableInteractionActive = (active) => {
+    if (!view || tableInteractionActive === active) {
+      return;
+    }
+    tableInteractionActive = active;
+    view.dom.classList.toggle('meo-table-interaction-active', active);
+  };
 
   const syncModeClasses = () => {
     if (!view) {
@@ -31,6 +44,15 @@ export function createEditor({ parent, text, onApplyChanges }) {
     }
     view.dom.classList.toggle('meo-mode-live', currentMode === 'live');
     view.dom.classList.toggle('meo-mode-source', currentMode !== 'live');
+  };
+
+  const releasePointerCaptureIfHeld = (pointerId) => {
+    if (!view || pointerId === null) {
+      return;
+    }
+    if (view.dom.releasePointerCapture && view.dom.hasPointerCapture(pointerId)) {
+      view.dom.releasePointerCapture(pointerId);
+    }
   };
 
   const syncSelectionClass = () => {
@@ -85,8 +107,8 @@ export function createEditor({ parent, text, onApplyChanges }) {
         ...historyKeymap
       ]),
       history(),
-      highlightActiveLine(),
       lineNumbers(),
+      highlightActiveLine(),
       highlightActiveLineGutter(),
       EditorView.lineWrapping,
       scrollPastEnd(),
@@ -97,8 +119,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
           }
 
           const target = event.target;
-          const targetElement =
-            target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+          const targetElement = targetElementFrom(target);
           if (!(target instanceof Node) || !view.contentDOM.contains(target)) {
             return false;
           }
@@ -111,6 +132,13 @@ export function createEditor({ parent, text, onApplyChanges }) {
 
           if (targetElement && targetElement.closest('.meo-task-checkbox')) {
             checkboxClick = { pointerId: event.pointerId };
+            return false;
+          }
+
+          // Let interactive HTML table widget controls handle focus/click natively.
+          if (targetElement && targetElement.closest('.meo-md-html-table-wrap')) {
+            inlineCodeClick = null;
+            checkboxClick = null;
             return false;
           }
 
@@ -138,9 +166,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
             return false;
           }
 
-          if (view.dom.releasePointerCapture && view.dom.hasPointerCapture(event.pointerId)) {
-            view.dom.releasePointerCapture(event.pointerId);
-          }
+          releasePointerCaptureIfHeld(event.pointerId);
           capturedPointerId = null;
 
           if (
@@ -183,17 +209,15 @@ export function createEditor({ parent, text, onApplyChanges }) {
             return false;
           }
 
-          if (view.dom.releasePointerCapture && view.dom.hasPointerCapture(event.pointerId)) {
-            view.dom.releasePointerCapture(event.pointerId);
-          }
+          releasePointerCaptureIfHeld(event.pointerId);
           capturedPointerId = null;
           inlineCodeClick = null;
           checkboxClick = null;
           return false;
         }
       }),
-    modeCompartment.of(sourceMode()),
-    EditorView.updateListener.of((update) => {
+      modeCompartment.of(sourceMode()),
+      EditorView.updateListener.of((update) => {
         syncModeClasses();
 
         if (update.selectionSet) {
@@ -225,6 +249,11 @@ export function createEditor({ parent, text, onApplyChanges }) {
     state,
     parent
   });
+  onTableInteraction = (event) => {
+    const active = Boolean(event?.detail?.active);
+    setTableInteractionActive(active);
+  };
+  view.dom.addEventListener('meo-table-interaction', onTableInteraction);
   syncModeClasses();
   syncSelectionClass();
 
@@ -254,10 +283,12 @@ export function createEditor({ parent, text, onApplyChanges }) {
       view.focus();
     },
     destroy() {
+      if (onTableInteraction) {
+        view.dom.removeEventListener('meo-table-interaction', onTableInteraction);
+        onTableInteraction = null;
+      }
       if (capturedPointerId !== null) {
-        if (view.dom.releasePointerCapture && view.dom.hasPointerCapture(capturedPointerId)) {
-          view.dom.releasePointerCapture(capturedPointerId);
-        }
+        releasePointerCaptureIfHeld(capturedPointerId);
         capturedPointerId = null;
       }
       view.destroy();
@@ -449,7 +480,7 @@ function findSyncChange(previousText, nextText) {
 
 function insertInlineCode(view, selection) {
   const { state } = view;
-  
+
   if (!selection.empty) {
     const selectedText = state.doc.sliceString(selection.from, selection.to);
     const insert = `\`${selectedText}\``;
@@ -459,7 +490,7 @@ function insertInlineCode(view, selection) {
     });
     return;
   }
-  
+
   const insert = '``';
   view.dispatch({
     changes: { from: selection.from, insert },
@@ -471,17 +502,17 @@ function insertQuote(view, selection) {
   const { state } = view;
   const line = state.doc.lineAt(selection.from);
   const lineText = state.doc.sliceString(line.from, line.to);
-  
+
   const existingQuote = /^(\s*)(>\s*)/.exec(lineText);
   if (existingQuote) {
     return;
   }
-  
+
   const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
   const insert = '> ';
   const contentStart = line.from + leadingWhitespace.length;
   const cursorOffset = selection.from - contentStart;
-  
+
   view.dispatch({
     changes: { from: contentStart, insert },
     selection: { anchor: contentStart + insert.length + cursorOffset }
@@ -493,10 +524,10 @@ function insertHr(view, selection) {
   const line = state.doc.lineAt(selection.from);
   const lineText = state.doc.sliceString(line.from, line.to);
   const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
-  
+
   const insert = `\n${leadingWhitespace}---\n`;
   const cursorPos = line.to + insert.length;
-  
+
   view.dispatch({
     changes: { from: line.to, insert },
     selection: { anchor: cursorPos }

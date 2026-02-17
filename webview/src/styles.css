@@ -38,6 +38,7 @@ body {
 
 .editor-host {
   min-height: 0;
+  min-width: 0;
   flex: 1;
 }
 
@@ -126,7 +127,9 @@ body {
 }
 
 .format-button:hover,
-.heading-dropdown-option:hover {
+.heading-dropdown-option:hover,
+.mode-button.is-active,
+.meo-copy-code-btn:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
@@ -164,10 +167,6 @@ body {
   background: transparent;
 }
 
-.mode-button.is-active {
-  background-color: var(--vscode-toolbar-hoverBackground);
-}
-
 .meo-copy-code-btn {
   position: absolute;
   top: 4px;
@@ -179,12 +178,21 @@ body {
   background-color: transparent;
 }
 
-.meo-copy-code-btn:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
-}
-
 .cm-editor {
   font-size: var(--vscode-editor-font-size);
+  min-width: 0;
+}
+
+.cm-editor .cm-scroller,
+.cm-editor .cm-content,
+.cm-editor .cm-line {
+  min-width: 0;
+}
+
+.cm-editor .cm-scroller {
+  scrollbar-gutter: stable;
+  /* padding-right: 14px; */
+  box-sizing: border-box;
 }
 
 .cm-editor .cm-gutters {
@@ -217,6 +225,10 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+.cm-editor.meo-table-interaction-active .cm-gutterElement.cm-activeLineGutter {
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
 .cm-editor.meo-mode-live .cm-lineNumbers .cm-gutterElement.meo-md-hide-line-number {
   color: transparent !important;
 }
@@ -236,20 +248,27 @@ body {
   background-color: var(--vscode-editor-selectionBackground);
 }
 
-.cm-editor.cm-focused .cm-activeLine,
-.cm-editor:not(.cm-focused) .cm-activeLine {
+.cm-editor.cm-focused .cm-activeLine {
   background-color: var(--meo-active-line-bg);
+}
+
+.cm-editor:not(.cm-focused) .cm-activeLine {
+  background-color: transparent;
 }
 
 .cm-editor.has-selection .cm-activeLine {
   background-color: transparent;
 }
 
-.cm-editor .cm-activeLine.meo-md-code-block {
+.cm-editor.meo-table-interaction-active .cm-activeLine {
+  background-color: transparent;
+}
+
+.cm-editor.cm-focused .cm-activeLine.meo-md-code-block {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
-.cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
+.cm-editor.cm-focused.meo-mode-live .cm-activeLine.meo-md-code-block {
   background-color: var(--meo-code-block-active-line-bg-live);
 }
 
@@ -264,6 +283,10 @@ body {
 .cm-editor.meo-mode-live .meo-md-marker-active {
   display: inline !important;
   line-height: inherit;
+}
+
+.cm-editor.meo-mode-live.meo-table-interaction-active .meo-md-marker-active {
+  display: none !important;
 }
 
 .cm-editor.meo-mode-live .meo-md-code-block .meo-md-fence-marker,
@@ -317,8 +340,14 @@ body {
 }
 
 .cm-editor .meo-md-quote {
-  border-left: 3px solid var(--vscode-textBlockQuote-border);
-  padding-left: 0.65rem;
+  border-left: 3px solid var(--meo-color-base05);
+  padding-left: 3ch;
+  text-indent: -1ch;
+}
+
+.cm-editor.meo-mode-live .cm-activeLine.meo-md-quote {
+  padding-left: 3ch;
+  text-indent: -2ch;
 }
 
 .cm-editor .meo-md-hr {
@@ -377,7 +406,7 @@ body {
   -webkit-appearance: none;
   width: 17px;
   height: 17px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 60%, #000 40%);
+  border: 1px solid var(--meo-color-base03);
   border-radius: 4px;
   background: var(--vscode-sideBar-background);
   cursor: pointer;
@@ -407,14 +436,14 @@ body {
 }
 
 .cm-editor .meo-task-complete {
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 60%, #000 40%);
+  color: var(--meo-color-base02);
 }
 
 .cm-editor .meo-md-list-border {
   display: inline-block;
   box-sizing: border-box;
   height: 100%;
-  border-left: 1px solid var(--vscode-panel-border);
+  border-left: 1px solid var(--meo-color-base03);
 }
 
 .cm-editor .meo-mermaid-block {
@@ -559,11 +588,6 @@ body {
   display: flex;
 }
 
-.editor-root.outline-visible .editor-host {
-  flex: 1;
-  min-width: 0;
-}
-
 .outline-content {
   flex: 1;
   overflow-y: auto;
@@ -617,21 +641,160 @@ body {
 
 .outline-item.outline-level-4 {
   padding-left: 44px;
-  font-size: 11px;
 }
 
 .outline-item.outline-level-5 {
   padding-left: 54px;
-  font-size: 11px;
 }
 
 .outline-item.outline-level-6 {
   padding-left: 64px;
+}
+
+.outline-item.outline-level-4,
+.outline-item.outline-level-5,
+.outline-item.outline-level-6 {
   font-size: 11px;
 }
 
 .cm-editor .meo-md-table-line {
   font-family: var(--vscode-editor-font-family);
+}
+
+.cm-editor .meo-md-html-table-wrap {
+  padding: 18px 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.cm-editor .meo-md-html-table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.cm-editor .meo-md-html-table th,
+.cm-editor .meo-md-html-table td {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--meo-color-base03);
+}
+
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected {
+  background: color-mix(in srgb, var(--vscode-editor-selectionBackground) 35%, transparent);
+}
+
+.cm-editor .meo-md-html-table th {
+  position: relative;
+  background-color: var(--vscode-sideBar-background);
+}
+
+.cm-editor .meo-md-html-table textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  padding: 0.25em 0.5em;
+  resize: none;
+  overflow: hidden;
+}
+
+.cm-editor .meo-md-html-table textarea:focus {
+  background: var(--meo-active-line-bg);
+}
+
+.cm-editor .meo-md-html-col-controls {
+  position: absolute;
+  top: -28px;
+  left: calc(100% - 26px);
+  width: 32px;
+  height: 15px;
+  padding: 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+.cm-editor .meo-md-html-col-controls-left-insert {
+  left: -10px;
+  width: 15px;
+}
+
+.cm-editor .meo-md-html-col-controls:hover,
+.cm-editor .meo-md-html-col-controls:focus-within {
+  opacity: 1;
+}
+
+.cm-editor .meo-md-html-table thead th:last-child .meo-md-html-col-controls {
+  transform: translateX(-16px);
+  padding-right: 0;
+}
+
+.cm-editor .meo-md-html-col-btn,
+.cm-editor .meo-md-html-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--meo-color-base03);
+  border-radius: 5px;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-editor-foreground);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cm-editor .meo-md-html-col-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.cm-editor .meo-md-html-row-controls {
+  position: absolute;
+  bottom: -16px;
+  left: -18px;
+  width: 15px;
+  height: 32px;
+  padding-right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+.cm-editor .meo-md-html-row-controls-top-insert {
+  top: -10px;
+  bottom: auto;
+}
+
+.cm-editor .meo-md-html-row-controls:hover,
+.cm-editor .meo-md-html-row-controls:focus-within {
+  opacity: 1;
+}
+
+.cm-editor .meo-md-html-row-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
 }
 
 .cm-editor .meo-md-table-header-line {
@@ -656,11 +819,7 @@ body {
   border-bottom: 1px solid var(--vscode-panel-border);
   min-height: 1lh;
   line-height: inherit;
-  vertical-align: top;
-  padding-left: 1ch;
-  padding-right: 1ch;
-  padding-top: 0.25em;
-  padding-bottom: 0.25em;
+  padding: 0.25em 1ch;
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-line:not(.meo-md-table-delim-line) .meo-md-table-cell.meo-md-table-cell-last {
@@ -682,15 +841,16 @@ body {
   min-height: 1lh;
 }
 
-.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line {
-  font-weight: 600;
+.cm-editor.meo-mode-live .cm-cursorLayer {
+  z-index: 4;
+}
+
+.cm-editor.meo-mode-live .cm-cursor {
+  border-left-color: var(--vscode-editorCursor-foreground, #ffffff) !important;
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell,
-.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell * {
-  color: var(--vscode-editor-foreground) !important;
-}
-
+.cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell *,
 .cm-editor.meo-mode-source .meo-md-source-table-header-cell,
 .cm-editor.meo-mode-source .meo-md-source-table-header-cell * {
   color: var(--vscode-editor-foreground) !important;
@@ -699,10 +859,6 @@ body {
 .cm-editor.meo-mode-live .meo-md-table-line .meo-md-marker-active,
 .cm-editor.meo-mode-live .meo-md-table-line .meo-md-strike-marker-active {
   display: none;
-}
-
-.cm-editor.meo-mode-live .meo-md-table-pad-space {
-  font-size: 0;
 }
 
 .cm-editor .meo-md-table-line:hover .meo-table-add-row-btn,

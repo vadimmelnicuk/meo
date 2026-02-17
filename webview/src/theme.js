@@ -4,7 +4,7 @@ import { tags as t } from '@lezer/highlight';
 // Monokai-inspired color palette adapted for VS Code's theming system
 const base01 = 'var(--vscode-editor-foreground)';
 const base02 = '#676f7d';
-const base03 = 'var(--vscode-descriptionForeground)';
+const base03 = '#3e444d';
 const base04 = '#e06c75';
 const base05 = '#61afef';
 const base06 = '#66D9EF';
@@ -63,10 +63,10 @@ export const highlightStyle = HighlightStyle.define([
   { tag: t.monospace, color: base07 },
   { tag: t.heading, color: base04, fontWeight: '600' },
   { tag: t.emphasis, fontStyle: 'italic' },
-  { tag: t.strong, color: base07, fontWeight: '700' },
+  { tag: t.strong, color: base07, fontWeight: '600' },
   { tag: t.processingInstruction, color: base02 },
   { tag: t.strikethrough, textDecoration: 'line-through' },
-  { tag: t.quote, color: base06 },
+  { tag: t.quote, color: base02 },
   { tag: t.contentSeparator, color: base02 },
   { tag: t.link, color: base05 },
   { tag: t.url, color: base05 },
