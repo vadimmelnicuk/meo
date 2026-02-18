@@ -489,7 +489,10 @@ const handleInit = (message) => {
     editor = createEditor({
       parent: editorHost,
       text: message.text,
-      onApplyChanges: queueChanges
+      onApplyChanges: queueChanges,
+      onOpenLink: (href) => {
+        vscode.postMessage({ type: 'openLink', href });
+      }
     });
   } else {
     editor.setText(message.text);

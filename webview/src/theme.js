@@ -64,10 +64,10 @@ export const highlightStyle = HighlightStyle.define([
   { tag: t.heading, color: base04, fontWeight: '600' },
   { tag: t.emphasis, fontStyle: 'italic' },
   { tag: t.strong, color: base07, fontWeight: '600' },
-  { tag: t.processingInstruction, color: base02 },
   { tag: t.strikethrough, textDecoration: 'line-through' },
   { tag: t.quote, color: base02 },
   { tag: t.contentSeparator, color: base02 },
   { tag: t.link, color: base05 },
   { tag: t.url, color: base05 },
+  { tag: t.processingInstruction, color: base02 },
 ]);

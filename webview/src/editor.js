@@ -11,7 +11,7 @@ import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
 import { sourceListBorderField, handleEnterBeforeNestedList, collectOrderedListRenumberChanges } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 
-export function createEditor({ parent, text, onApplyChanges }) {
+export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
   EditorView.EDIT_CONTEXT = false;
@@ -29,6 +29,30 @@ export function createEditor({ parent, text, onApplyChanges }) {
   const targetElementFrom = (target) => (
     target instanceof Element ? target : target instanceof Node ? target.parentElement : null
   );
+  const isPrimaryModifierClick = (event) => (
+    !event.altKey && !event.shiftKey && event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey)
+  );
+  const openLinkIfModifierClick = (event) => {
+    if (currentMode !== 'live' || !isPrimaryModifierClick(event)) {
+      return false;
+    }
+    const targetElement = targetElementFrom(event.target);
+    if (!targetElement) {
+      return false;
+    }
+    const linkElement = targetElement.closest('[data-meo-link-href]');
+    if (!(linkElement instanceof Element)) {
+      return false;
+    }
+    const href = linkElement.getAttribute('data-meo-link-href');
+    if (!href) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenLink?.(href);
+    return true;
+  };
 
   const setTableInteractionActive = (active) => {
     if (!view || tableInteractionActive === active) {
@@ -116,6 +140,9 @@ export function createEditor({ parent, text, onApplyChanges }) {
         pointerdown(event, view) {
           if (event.button !== 0) {
             return false;
+          }
+          if (openLinkIfModifierClick(event)) {
+            return true;
           }
 
           const target = event.target;

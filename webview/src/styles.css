@@ -398,6 +398,47 @@ body {
   text-underline-offset: 4px;
 }
 
+.cm-editor.meo-mode-live .meo-md-link[data-meo-link-href] {
+  cursor: pointer;
+}
+
+.cm-editor.meo-mode-live .meo-md-link-url-hidden {
+  display: none;
+}
+
+.cm-editor .meo-md-link-marker,
+.cm-editor .meo-md-link-marker-active {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor .meo-md-link-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  margin-left: 4px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  line-height: 0;
+  color: var(--meo-color-base02);
+  background: transparent;
+  cursor: pointer;
+  vertical-align: top;
+}
+
+.cm-editor .meo-md-link-clear-btn svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.cm-editor .meo-md-link-clear-btn:hover {
+  color: var(--vscode-editor-foreground);
+}
+
 .cm-editor .meo-md-quote {
   border-left: 3px solid var(--meo-color-base05);
   padding-left: 3ch;

@@ -1,7 +1,8 @@
 import { RangeSetBuilder, StateField } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
-import { Decoration, EditorView, GutterMarker, gutterLineClass } from '@codemirror/view';
+import { Decoration, EditorView, GutterMarker, WidgetType, gutterLineClass } from '@codemirror/view';
+import { createElement, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
   isFenceMarker,
@@ -18,10 +19,13 @@ import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterL
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
+const linkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker' });
+const activeLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active' });
 const strikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-strike-marker' });
 const activeStrikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-strike-marker-active' });
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
 const hrMarkerDeco = Decoration.mark({ class: 'meo-md-hr-marker' });
+const hiddenLinkUrlDeco = Decoration.mark({ class: 'meo-md-link-url-hidden' });
 const tableDelimiterGutterLineClassMarker = new class extends GutterMarker {
   get elementClass() {
     return 'meo-md-hide-line-number';
@@ -46,9 +50,126 @@ const inlineStyleDecos = {
   em: Decoration.mark({ class: 'meo-md-em' }),
   strong: Decoration.mark({ class: 'meo-md-strong' }),
   strike: Decoration.mark({ class: 'meo-md-strike' }),
-  inlineCode: Decoration.mark({ class: 'meo-md-inline-code' }),
-  link: Decoration.mark({ class: 'meo-md-link' })
+  inlineCode: Decoration.mark({ class: 'meo-md-inline-code' })
 };
+
+function getNodeHref(state, node) {
+  const href = state.doc.sliceString(node.from, node.to).trim();
+  if (!href) {
+    return '';
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    return href;
+  }
+  return `https://${href}`;
+}
+
+function addLinkMark(builder, from, to, href) {
+  if (!href) {
+    return;
+  }
+  addRange(
+    builder,
+    from,
+    to,
+    Decoration.mark({
+      class: 'meo-md-link',
+      attributes: { 'data-meo-link-href': href }
+    })
+  );
+}
+
+function findChildNode(node, name) {
+  for (let child = node.node.firstChild; child; child = child.nextSibling) {
+    if (child.name === name) {
+      return child;
+    }
+  }
+  return null;
+}
+
+class ClearLinkUrlWidget extends WidgetType {
+  constructor(urlFrom, urlTo) {
+    super();
+    this.urlFrom = urlFrom;
+    this.urlTo = urlTo;
+  }
+
+  eq(other) {
+    return other.urlFrom === this.urlFrom && other.urlTo === this.urlTo;
+  }
+
+  toDOM() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'meo-md-link-clear-btn';
+    button.title = 'Clear link URL';
+    button.setAttribute('aria-label', 'Clear link URL');
+    button.appendChild(createElement(Delete, { 'aria-hidden': 'true' }));
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const view = EditorView.findFromDOM(button);
+      if (!view) {
+        return;
+      }
+      view.dispatch({
+        changes: { from: this.urlFrom, to: this.urlTo, insert: '' },
+        selection: { anchor: this.urlFrom }
+      });
+      view.focus();
+    });
+    return button;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+function addMarkdownLinkDecorations(builder, state, node, activeLines) {
+  const urlNode = findChildNode(node, 'URL');
+  if (!urlNode) {
+    return;
+  }
+
+  const prefix = state.doc.sliceString(node.from, urlNode.from);
+  const closeTextAt = prefix.lastIndexOf('](');
+  if (closeTextAt <= 0) {
+    return;
+  }
+
+  const textFrom = node.from + 1;
+  const textTo = node.from + closeTextAt;
+  const href = getNodeHref(state, urlNode);
+  const urlLine = state.doc.lineAt(urlNode.from);
+  const isActiveLine = activeLines.has(urlLine.number);
+  addLinkMark(builder, textFrom, textTo, href);
+  if (!isActiveLine) {
+    addRange(builder, urlNode.from, urlNode.to, hiddenLinkUrlDeco);
+    return;
+  }
+
+  builder.push(
+    Decoration.widget({
+      widget: new ClearLinkUrlWidget(urlNode.from, urlNode.to),
+      side: 1
+    }).range(urlNode.to)
+  );
+}
+
+function addAutolinkDecorations(builder, state, node) {
+  const urlNode = findChildNode(node, 'URL');
+  if (!urlNode) {
+    return;
+  }
+
+  addLinkMark(builder, urlNode.from, urlNode.to, getNodeHref(state, urlNode));
+}
 
 function addRange(builder, from, to, deco) {
   if (to <= from) {
@@ -200,8 +321,15 @@ function buildDecorations(state) {
         addRange(ranges, node.from, node.to, inlineStyleDecos.strike);
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
-      } else if (node.name === 'Link' || node.name === 'URL' || node.name === 'Autolink') {
-        addRange(ranges, node.from, node.to, inlineStyleDecos.link);
+      } else if (node.name === 'Link') {
+        addMarkdownLinkDecorations(ranges, state, node, activeLines);
+      } else if (node.name === 'Autolink') {
+        addAutolinkDecorations(ranges, state, node);
+      } else if (node.name === 'URL') {
+        const parentName = node.node.parent?.name ?? '';
+        if (parentName !== 'Link' && parentName !== 'Autolink') {
+          addLinkMark(ranges, node.from, node.to, getNodeHref(state, node));
+        }
       }
 
       if (!node.name.endsWith('Mark')) {
@@ -224,6 +352,12 @@ function buildDecorations(state) {
           addRange(ranges, node.from, node.to, activeStrikeMarkerDeco);
         } else {
           addRange(ranges, node.from, node.to, strikeMarkerDeco);
+        }
+      } else if (node.name === 'LinkMark') {
+        if (activeLines.has(line.number)) {
+          addRange(ranges, node.from, node.to, activeLinkMarkerDeco);
+        } else {
+          addRange(ranges, node.from, node.to, linkMarkerDeco);
         }
       } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, activeLineMarkerDeco);
