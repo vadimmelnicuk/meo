@@ -1,3 +1,5 @@
+<img src="./logo.png" alt="Markdown Editor Optimized logo" width="120" />
+
 # Markdown Editor Optimized (MEO)
 Optimized editor for markdown files with live edit mode.
 
@@ -13,3 +15,9 @@ Optimized editor for markdown files with live edit mode.
 ## Usage
 - Open a `.md` or `.markdown` file with Markdown Editor Optimized by right-clicking the file in Explorer and selecting `Open With Markdown Editor Optimized`.
 - Set it as default by running `Markdown Editor Optimized: Set as Default`.
+
+Acknowledgements:
+- `vscode` for toolset.
+- `codemirror` for core editor component.
+- `lezer` for syntax parsing.
+- `obsidian` for inspiration.
