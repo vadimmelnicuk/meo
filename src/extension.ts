@@ -70,12 +70,30 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('markdownEditorOptimized.open', async () => {
-      const active = vscode.window.activeTextEditor;
-      if (!active || active.document.languageId !== 'markdown') {
+    vscode.commands.registerCommand('markdownEditorOptimized.open', async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const active = vscode.window.activeTextEditor;
+        if (!active) {
+          return;
+        }
+        targetUri = active.document.uri;
+      }
+      if (!targetUri.fsPath.endsWith('.md') && !targetUri.fsPath.endsWith('.markdown')) {
         return;
       }
-      await vscode.commands.executeCommand('vscode.openWith', active.document.uri, VIEW_TYPE);
+      await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.setDefaultEditor', async () => {
+      const config = vscode.workspace.getConfiguration('workbench');
+      const associations = config.get<Record<string, string>>('editorAssociations') || {};
+      associations['*.md'] = VIEW_TYPE;
+      associations['*.markdown'] = VIEW_TYPE;
+      await config.update('editorAssociations', associations, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage('Markdown Editor Optimized is now set as the default editor for Markdown files.');
     })
   );
 }
@@ -106,7 +124,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     panel.webview.html = this.getWebviewHtml(panel.webview);
 
-    let mode: EditorMode = 'source';
+    let mode: EditorMode = 'live';
     let applyQueue: Promise<void> = Promise.resolve();
     let initDelivered = false;
     let isApplyingOwnChange = false;

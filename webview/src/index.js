@@ -312,7 +312,7 @@ let syncedText = '';
 let inFlight = false;
 let inFlightText = null;
 let saveAfterSync = false;
-let currentMode = 'source';
+let currentMode = 'live';
 let hasLocalModePreference = false;
 
 const updateModeUI = () => {

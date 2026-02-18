@@ -404,6 +404,23 @@ class HtmlTableWidget extends WidgetType {
       event.clipboardData?.setData('text/plain', text);
     };
 
+    const onKeyDown = (event) => {
+      if (this.selectedCellCount() <= 1) return;
+      if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+      if (!this.selectionRange || !this.domRefs) return;
+      event.preventDefault();
+      for (let row = this.selectionRange.fromRow; row <= this.selectionRange.toRow; row++) {
+        for (let col = this.selectionRange.fromCol; col <= this.selectionRange.toCol; col++) {
+          const input = this.domRefs.allRowInputs[row][col];
+          if (input.value !== '') {
+            input.value = '';
+            this.hasPendingCellEdits = true;
+          }
+        }
+      }
+      this.scheduleLayout({ resizeRows: true });
+    };
+
     const onFocusOut = (event) => {
       const nextTarget = event.relatedTarget;
       if (nextTarget instanceof Node && table.contains(nextTarget)) return;
@@ -457,6 +474,7 @@ class HtmlTableWidget extends WidgetType {
     table.addEventListener('pointerup', endPointerSelection);
     table.addEventListener('pointercancel', endPointerSelection);
     table.addEventListener('copy', onCopy);
+    table.addEventListener('keydown', onKeyDown);
     table.addEventListener('focusout', onFocusOut);
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     this.cleanupFns.push(() => {
@@ -466,6 +484,7 @@ class HtmlTableWidget extends WidgetType {
       table.removeEventListener('pointerup', endPointerSelection);
       table.removeEventListener('pointercancel', endPointerSelection);
       table.removeEventListener('copy', onCopy);
+      table.removeEventListener('keydown', onKeyDown);
       table.removeEventListener('focusout', onFocusOut);
       document.removeEventListener('pointerdown', onDocumentPointerDown, true);
     });

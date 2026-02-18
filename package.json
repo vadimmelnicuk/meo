@@ -1,24 +1,41 @@
 {
   "name": "markdown-editor-optimized",
   "displayName": "Markdown Editor Optimized",
-  "description": "VS Code custom editor for Markdown files with live preview mode powered by CodeMirror 6.",
+  "description": "WYSIWYG editor for markdown files with live edit mode.",
   "version": "0.1.0",
+  "publisher": "vadimmelnicuk",
+  "private": true,
+  "icon": "logo.png",
   "engines": {
     "vscode": "^1.97.0"
   },
   "categories": [
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "editor",
+    "live-edit",
+    "wysiwyg",
+    "markdown-editor",
+    "markdown-preview"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:markdown"
   ],
-  "contributes": {
+    "contributes": {
     "commands": [
       {
         "command": "markdownEditorOptimized.open",
-        "title": "Markdown Editor Optimized: Open With Editor",
+        "title": "Open With Markdown Editor Optimized",
         "icon": "$(book)"
+      },
+      {
+        "command": "markdownEditorOptimized.setDefaultEditor",
+        "title": "Markdown Editor Optimized: Set as Default",
+        "icon": "$(check)"
       }
     ],
     "customEditors": [
@@ -35,7 +52,33 @@
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "markdownEditorOptimized.open",
+          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "markdownEditorOptimized.open",
+          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Editor Optimized",
+      "properties": {
+        "markdownEditorOptimized.useAsDefault": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use Markdown Editor Optimized as the default editor for Markdown files"
+        }
+      }
+    }
   },
   "scripts": {
     "install:all": "bun install && (cd webview && bun install)",
