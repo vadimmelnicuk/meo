@@ -13,16 +13,6 @@
       }
     },
     {
-      "label": "watch",
-      "dependsOn": [
-        "build:extension",
-        "watch:webview"
-      ],
-      "dependsOrder": "parallel",
-      "problemMatcher": [],
-      "group": "build"
-    },
-    {
       "label": "build:extension",
       "type": "shell",
       "command": "bun run build:extension 2>/dev/null",

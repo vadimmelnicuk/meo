@@ -380,6 +380,8 @@ export function createEditor({ parent, text, onApplyChanges }) {
           return insertHr(view, selection);
         case 'table':
           return insertTable(view, selection, level?.cols, level?.rows);
+        case 'link':
+          return insertLink(view, selection);
       }
 
       const newMarkerLen = insert.length;
@@ -543,6 +545,26 @@ function insertHr(view, selection) {
   view.dispatch({
     changes: { from: line.to, insert },
     selection: { anchor: cursorPos }
+  });
+}
+
+function insertLink(view, selection) {
+  const { state } = view;
+
+  if (!selection.empty) {
+    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    const insert = `[${selectedText}]()`;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length - 1 }
+    });
+    return;
+  }
+
+  const insert = '[]()';
+  view.dispatch({
+    changes: { from: selection.from, insert },
+    selection: { anchor: selection.from + 1 }
   });
 }
 

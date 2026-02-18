@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2 } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link } from 'lucide';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -192,6 +192,13 @@ hrBtn.dataset.action = 'hr';
 hrBtn.title = 'Horizontal Rule';
 hrBtn.appendChild(createElement(Minus, { width: 18, height: 18 }));
 
+const linkBtn = document.createElement('button');
+linkBtn.type = 'button';
+linkBtn.className = 'format-button';
+linkBtn.dataset.action = 'link';
+linkBtn.title = 'Link';
+linkBtn.appendChild(createElement(Link, { width: 18, height: 18 }));
+
 const tableBtn = document.createElement('button');
 tableBtn.type = 'button';
 tableBtn.className = 'format-button';
@@ -267,7 +274,7 @@ tableGrid.addEventListener('click', (event) => {
   editor.focus();
 });
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, inlineCodeBtn, linkBtn, quoteBtn, hrBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -659,6 +666,7 @@ codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
 inlineCodeBtn.addEventListener('click', () => handleFormatAction('inlineCode'));
 quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
 hrBtn.addEventListener('click', () => handleFormatAction('hr'));
+linkBtn.addEventListener('click', () => handleFormatAction('link'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
 

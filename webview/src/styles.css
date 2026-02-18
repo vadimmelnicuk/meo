@@ -394,6 +394,8 @@ body {
 
 .cm-editor .meo-md-link {
   text-decoration: underline;
+  text-decoration-color: var(--meo-color-base05);
+  text-underline-offset: 4px;
 }
 
 .cm-editor .meo-md-quote {
