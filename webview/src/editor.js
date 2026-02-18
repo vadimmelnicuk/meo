@@ -314,12 +314,24 @@ export function createEditor({ parent, text, onApplyChanges }) {
       syncSelectionClass();
     },
     setMode(mode) {
+      const lineBlock = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 1);
+      const lineNumber = view.state.doc.lineAt(lineBlock.from).number;
+
       currentMode = mode;
       view.dispatch({
         effects: modeCompartment.reconfigure(mode === 'live' ? liveModeExtensions() : sourceMode())
       });
       forceParsing(view, view.state.doc.length, 500);
       syncModeClasses();
+
+      let attempts = 0;
+      const restoreScroll = () => {
+        if (!view || ++attempts > 20) return;
+        const targetLine = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
+        view.scrollDOM.scrollTop = view.lineBlockAt(targetLine.from).top;
+        requestAnimationFrame(restoreScroll);
+      };
+      requestAnimationFrame(restoreScroll);
     },
     insertFormat(action, level) {
       const { state } = view;
