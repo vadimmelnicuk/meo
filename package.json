@@ -1,7 +1,7 @@
 {
-  "name": "markdown-editor-optimized",
+  "name": "meo",
   "displayName": "Markdown Editor Optimized",
-  "description": "WYSIWYG editor for markdown files with live edit mode.",
+  "description": "Optimized editor for markdown files with live edit mode.",
   "version": "0.1.0",
   "publisher": "vadimmelnicuk",
   "private": true,
@@ -21,6 +21,10 @@
     "markdown-editor",
     "markdown-preview"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vadimmelnicuk/meo.git"
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:markdown"
