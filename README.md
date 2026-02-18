@@ -1,5 +1,3 @@
-<img src="./logo.png" alt="logo" width="120" />
-
 # Markdown Editor Optimized (MEO)
 Optimized editor for markdown files with live edit mode.
 
