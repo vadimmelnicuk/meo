@@ -1,18 +1,125 @@
 import { StateField, RangeSetBuilder } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { base02 } from '../theme';
-import { resolvedSyntaxTree } from './markdownSyntax';
 
 const listBorderDeco = Decoration.mark({ class: 'meo-md-list-border' });
+const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
+const LIST_INDENT_WIDTH = 2;
+const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])\s+/;
+const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))\s+(?:\[([ xX])\]\s+)?/;
+
+function forEachSelectionLine(state, callback) {
+  const seen = new Set();
+  for (const range of state.selection.ranges) {
+    const fromLine = state.doc.lineAt(range.from).number;
+    const toPos = Math.max(range.from, range.to - (range.empty ? 0 : 1));
+    const toLine = state.doc.lineAt(toPos).number;
+    for (let lineNumber = fromLine; lineNumber <= toLine; lineNumber += 1) {
+      if (seen.has(lineNumber)) {
+        continue;
+      }
+      seen.add(lineNumber);
+      callback(state.doc.line(lineNumber));
+    }
+  }
+}
+
+function isListLine(lineText) {
+  return listItemRegex.test(lineText);
+}
+
+function indentationColumns(leadingWhitespace) {
+  let columns = 0;
+  for (let index = 0; index < leadingWhitespace.length; index += 1) {
+    columns += leadingWhitespace[index] === '\t' ? LIST_INDENT_WIDTH : 1;
+  }
+  return columns;
+}
+
+function listBorderOffsets(leadingWhitespace) {
+  const offsets = [];
+  let columns = 0;
+  let levelStart = 0;
+
+  for (let index = 0; index < leadingWhitespace.length; index += 1) {
+    if (columns === 0) {
+      levelStart = index;
+    }
+    columns += leadingWhitespace[index] === '\t' ? LIST_INDENT_WIDTH : 1;
+    if (columns >= LIST_INDENT_WIDTH) {
+      offsets.push(levelStart);
+      columns = 0;
+    }
+  }
+
+  return offsets;
+}
+
+function addListIndentBorders(addRange, lineStart, leadingWhitespace) {
+  for (const offset of listBorderOffsets(leadingWhitespace)) {
+    addRange(lineStart + offset, lineStart + offset + 1, listBorderDeco);
+  }
+}
+
+export function indentListByTwoSpaces(view) {
+  const { state } = view;
+  const changes = [];
+
+  forEachSelectionLine(state, (line) => {
+    const lineText = state.doc.sliceString(line.from, line.to);
+    if (!isListLine(lineText)) {
+      return;
+    }
+    changes.push({ from: line.from, insert: '  ' });
+  });
+
+  if (!changes.length) {
+    return false;
+  }
+
+  view.dispatch({ changes });
+  return true;
+}
+
+export function outdentListByTwoSpaces(view) {
+  const { state } = view;
+  const changes = [];
+
+  forEachSelectionLine(state, (line) => {
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const listMatch = listItemRegex.exec(lineText);
+    if (!listMatch || !listMatch[1].length) {
+      return;
+    }
+
+    const leadingWhitespace = listMatch[1];
+    const deleteLength = leadingWhitespace.startsWith('\t')
+      ? 1
+      : Math.min(LIST_INDENT_WIDTH, leadingWhitespace.match(/^ +/)?.[0]?.length ?? 0);
+    if (!deleteLength) {
+      return;
+    }
+
+    changes.push({ from: line.from, to: line.from + deleteLength, insert: '' });
+  });
+
+  if (!changes.length) {
+    return false;
+  }
+
+  view.dispatch({ changes });
+  return true;
+}
 
 export function listMarkerData(lineText, orderedDisplayIndex = null) {
-  const match = /^(\s*)(?:([-+*])|(\d+)([.)]))\s+(?:\[([ xX])\]\s+)?/.exec(lineText);
+  const match = listMarkerRegex.exec(lineText);
   if (!match) {
     return null;
   }
 
   const indent = match[1].length;
+  const leadingWhitespace = match[1];
   const orderedNumber = match[3];
   const orderedSuffix = match[4];
   const taskState = match[5];
@@ -30,10 +137,13 @@ export function listMarkerData(lineText, orderedDisplayIndex = null) {
 
   const result = {
     fromOffset: indent,
+    leadingWhitespace,
+    indentLevel: Math.floor(indentationColumns(leadingWhitespace) / LIST_INDENT_WIDTH),
     markerEndOffset,
     toOffset: match[0].length,
     markerText,
-    classes
+    classes,
+    orderedNumber
   };
 
   if (taskState !== undefined) {
@@ -137,29 +247,71 @@ export function addListMarkerDecoration(builder, state, from, orderedDisplayInde
     );
   }
 
-  for (let pos = line.from; pos < indentEnd; pos += 1) {
-    builder.push(listBorderDeco.range(pos, pos + 1));
-  }
+  addListIndentBorders((from, to, deco) => builder.push(deco.range(from, to)), line.from, marker.leadingWhitespace);
 }
 
 export function continuedListMarker(lineText) {
-  const taskMatch = /^([-+*])\s+\[[ xX]\]\s+\S/.exec(lineText);
-  if (taskMatch) {
-    return `${taskMatch[1]} [ ] `;
-  }
-
-  const bulletMatch = /^([-+*])\s+\S/.exec(lineText);
-  if (bulletMatch) {
-    return `${bulletMatch[1]} `;
-  }
-
-  const orderedMatch = /^(\d+)([.)])\s+\S/.exec(lineText);
-  if (!orderedMatch) {
+  const match = listMarkerRegex.exec(lineText);
+  if (!match) {
     return null;
   }
 
-  const nextNumber = Number.parseInt(orderedMatch[1], 10) + 1;
-  return `${nextNumber}${orderedMatch[2]} `;
+  const leadingWhitespace = match[1];
+  const bullet = match[2];
+  const orderedNumber = match[3];
+  const orderedSuffix = match[4];
+  const hasTask = match[5] !== undefined;
+  const marker = listMarkerData(lineText);
+  if (!marker) {
+    return null;
+  }
+
+  const hasContent = lineText.slice(marker.toOffset).trim().length > 0;
+  if (!hasContent) {
+    return null;
+  }
+
+  if (bullet && hasTask) {
+    return `${leadingWhitespace}${bullet} [ ] `;
+  }
+
+  if (bullet) {
+    return `${leadingWhitespace}${bullet} `;
+  }
+
+  if (!orderedNumber || !orderedSuffix) {
+    return null;
+  }
+
+  const nextNumber = Number.parseInt(orderedNumber, 10) + 1;
+  return `${leadingWhitespace}${nextNumber}${orderedSuffix} `;
+}
+
+export function handleEnterContinueList(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const position = selection.head;
+  const line = state.doc.lineAt(position);
+  if (position !== line.to) {
+    return false;
+  }
+
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const marker = continuedListMarker(lineText);
+  if (!marker) {
+    return false;
+  }
+
+  const insert = `\n${marker}`;
+  view.dispatch({
+    changes: { from: position, insert },
+    selection: { anchor: position + insert.length }
+  });
+  return true;
 }
 
 export function handleEnterBeforeNestedList(view) {
@@ -196,81 +348,73 @@ export function handleEnterBeforeNestedList(view) {
   return true;
 }
 
-export function collectOrderedListRenumberChanges(state, tree) {
+export function collectOrderedListRenumberChanges(state) {
   const changes = [];
+  const orderedCountsByLevel = [];
 
-  tree.iterate({
-    enter(node) {
-      if (node.name !== 'OrderedList') {
-        return;
-      }
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const marker = listMarkerData(lineText);
 
-      let index = 1;
-      for (let child = node.node.firstChild; child; child = child.nextSibling) {
-        if (child.name !== 'ListItem') {
-          continue;
-        }
-
-        const line = state.doc.lineAt(child.from);
-        const lineText = state.doc.sliceString(line.from, line.to);
-        const match = /^(\s*)(\d+)([.)])\s+/.exec(lineText);
-        if (!match) {
-          continue;
-        }
-
-        const expected = String(index);
-        if (match[2] !== expected) {
-          const from = line.from + match[1].length;
-          changes.push({
-            from,
-            to: from + match[2].length,
-            insert: expected
-          });
-        }
-
-        index += 1;
-      }
+    if (!marker) {
+      orderedCountsByLevel.length = 0;
+      continue;
     }
-  });
+
+    const level = marker.indentLevel;
+    orderedCountsByLevel.length = level + 1;
+    if (!marker.orderedNumber) {
+      orderedCountsByLevel[level] = 0;
+      continue;
+    }
+
+    const expected = (orderedCountsByLevel[level] ?? 0) + 1;
+    orderedCountsByLevel[level] = expected;
+    const expectedText = String(expected);
+    if (marker.orderedNumber !== expectedText) {
+      const from = line.from + marker.leadingWhitespace.length;
+      changes.push({
+        from,
+        to: from + marker.orderedNumber.length,
+        insert: expectedText
+      });
+    }
+  }
 
   return changes;
 }
 
-export function orderedListDisplayIndex(node, orderedListItemCounts) {
-  let parent = node.node.parent;
-  while (parent && parent.name !== 'OrderedList' && parent.name !== 'BulletList') {
-    parent = parent.parent;
-  }
-
-  if (parent?.name !== 'OrderedList') {
-    return null;
-  }
-
-  const nextCount = (orderedListItemCounts.get(parent.from) ?? 0) + 1;
-  orderedListItemCounts.set(parent.from, nextCount);
-  return nextCount;
-}
-
 function computeSourceListBorders(state) {
   const ranges = new RangeSetBuilder();
-  const tree = resolvedSyntaxTree(state);
-  tree.iterate({
-    enter(node) {
-      if (node.name !== 'ListItem') {
-        return;
-      }
-      const line = state.doc.lineAt(node.from);
-      const lineText = state.doc.sliceString(line.from, line.to);
-      const marker = listMarkerData(lineText);
-      if (!marker || marker.fromOffset === 0) {
-        return;
-      }
-      const indentEnd = line.from + marker.fromOffset;
-      for (let pos = line.from; pos < indentEnd; pos += 1) {
-        ranges.add(pos, pos + 1, listBorderDeco);
-      }
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const marker = listMarkerData(lineText);
+    if (!marker || marker.fromOffset === 0) {
+      continue;
     }
-  });
+    addListIndentBorders((from, to, deco) => ranges.add(from, to, deco), line.from, marker.leadingWhitespace);
+  }
+  return ranges.finish();
+}
+
+function computeSourceListMarkers(state) {
+  const ranges = new RangeSetBuilder();
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const marker = listMarkerData(lineText);
+    if (!marker) {
+      continue;
+    }
+
+    const markerFrom = line.from + marker.fromOffset;
+    const markerTo = line.from + marker.toOffset;
+    if (markerTo > markerFrom) {
+      ranges.add(markerFrom, markerTo, sourceListMarkerDeco);
+    }
+  }
   return ranges.finish();
 }
 
@@ -283,6 +427,19 @@ export const sourceListBorderField = StateField.define({
       return borders;
     }
     return computeSourceListBorders(transaction.state);
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
+
+export const sourceListMarkerField = StateField.define({
+  create(state) {
+    return computeSourceListMarkers(state);
+  },
+  update(markers, transaction) {
+    if (!transaction.docChanged) {
+      return markers;
+    }
+    return computeSourceListMarkers(transaction.state);
   },
   provide: (field) => EditorView.decorations.from(field)
 });

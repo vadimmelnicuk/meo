@@ -533,6 +533,10 @@ body {
   display: inline;
 }
 
+.cm-editor .meo-md-list-prefix {
+  color: var(--meo-color-base02) !important;
+}
+
 .cm-editor .meo-md-list-marker-ordered,
 .cm-editor .meo-md-list-marker-task {
   min-width: 3ch;

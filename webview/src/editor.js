@@ -1,6 +1,6 @@
 import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
 import { highlightStyle } from './theme';
@@ -8,7 +8,15 @@ import { liveModeExtensions } from './liveMode';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
-import { sourceListBorderField, handleEnterBeforeNestedList, collectOrderedListRenumberChanges } from './helpers/listMarkers';
+import {
+  sourceListBorderField,
+  sourceListMarkerField,
+  handleEnterContinueList,
+  handleEnterBeforeNestedList,
+  collectOrderedListRenumberChanges,
+  indentListByTwoSpaces,
+  outdentListByTwoSpaces
+} from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 
 export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange }) {
@@ -155,11 +163,12 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
   const state = EditorState.create({
     doc: text,
     extensions: [
-      indentUnit.of('	'),
+      indentUnit.of('  '),
       keymap.of([
-        indentWithTab,
+        { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentWithTab(view) },
+        { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
         { key: 'Backspace', run: deleteTableCellLineBreakBackward },
-        { key: 'Enter', run: handleEnterBeforeNestedList },
+        { key: 'Enter', run: (view) => handleEnterContinueList(view) || handleEnterBeforeNestedList(view) },
         { key: 'Shift-Enter', run: insertTableCellLineBreak },
         ...markdownKeymap,
         ...defaultKeymap,
@@ -293,7 +302,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
           return;
         }
 
-        const renumberChanges = collectOrderedListRenumberChanges(update.state, syntaxTree(update.state));
+        const renumberChanges = collectOrderedListRenumberChanges(update.state);
         if (renumberChanges.length) {
           applyingRenumber = true;
           view.dispatch({
@@ -708,6 +717,7 @@ function sourceMode() {
     syntaxHighlighting(highlightStyle),
     sourceCodeBlockField,
     sourceListBorderField,
+    sourceListMarkerField,
     sourceStrikeMarkerField,
     sourceTableHeaderLineField
   ];

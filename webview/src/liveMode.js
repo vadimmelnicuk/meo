@@ -14,7 +14,7 @@ import {
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
-import { orderedListDisplayIndex, addListMarkerDecoration } from './helpers/listMarkers';
+import { addListMarkerDecoration, listMarkerData } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
@@ -233,11 +233,38 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   addRange(builder, line.from, prefixTo, markerDeco);
 }
 
+function addListLineDecorations(builder, state) {
+  const orderedCountsByLevel = [];
+
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const marker = listMarkerData(lineText);
+    if (!marker) {
+      orderedCountsByLevel.length = 0;
+      continue;
+    }
+
+    const level = marker.indentLevel;
+    orderedCountsByLevel.length = level + 1;
+
+    let orderedDisplayIndex = null;
+    if (marker.orderedNumber) {
+      orderedDisplayIndex = (orderedCountsByLevel[level] ?? 0) + 1;
+      orderedCountsByLevel[level] = orderedDisplayIndex;
+    } else {
+      orderedCountsByLevel[level] = 0;
+    }
+
+    addLineClass(builder, state, line.from, line.to, lineStyleDecos.list);
+    addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex);
+  }
+}
+
 function buildDecorations(state) {
   const ranges = [];
   const activeLines = collectActiveLines(state);
   const tree = resolvedSyntaxTree(state);
-  const orderedListItemCounts = new Map();
   const strikeRanges = collectStrikethroughRanges(tree);
   const parsedTableRanges = [];
   let tableDepth = 0;
@@ -246,10 +273,6 @@ function buildDecorations(state) {
     enter: (node) => {
       if (node.name === 'Table') {
         tableDepth += 1;
-      }
-
-      if (node.name === 'OrderedList') {
-        orderedListItemCounts.set(node.from, 0);
       }
 
       const headingLevel = headingLevelFromName(node.name);
@@ -301,16 +324,6 @@ function buildDecorations(state) {
           }
         }
         addCopyCodeButton(ranges, state, node.from, node.to);
-      } else if (
-        node.name === 'ListItem' ||
-        node.name === 'BulletList' ||
-        node.name === 'OrderedList'
-      ) {
-        addLineClass(ranges, state, node.from, node.to, lineStyleDecos.list);
-        if (node.name === 'ListItem') {
-          const orderedDisplayIndex = orderedListDisplayIndex(node, orderedListItemCounts);
-          addListMarkerDecoration(ranges, state, node.from, orderedDisplayIndex);
-        }
       }
 
       if (node.name === 'Emphasis') {
@@ -374,6 +387,7 @@ function buildDecorations(state) {
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
+  addListLineDecorations(ranges, state);
 
   const result = Decoration.set(ranges, true);
   return result;
