@@ -16,8 +16,11 @@ Optimized editor for markdown files with live edit mode.
 - Open a `.md` or `.markdown` file with Markdown Editor Optimized by right-clicking the file in Explorer and selecting `Open With Markdown Editor Optimized`.
 - Set it as default by running `Markdown Editor Optimized: Set as Default`.
 
-Acknowledgements:
+## Acknowledgements
 - `vscode` for toolset.
 - `codemirror` for core editor component.
 - `lezer` for syntax parsing.
 - `obsidian` for inspiration.
+
+## Licence
+The MIT License
