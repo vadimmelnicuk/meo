@@ -11,7 +11,7 @@ import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
 import { sourceListBorderField, handleEnterBeforeNestedList, collectOrderedListRenumberChanges } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 
-export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
+export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
   EditorView.EDIT_CONTEXT = false;
@@ -26,6 +26,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
   let applyingRenumber = false;
   let tableInteractionActive = false;
   let onTableInteraction = null;
+  let onScroll = null;
   const targetElementFrom = (target) => (
     target instanceof Element ? target : target instanceof Node ? target.parentElement : null
   );
@@ -85,6 +86,40 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
     }
     const hasSelection = view.state.selection.ranges.some((range) => !range.empty);
     view.dom.classList.toggle('has-selection', hasSelection);
+  };
+
+  const emitSelectionChange = () => {
+    if (!view || typeof onSelectionChange !== 'function') {
+      return;
+    }
+
+    const selection = view.state.selection.main;
+    if (selection.empty) {
+      onSelectionChange({ visible: false });
+      return;
+    }
+
+    const from = Math.min(selection.from, selection.to);
+    const to = Math.max(selection.from, selection.to);
+    if (!isRegularInlineSelection(view.state, from, to)) {
+      onSelectionChange({ visible: false });
+      return;
+    }
+
+    const fromCoords = view.coordsAtPos(from);
+    const toCoords = view.coordsAtPos(to);
+    if (!fromCoords || !toCoords) {
+      onSelectionChange({ visible: false });
+      return;
+    }
+
+    onSelectionChange({
+      visible: true,
+      from,
+      to,
+      anchorX: fromCoords.left,
+      anchorY: fromCoords.top
+    });
   };
 
   const inlineCodeCaretPosition = (state, position) => {
@@ -249,6 +284,9 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
 
         if (update.selectionSet) {
           syncSelectionClass();
+          emitSelectionChange();
+        } else if (update.viewportChanged) {
+          emitSelectionChange();
         }
 
         if (!update.docChanged || applyingExternal || applyingRenumber) {
@@ -281,8 +319,13 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
     setTableInteractionActive(active);
   };
   view.dom.addEventListener('meo-table-interaction', onTableInteraction);
+  onScroll = () => {
+    emitSelectionChange();
+  };
+  view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
   syncModeClasses();
   syncSelectionClass();
+  emitSelectionChange();
 
   return {
     getText() {
@@ -310,6 +353,10 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
       view.focus();
     },
     destroy() {
+      if (onScroll) {
+        view.scrollDOM.removeEventListener('scroll', onScroll);
+        onScroll = null;
+      }
       if (onTableInteraction) {
         view.dom.removeEventListener('meo-table-interaction', onTableInteraction);
         onTableInteraction = null;
@@ -339,6 +386,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
       });
       applyingExternal = false;
       syncSelectionClass();
+      emitSelectionChange();
     },
     setMode(mode) {
       const lineBlock = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 1);
@@ -401,6 +449,13 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
           return insertCodeBlock(view, selection);
         case 'inlineCode':
           return insertInlineCode(view, selection);
+        case 'bold':
+          return insertInlineFence(view, selection, '**');
+        case 'italic':
+          return insertInlineFence(view, selection, '*');
+        case 'lineover':
+        case 'strike':
+          return insertInlineFence(view, selection, '~~');
         case 'quote':
           return insertQuote(view, selection);
         case 'hr':
@@ -430,6 +485,9 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink }) {
         effects: EditorView.scrollIntoView(line.from, { y: 'center' })
       });
       view.focus();
+    },
+    refreshSelectionOverlay() {
+      emitSelectionChange();
     }
   };
 }
@@ -539,6 +597,51 @@ function insertInlineCode(view, selection) {
   });
 }
 
+function insertInlineFence(view, selection, marker) {
+  const { state } = view;
+  const markerLength = marker.length;
+
+  if (selection.empty) {
+    const insert = `${marker}${marker}`;
+    view.dispatch({
+      changes: { from: selection.from, insert },
+      selection: { anchor: selection.from + markerLength }
+    });
+    return;
+  }
+
+  const from = Math.min(selection.from, selection.to);
+  const to = Math.max(selection.from, selection.to);
+  const hasOpenMarker =
+    from >= markerLength && state.doc.sliceString(from - markerLength, from) === marker;
+  const hasCloseMarker = state.doc.sliceString(to, to + markerLength) === marker;
+
+  if (hasOpenMarker && hasCloseMarker) {
+    view.dispatch({
+      changes: [
+        { from: to, to: to + markerLength, insert: '' },
+        { from: from - markerLength, to: from, insert: '' }
+      ],
+      selection: {
+        anchor: from - markerLength,
+        head: to - markerLength
+      }
+    });
+    return;
+  }
+
+  view.dispatch({
+    changes: [
+      { from: to, insert: marker },
+      { from, insert: marker }
+    ],
+    selection: {
+      anchor: from + markerLength,
+      head: to + markerLength
+    }
+  });
+}
+
 function insertQuote(view, selection) {
   const { state } = view;
   const line = state.doc.lineAt(selection.from);
@@ -608,4 +711,44 @@ function sourceMode() {
     sourceStrikeMarkerField,
     sourceTableHeaderLineField
   ];
+}
+
+const blockedInlineSelectionAncestors = new Set([
+  'FencedCode',
+  'CodeBlock',
+  'CodeText',
+  'InlineCode',
+  'URL',
+  'Autolink',
+  'HTMLBlock',
+  'HTMLTag',
+  'TableDelimiter'
+]);
+
+function hasBlockedInlineAncestor(state, position) {
+  let node = syntaxTree(state).resolveInner(position, 1);
+  while (node) {
+    if (blockedInlineSelectionAncestors.has(node.name)) {
+      return true;
+    }
+    node = node.parent;
+  }
+  return false;
+}
+
+function isRegularInlineSelection(state, from, to) {
+  if (to <= from) {
+    return false;
+  }
+  const text = state.doc.sliceString(from, to);
+  if (!text.trim()) {
+    return false;
+  }
+  if (text.includes('\n')) {
+    return false;
+  }
+  if (hasBlockedInlineAncestor(state, from) || hasBlockedInlineAncestor(state, to - 1)) {
+    return false;
+  }
+  return true;
 }

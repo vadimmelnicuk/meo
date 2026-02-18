@@ -1,6 +1,7 @@
 import { StateField } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
+import { undo, redo } from '@codemirror/commands';
 
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
@@ -12,6 +13,20 @@ const maxColumnWidthCh = 40;
 
 function isTableControlTarget(target) {
   return target instanceof Element && target.closest(tableControlSelector);
+}
+
+function isPrimaryModifier(event) {
+  if (event.altKey) return false;
+  return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
+}
+
+function isUndoShortcut(event) {
+  return event.key.toLowerCase() === 'z' && !event.shiftKey;
+}
+
+function isRedoShortcut(event) {
+  const key = event.key.toLowerCase();
+  return (key === 'z' && event.shiftKey) || key === 'y';
 }
 
 function normalizeRow(cells, colCount) {
@@ -348,6 +363,26 @@ class HtmlTableWidget extends WidgetType {
     return lines.join('\n');
   }
 
+  handleHistoryShortcut(event, table) {
+    if (!isPrimaryModifier(event) || (!isUndoShortcut(event) && !isRedoShortcut(event))) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const wrap = this.domRefs?.wrap ?? table;
+    const view = EditorView.findFromDOM(wrap);
+    if (!view) return true;
+    const { scrollTop, scrollLeft } = view.scrollDOM;
+    this.commit(wrap);
+    if (isUndoShortcut(event)) undo(view);
+    else redo(view);
+    requestAnimationFrame(() => {
+      view.scrollDOM.scrollTop = scrollTop;
+      view.scrollDOM.scrollLeft = scrollLeft;
+    });
+    return true;
+  }
+
   wireTableSelection(table) {
     const getWrap = () => this.domRefs?.wrap ?? table;
 
@@ -405,6 +440,10 @@ class HtmlTableWidget extends WidgetType {
     };
 
     const onKeyDown = (event) => {
+      if (this.handleHistoryShortcut(event, table)) {
+        return;
+      }
+
       if (this.selectedCellCount() <= 1) return;
       if (event.key !== 'Backspace' && event.key !== 'Delete') return;
       if (!this.selectionRange || !this.domRefs) return;
@@ -474,7 +513,7 @@ class HtmlTableWidget extends WidgetType {
     table.addEventListener('pointerup', endPointerSelection);
     table.addEventListener('pointercancel', endPointerSelection);
     table.addEventListener('copy', onCopy);
-    table.addEventListener('keydown', onKeyDown);
+    table.addEventListener('keydown', onKeyDown, true);
     table.addEventListener('focusout', onFocusOut);
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     this.cleanupFns.push(() => {
@@ -484,7 +523,7 @@ class HtmlTableWidget extends WidgetType {
       table.removeEventListener('pointerup', endPointerSelection);
       table.removeEventListener('pointercancel', endPointerSelection);
       table.removeEventListener('copy', onCopy);
-      table.removeEventListener('keydown', onKeyDown);
+      table.removeEventListener('keydown', onKeyDown, true);
       table.removeEventListener('focusout', onFocusOut);
       document.removeEventListener('pointerdown', onDocumentPointerDown, true);
     });
@@ -737,6 +776,7 @@ class HtmlTableWidget extends WidgetType {
         leftInsertControls.className = 'meo-md-html-col-controls meo-md-html-col-controls-left-insert';
         const leftInsertBtn = document.createElement('button');
         leftInsertBtn.type = 'button';
+        leftInsertBtn.tabIndex = -1;
         leftInsertBtn.className = 'meo-md-html-col-btn';
         leftInsertBtn.textContent = '+';
         leftInsertBtn.title = 'Add column before';
@@ -753,6 +793,7 @@ class HtmlTableWidget extends WidgetType {
       colControls.className = 'meo-md-html-col-controls';
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
+      removeBtn.tabIndex = -1;
       removeBtn.className = 'meo-md-html-col-btn';
       removeBtn.textContent = '−';
       removeBtn.title = 'Delete left column';
@@ -763,6 +804,7 @@ class HtmlTableWidget extends WidgetType {
       });
       const insertBtn = document.createElement('button');
       insertBtn.type = 'button';
+      insertBtn.tabIndex = -1;
       insertBtn.className = 'meo-md-html-col-btn';
       insertBtn.textContent = '+';
       insertBtn.title = 'Add column to the right';
@@ -803,6 +845,7 @@ class HtmlTableWidget extends WidgetType {
             topInsertControls.className = 'meo-md-html-row-controls meo-md-html-row-controls-top-insert';
             const topInsertBtn = document.createElement('button');
             topInsertBtn.type = 'button';
+            topInsertBtn.tabIndex = -1;
             topInsertBtn.className = 'meo-md-html-row-btn';
             topInsertBtn.textContent = '+';
             topInsertBtn.title = 'Add row above';
@@ -819,6 +862,7 @@ class HtmlTableWidget extends WidgetType {
           rowControls.className = 'meo-md-html-row-controls';
           const removeBtn = document.createElement('button');
           removeBtn.type = 'button';
+          removeBtn.tabIndex = -1;
           removeBtn.className = 'meo-md-html-row-btn';
           removeBtn.textContent = '−';
           removeBtn.title = 'Delete row above';
@@ -829,6 +873,7 @@ class HtmlTableWidget extends WidgetType {
           });
           const insertBtn = document.createElement('button');
           insertBtn.type = 'button';
+          insertBtn.tabIndex = -1;
           insertBtn.className = 'meo-md-html-row-btn';
           insertBtn.textContent = '+';
           insertBtn.title = 'Add row below';

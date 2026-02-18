@@ -31,6 +31,7 @@ body {
 }
 
 .editor-wrapper {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -40,6 +41,46 @@ body {
   min-height: 0;
   min-width: 0;
   flex: 1;
+}
+
+.selection-inline-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-8px, -100%);
+  z-index: 400;
+}
+
+.selection-inline-menu.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.selection-inline-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--vscode-editor-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.selection-inline-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .mode-toolbar {

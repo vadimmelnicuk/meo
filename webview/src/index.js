@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Bold, Italic, Strikethrough } from 'lucide';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -171,13 +171,6 @@ codeBlockBtn.dataset.action = 'codeBlock';
 codeBlockBtn.title = 'Code Block';
 codeBlockBtn.appendChild(createElement(Code, { width: 18, height: 18 }));
 
-const inlineCodeBtn = document.createElement('button');
-inlineCodeBtn.type = 'button';
-inlineCodeBtn.className = 'format-button';
-inlineCodeBtn.dataset.action = 'inlineCode';
-inlineCodeBtn.title = 'Inline Code';
-inlineCodeBtn.appendChild(createElement(Terminal, { width: 18, height: 18 }));
-
 const quoteBtn = document.createElement('button');
 quoteBtn.type = 'button';
 quoteBtn.className = 'format-button';
@@ -274,7 +267,7 @@ tableGrid.addEventListener('click', (event) => {
   editor.focus();
 });
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, inlineCodeBtn, linkBtn, quoteBtn, hrBtn);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, linkBtn, quoteBtn, hrBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -308,7 +301,37 @@ editorHost.className = 'editor-host';
 const editorWrapper = document.createElement('div');
 editorWrapper.className = 'editor-wrapper';
 
-editorWrapper.append(editorHost, outlineSidebar);
+const selectionMenu = document.createElement('div');
+selectionMenu.className = 'selection-inline-menu';
+selectionMenu.setAttribute('role', 'toolbar');
+selectionMenu.setAttribute('aria-label', 'Inline markdown formatting');
+
+const createSelectionActionButton = (action, label, Icon) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'selection-inline-button';
+  button.dataset.action = action;
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.appendChild(createElement(Icon, { width: 16, height: 16 }));
+  return button;
+};
+
+const selectionBoldBtn = createSelectionActionButton('bold', 'Bold', Bold);
+const selectionItalicBtn = createSelectionActionButton('italic', 'Italic', Italic);
+const selectionLineoverBtn = createSelectionActionButton('lineover', 'Lineover', Strikethrough);
+const selectionInlineCodeBtn = createSelectionActionButton('inlineCode', 'Inline Code', Terminal);
+const selectionLinkBtn = createSelectionActionButton('link', 'Link', Link);
+
+selectionMenu.append(
+  selectionBoldBtn,
+  selectionItalicBtn,
+  selectionLineoverBtn,
+  selectionInlineCodeBtn,
+  selectionLinkBtn
+);
+
+editorWrapper.append(editorHost, outlineSidebar, selectionMenu);
 root.append(toolbar, editorWrapper);
 
 let editor = null;
@@ -321,6 +344,26 @@ let inFlightText = null;
 let saveAfterSync = false;
 let currentMode = 'live';
 let hasLocalModePreference = false;
+
+const hideSelectionMenu = () => {
+  selectionMenu.classList.remove('is-visible');
+};
+
+const updateSelectionMenu = (selectionState) => {
+  if (!selectionState?.visible) {
+    hideSelectionMenu();
+    return;
+  }
+
+  selectionMenu.classList.add('is-visible');
+  const margin = 8;
+  const halfWidth = selectionMenu.offsetWidth / 2;
+  const minLeft = halfWidth + margin;
+  const maxLeft = window.innerWidth - halfWidth - margin;
+  const clampedLeft = Math.min(maxLeft, Math.max(minLeft, selectionState.anchorX));
+  selectionMenu.style.left = `${clampedLeft}px`;
+  selectionMenu.style.top = `${Math.max(margin, selectionState.anchorY - margin)}px`;
+};
 
 const updateModeUI = () => {
   root.dataset.mode = currentMode;
@@ -492,7 +535,8 @@ const handleInit = (message) => {
       onApplyChanges: queueChanges,
       onOpenLink: (href) => {
         vscode.postMessage({ type: 'openLink', href });
-      }
+      },
+      onSelectionChange: updateSelectionMenu
     });
   } else {
     editor.setText(message.text);
@@ -632,6 +676,12 @@ window.addEventListener('beforeunload', () => {
   flushChanges();
 });
 
+window.addEventListener('resize', () => {
+  if (editor) {
+    editor.refreshSelectionOverlay();
+  }
+});
+
 const state = vscode.getState();
 if (state && (state.mode === 'live' || state.mode === 'source')) {
   applyMode(state.mode, { post: false });
@@ -654,6 +704,23 @@ const handleFormatAction = (action) => {
   editor.focus();
 };
 
+selectionMenu.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+});
+
+selectionMenu.addEventListener('click', (event) => {
+  const button = event.target.closest('.selection-inline-button');
+  if (!button || !editor) {
+    return;
+  }
+  const { action } = button.dataset;
+  if (!action) {
+    return;
+  }
+  editor.insertFormat(action);
+  editor.focus();
+});
+
 headingDropdown.addEventListener('click', (event) => {
   const option = event.target.closest('.heading-dropdown-option');
   if (!option || !editor) return;
@@ -666,7 +733,6 @@ bulletListBtn.addEventListener('click', () => handleFormatAction('bulletList'));
 numberedListBtn.addEventListener('click', () => handleFormatAction('numberedList'));
 taskBtn.addEventListener('click', () => handleFormatAction('task'));
 codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
-inlineCodeBtn.addEventListener('click', () => handleFormatAction('inlineCode'));
 quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
 hrBtn.addEventListener('click', () => handleFormatAction('hr'));
 linkBtn.addEventListener('click', () => handleFormatAction('link'));
