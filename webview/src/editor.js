@@ -379,7 +379,7 @@ export function createEditor({ parent, text, onApplyChanges }) {
         case 'hr':
           return insertHr(view, selection);
         case 'table':
-          return insertTable(view, selection);
+          return insertTable(view, selection, level?.cols, level?.rows);
       }
 
       const newMarkerLen = insert.length;

@@ -1018,12 +1018,19 @@ export const sourceTableHeaderLineField = StateField.define({
   provide: (field) => EditorView.decorations.from(field)
 });
 
-export function insertTable(view, selection) {
+export function insertTable(view, selection, cols = 3, rows = 2) {
   const line = view.state.doc.lineAt(selection.from);
   const lineText = view.state.doc.sliceString(line.from, line.to);
   const leadingWhitespace = /^(\s*)/.exec(lineText)?.[1] ?? '';
 
-  const table = `${leadingWhitespace}| Header 1 | Header 2 | Header 3 |\n${leadingWhitespace}| --- | --- | --- |\n${leadingWhitespace}| Cell 1 | Cell 2 | Cell 3 |`;
+  const headerCells = Array.from({ length: cols }, () => '  ').join('|');
+  const separatorCells = Array.from({ length: cols }, () => ' --- ').join('|');
+  const bodyRows = Array.from({ length: rows }, () => {
+    const cells = Array.from({ length: cols }, () => '  ').join('|');
+    return `${leadingWhitespace}|${cells}|`;
+  }).join('\n');
+
+  const table = `${leadingWhitespace}|${headerCells}|\n${leadingWhitespace}|${separatorCells}|\n${bodyRows}`;
 
   view.dispatch({
     changes: { from: line.from, to: line.to, insert: table },

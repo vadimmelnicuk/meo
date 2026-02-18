@@ -199,7 +199,75 @@ tableBtn.dataset.action = 'table';
 tableBtn.title = 'Table';
 tableBtn.appendChild(createElement(Table, { width: 18, height: 18 }));
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn, tableBtn);
+const tableDropdown = document.createElement('div');
+tableDropdown.className = 'table-dropdown';
+
+const tableDropdownWrapper = document.createElement('div');
+tableDropdownWrapper.className = 'table-dropdown-wrapper';
+
+const tableGrid = document.createElement('div');
+tableGrid.className = 'table-grid';
+
+const gridSize = 5;
+for (let row = 0; row < gridSize; row++) {
+  for (let col = 0; col < gridSize; col++) {
+    const cell = document.createElement('div');
+    cell.className = 'table-grid-cell';
+    cell.dataset.row = row + 1;
+    cell.dataset.col = col + 1;
+    if (row === 0 && col === 0) {
+      cell.classList.add('is-highlighted');
+    }
+    tableGrid.appendChild(cell);
+  }
+}
+
+const tableSizeLabel = document.createElement('div');
+tableSizeLabel.className = 'table-size-label';
+tableSizeLabel.textContent = '1 x 1';
+
+tableDropdown.append(tableGrid, tableSizeLabel);
+tableDropdownWrapper.appendChild(tableDropdown);
+
+const tableWrapper = document.createElement('div');
+tableWrapper.className = 'table-wrapper';
+tableWrapper.append(tableBtn, tableDropdownWrapper);
+
+let selectedTableCols = 1;
+let selectedTableRows = 1;
+
+const updateTableGridHighlight = (hoveredCol, hoveredRow) => {
+  const cells = tableGrid.querySelectorAll('.table-grid-cell');
+  cells.forEach((cell) => {
+    const cellCol = parseInt(cell.dataset.col, 10);
+    const cellRow = parseInt(cell.dataset.row, 10);
+    cell.classList.toggle('is-highlighted', cellCol <= hoveredCol && cellRow <= hoveredRow);
+  });
+  tableSizeLabel.textContent = `${hoveredCol} x ${hoveredRow}`;
+  selectedTableCols = hoveredCol;
+  selectedTableRows = hoveredRow;
+};
+
+tableGrid.addEventListener('mouseover', (event) => {
+  const cell = event.target.closest('.table-grid-cell');
+  if (!cell) return;
+  const col = parseInt(cell.dataset.col, 10);
+  const row = parseInt(cell.dataset.row, 10);
+  updateTableGridHighlight(col, row);
+});
+
+tableGrid.addEventListener('mouseleave', () => {
+  updateTableGridHighlight(1, 1);
+});
+
+tableGrid.addEventListener('click', (event) => {
+  const cell = event.target.closest('.table-grid-cell');
+  if (!cell || !editor) return;
+  editor.insertFormat('table', { cols: selectedTableCols, rows: selectedTableRows });
+  editor.focus();
+});
+
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn, tableWrapper);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -591,7 +659,6 @@ codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
 inlineCodeBtn.addEventListener('click', () => handleFormatAction('inlineCode'));
 quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
 hrBtn.addEventListener('click', () => handleFormatAction('hr'));
-tableBtn.addEventListener('click', () => handleFormatAction('table'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
 

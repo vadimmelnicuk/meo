@@ -101,6 +101,63 @@ body {
   pointer-events: auto;
 }
 
+.table-wrapper {
+  position: relative;
+}
+
+.table-dropdown-wrapper {
+  position: absolute;
+  top: 100%;
+  left: calc(50% + 1px);
+  transform: translateX(-50%);
+  padding: 5px 25px;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.table-dropdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background-color: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+}
+
+.table-wrapper:hover .table-dropdown-wrapper {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.table-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+
+.table-grid-cell {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 2px;
+  background-color: transparent;
+  cursor: pointer;
+}
+
+.table-grid-cell.is-highlighted {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.table-size-label {
+  font-size: 11px;
+  color: var(--vscode-editor-foreground);
+  text-align: center;
+}
+
 .format-button,
 .heading-dropdown-option,
 .meo-mermaid-zoom-btn {
