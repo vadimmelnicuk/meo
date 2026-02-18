@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2 } from 'lucide';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -197,7 +197,7 @@ tableBtn.type = 'button';
 tableBtn.className = 'format-button';
 tableBtn.dataset.action = 'table';
 tableBtn.title = 'Table';
-tableBtn.appendChild(createElement(Table, { width: 18, height: 18 }));
+tableBtn.appendChild(createElement(Table2, { width: 18, height: 18 }));
 
 const tableDropdown = document.createElement('div');
 tableDropdown.className = 'table-dropdown';
@@ -267,7 +267,7 @@ tableGrid.addEventListener('click', (event) => {
   editor.focus();
 });
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn, tableWrapper);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, inlineCodeBtn, quoteBtn, hrBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
