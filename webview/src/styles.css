@@ -84,11 +84,89 @@ body {
 }
 
 .mode-toolbar {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px 14px 8px 72px;
   background-color: var(--vscode-sideBar-background);
+}
+
+.find-panel {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: -14px;
+  flex-direction: column;
+  gap: 4px;
+  --find-input-width: 200px;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  background-color: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  z-index: 250;
+}
+
+.find-panel.is-visible {
+  display: flex;
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.find-input-wrap {
+  position: relative;
+  flex: 0 0 var(--find-input-width);
+  width: var(--find-input-width);
+}
+
+.find-input {
+  height: 24px;
+  width: auto;
+  box-sizing: border-box;
+  padding: 0 7px;
+  border: none;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+}
+
+.find-input-wrap .find-input {
+  width: 100%;
+  padding-right: 76px;
+}
+
+.find-row > .find-input {
+  flex: 0 0 var(--find-input-width);
+  width: var(--find-input-width);
+}
+
+.find-row .format-button {
+  flex: 0 0 auto;
+}
+
+.find-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 0;
+}
+
+.find-status {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground);
+  pointer-events: none;
+}
+
+.find-status.is-error {
+  color: var(--vscode-errorForeground, #f48771);
 }
 
 .format-group,
@@ -232,7 +310,8 @@ body {
 }
 
 .format-button[data-action='autoSave']:not(.is-active),
-.format-button[data-action='outline']:not(.is-active) {
+.format-button[data-action='outline']:not(.is-active),
+.format-button[data-action='find']:not(.is-active) {
   color: var(--vscode-panel-border);
 }
 
@@ -246,6 +325,16 @@ body {
   border-radius: 8px;
   padding: 2px;
   background: transparent;
+}
+
+@media (max-width: 920px) {
+  .mode-toolbar {
+    padding-left: 14px;
+  }
+
+  .find-panel {
+    right: -10px;
+  }
 }
 
 .mode-button,
@@ -344,6 +433,12 @@ body {
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content *::selection {
   background-color: var(--vscode-editor-selectionBackground);
+}
+
+.cm-editor .meo-search-match {
+  background: color-mix(in srgb, var(--vscode-editor-findMatchBackground, #515c6a) 75%, transparent);
+  outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+  border-radius: 2px;
 }
 
 .cm-editor.cm-focused .cm-activeLine {

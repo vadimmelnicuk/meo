@@ -1,5 +1,5 @@
-import { EditorState, Compartment, Transaction } from '@codemirror/state';
-import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd } from '@codemirror/view';
+import { EditorState, Compartment, Transaction, StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
+import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd, Decoration } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
@@ -19,6 +19,65 @@ import {
   outdentListByTwoSpaces
 } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
+
+const setSearchQueryEffect = StateEffect.define();
+const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
+
+const buildSearchDecorations = (doc, query) => {
+  if (!query) {
+    return Decoration.none;
+  }
+
+  const builder = new RangeSetBuilder();
+  const textValue = doc.toString();
+  let offset = 0;
+  while (offset <= textValue.length) {
+    const index = textValue.indexOf(query, offset);
+    if (index < 0) {
+      break;
+    }
+    builder.add(index, index + query.length, searchMatchMark);
+    offset = index + query.length;
+  }
+  return builder.finish();
+};
+
+const searchQueryField = StateField.define({
+  create() {
+    return '';
+  },
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSearchQueryEffect)) {
+        return effect.value;
+      }
+    }
+    return value;
+  }
+});
+
+const searchMatchField = StateField.define({
+  create() {
+    return Decoration.none;
+  },
+  update(value, tr) {
+    if (tr.docChanged) {
+      const query = tr.state.field(searchQueryField);
+      return buildSearchDecorations(tr.state.doc, query);
+    }
+
+    for (const effect of tr.effects) {
+      if (effect.is(setSearchQueryEffect)) {
+        return buildSearchDecorations(tr.state.doc, effect.value);
+      }
+    }
+
+    return value;
+  },
+  provide(field) {
+    return EditorView.decorations.from(field);
+  }
+});
 
 export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
@@ -161,6 +220,85 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
     return null;
   };
 
+  const selectSearchMatch = (from, to) => {
+    view.dispatch({
+      selection: { anchor: from, head: to },
+      effects: EditorView.scrollIntoView(from, { y: 'center' })
+    });
+    view.focus();
+  };
+
+  const findMatch = (query, backward = false) => {
+    if (!query) {
+      return { found: false, current: 0, total: 0 };
+    }
+
+    const text = view.state.doc.toString();
+    const selection = view.state.selection.main;
+    const from = Math.min(selection.from, selection.to);
+    const to = Math.max(selection.from, selection.to);
+    const total = countMatches(text, query);
+
+    if (!total) {
+      return { found: false, current: 0, total };
+    }
+
+    let index = -1;
+    if (backward) {
+      const start = from - 1;
+      if (start >= 0) {
+        index = text.lastIndexOf(query, start);
+      }
+      if (index < 0) {
+        index = text.lastIndexOf(query);
+      }
+    } else {
+      index = text.indexOf(query, to);
+      if (index < 0) {
+        index = text.indexOf(query);
+      }
+    }
+
+    if (index < 0) {
+      return { found: false, current: 0, total };
+    }
+
+    selectSearchMatch(index, index + query.length);
+    return {
+      found: true,
+      current: matchNumberAt(text, query, index),
+      total
+    };
+  };
+
+  const replaceCurrentMatch = (query, replacement) => {
+    if (!query) {
+      return { replaced: false, found: false, current: 0, total: 0 };
+    }
+
+    const text = view.state.doc.toString();
+    const selection = view.state.selection.main;
+    const from = Math.min(selection.from, selection.to);
+    const to = Math.max(selection.from, selection.to);
+    const selectedText = text.slice(from, to);
+
+    if (selectedText !== query) {
+      return { replaced: false, ...findMatch(query, false) };
+    }
+
+    view.dispatch({
+      changes: { from, to, insert: replacement },
+      selection: { anchor: from, head: from + replacement.length }
+    });
+    const nextMatch = findMatch(query, false);
+    if (nextMatch.found) {
+      return { replaced: true, ...nextMatch };
+    }
+
+    const remaining = countMatches(view.state.doc.toString(), query);
+    return { replaced: true, found: false, current: 0, total: remaining };
+  };
+
   const state = EditorState.create({
     doc: text,
     extensions: [
@@ -295,6 +433,8 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
         }
       }),
       modeCompartment.of(sourceMode()),
+      searchQueryField,
+      searchMatchField,
       EditorView.updateListener.of((update) => {
         syncModeClasses();
 
@@ -361,6 +501,49 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
     },
     redo() {
       return redo(view);
+    },
+    findNext(query) {
+      return findMatch(query, false);
+    },
+    findPrevious(query) {
+      return findMatch(query, true);
+    },
+    replaceCurrent(query, replacement) {
+      return replaceCurrentMatch(query, replacement);
+    },
+    replaceAll(query, replacement) {
+      if (!query) {
+        return { replaced: 0, total: 0 };
+      }
+
+      const text = view.state.doc.toString();
+      const replaced = countMatches(text, query);
+      if (!replaced) {
+        return { replaced: 0, total: 0 };
+      }
+
+      const nextText = text.split(query).join(replacement);
+      view.dispatch({
+        changes: { from: 0, to: text.length, insert: nextText },
+        selection: { anchor: 0 }
+      });
+      return { replaced, total: countMatches(nextText, query) };
+    },
+    countMatches(query) {
+      if (!query) {
+        return 0;
+      }
+      return countMatches(view.state.doc.toString(), query);
+    },
+    setSearchQuery(query) {
+      const nextQuery = query ?? '';
+      const currentQuery = view.state.field(searchQueryField);
+      if (currentQuery === nextQuery) {
+        return;
+      }
+      view.dispatch({
+        effects: setSearchQueryEffect.of(nextQuery)
+      });
     },
     hasFocus() {
       return view.hasFocus;
@@ -591,6 +774,42 @@ function findSyncChange(previousText, nextText) {
     to: previousTo,
     insert: nextText.slice(from, nextTo)
   };
+}
+
+function countMatches(text, query) {
+  if (!query) {
+    return 0;
+  }
+
+  let count = 0;
+  let offset = 0;
+  while (offset <= text.length) {
+    const index = text.indexOf(query, offset);
+    if (index < 0) {
+      break;
+    }
+    count += 1;
+    offset = index + query.length;
+  }
+  return count;
+}
+
+function matchNumberAt(text, query, matchStart) {
+  if (!query || matchStart < 0) {
+    return 0;
+  }
+
+  let count = 0;
+  let offset = 0;
+  while (offset <= matchStart) {
+    const index = text.indexOf(query, offset);
+    if (index < 0 || index > matchStart) {
+      break;
+    }
+    count += 1;
+    offset = index + query.length;
+  }
+  return count;
 }
 
 function insertInlineCode(view, selection) {

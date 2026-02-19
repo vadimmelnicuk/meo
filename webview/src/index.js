@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Bold, Italic, Strikethrough } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -271,7 +271,15 @@ formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, sepa
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
-rightGroup.append(outlineBtn, autoSaveBtn);
+
+const findToggleBtn = document.createElement('button');
+findToggleBtn.type = 'button';
+findToggleBtn.className = 'format-button';
+findToggleBtn.dataset.action = 'find';
+findToggleBtn.title = 'Find and Replace';
+findToggleBtn.appendChild(createElement(Search, { width: 18, height: 18 }));
+
+rightGroup.append(outlineBtn, findToggleBtn, autoSaveBtn);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -293,7 +301,72 @@ sourceButton.textContent = 'Source';
 sourceButton.setAttribute('role', 'tab');
 
 modeGroup.append(liveButton, sourceButton);
-toolbar.append(formatGroup, rightGroup, modeGroup);
+
+const findPanel = document.createElement('div');
+findPanel.className = 'find-panel';
+findPanel.setAttribute('role', 'search');
+findPanel.setAttribute('aria-label', 'Find and replace');
+
+const findRow = document.createElement('div');
+findRow.className = 'find-row';
+
+const findInputWrap = document.createElement('div');
+findInputWrap.className = 'find-input-wrap';
+
+const findInput = document.createElement('input');
+findInput.type = 'text';
+findInput.className = 'find-input';
+findInput.placeholder = 'Find';
+findInput.setAttribute('aria-label', 'Find');
+
+const findStatus = document.createElement('span');
+findStatus.className = 'find-status';
+
+const findPrevBtn = document.createElement('button');
+findPrevBtn.type = 'button';
+findPrevBtn.className = 'format-button';
+findPrevBtn.title = 'Previous Match';
+findPrevBtn.appendChild(createElement(ChevronUp, { width: 16, height: 16 }));
+
+const findNextBtn = document.createElement('button');
+findNextBtn.type = 'button';
+findNextBtn.className = 'format-button';
+findNextBtn.title = 'Next Match';
+findNextBtn.appendChild(createElement(ChevronDown, { width: 16, height: 16 }));
+
+const closeFindBtn = document.createElement('button');
+closeFindBtn.type = 'button';
+closeFindBtn.className = 'format-button';
+closeFindBtn.title = 'Close Find';
+closeFindBtn.appendChild(createElement(X, { width: 16, height: 16 }));
+
+findInputWrap.append(findInput, findStatus);
+findRow.append(findInputWrap, findPrevBtn, findNextBtn, closeFindBtn);
+
+const replaceRow = document.createElement('div');
+replaceRow.className = 'find-row';
+
+const replaceInput = document.createElement('input');
+replaceInput.type = 'text';
+replaceInput.className = 'find-input';
+replaceInput.placeholder = 'Replace';
+replaceInput.setAttribute('aria-label', 'Replace');
+
+const replaceBtn = document.createElement('button');
+replaceBtn.type = 'button';
+replaceBtn.className = 'format-button';
+replaceBtn.title = 'Replace Current Match';
+replaceBtn.appendChild(createElement(Replace, { width: 16, height: 16 }));
+
+const replaceAllBtn = document.createElement('button');
+replaceAllBtn.type = 'button';
+replaceAllBtn.className = 'format-button';
+replaceAllBtn.title = 'Replace All Matches';
+replaceAllBtn.appendChild(createElement(ReplaceAll, { width: 16, height: 16 }));
+
+replaceRow.append(replaceInput, replaceBtn, replaceAllBtn);
+findPanel.append(findRow, replaceRow);
+toolbar.append(formatGroup, rightGroup, modeGroup, findPanel);
 
 const editorHost = document.createElement('div');
 editorHost.className = 'editor-host';
@@ -344,9 +417,139 @@ let inFlightText = null;
 let saveAfterSync = false;
 let currentMode = 'live';
 let hasLocalModePreference = false;
+let findPanelVisible = false;
 
 const hideSelectionMenu = () => {
   selectionMenu.classList.remove('is-visible');
+};
+
+const setFindStatus = (text, isError = false) => {
+  findStatus.textContent = text;
+  findStatus.classList.toggle('is-error', isError);
+};
+
+const updateFindPanelAnchor = () => {
+  const toolbarRect = toolbar.getBoundingClientRect();
+  const modeGroupRect = modeGroup.getBoundingClientRect();
+  const rightOffset = Math.max(0, toolbarRect.right - modeGroupRect.right);
+  findPanel.style.right = `${rightOffset}px`;
+};
+
+const updateFindStatusSummary = () => {
+  if (!editor || !findPanelVisible) {
+    return;
+  }
+
+  const query = findInput.value;
+  editor.setSearchQuery(query);
+  if (!query) {
+    setFindStatus('');
+    return;
+  }
+
+  const total = editor.countMatches(query);
+  if (!total) {
+    setFindStatus('No matches', true);
+    return;
+  }
+  setFindStatus(`${total} matches`);
+};
+
+const closeFindPanel = () => {
+  findPanelVisible = false;
+  findPanel.classList.remove('is-visible');
+  findToggleBtn.classList.remove('is-active');
+  findInput.value = '';
+  replaceInput.value = '';
+  setFindStatus('');
+  if (editor) {
+    editor.setSearchQuery('');
+    editor.focus();
+  }
+};
+
+const openFindPanel = (target = 'find') => {
+  updateFindPanelAnchor();
+  findPanelVisible = true;
+  findPanel.classList.add('is-visible');
+  findToggleBtn.classList.add('is-active');
+  if (editor) {
+    editor.setSearchQuery(findInput.value);
+  }
+  updateFindStatusSummary();
+  const input = target === 'replace' ? replaceInput : findInput;
+  input.focus();
+  input.select();
+};
+
+const applyFindResult = (result) => {
+  if (!result?.found) {
+    setFindStatus('No matches', true);
+    return false;
+  }
+  setFindStatus(`${result.current}/${result.total}`);
+  return true;
+};
+
+const runFind = (backward = false) => {
+  if (!editor) {
+    return false;
+  }
+
+  const query = findInput.value;
+  if (!query) {
+    setFindStatus('Enter text', true);
+    return false;
+  }
+
+  const result = backward ? editor.findPrevious(query) : editor.findNext(query);
+  return applyFindResult(result);
+};
+
+const runReplace = () => {
+  if (!editor) {
+    return false;
+  }
+
+  const query = findInput.value;
+  if (!query) {
+    setFindStatus('Enter text', true);
+    return false;
+  }
+
+  const result = editor.replaceCurrent(query, replaceInput.value);
+  if (!result.replaced) {
+    return applyFindResult(result);
+  }
+
+  if (result.found) {
+    setFindStatus(`Replaced • ${result.current}/${result.total}`);
+    return true;
+  }
+
+  setFindStatus(result.total ? `Replaced • ${result.total} remaining` : 'Replaced');
+  return true;
+};
+
+const runReplaceAll = () => {
+  if (!editor) {
+    return false;
+  }
+
+  const query = findInput.value;
+  if (!query) {
+    setFindStatus('Enter text', true);
+    return false;
+  }
+
+  const result = editor.replaceAll(query, replaceInput.value);
+  if (!result.replaced) {
+    setFindStatus('No matches', true);
+    return false;
+  }
+
+  setFindStatus(`Replaced ${result.replaced} matches`);
+  return true;
 };
 
 const updateSelectionMenu = (selectionState) => {
@@ -455,15 +658,14 @@ const requestSave = () => {
 };
 
 const isPrimaryModifier = (event) => {
-  if (event.altKey) {
-    return false;
-  }
   return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
 };
 
 const isShortcutKey = (event, key, code) => {
   return event.key.toLowerCase() === key || event.code === code;
 };
+
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
 const normalizeEol = (text) => text.replace(/\r\n?/g, '\n');
 
@@ -472,10 +674,27 @@ const handleEditorShortcut = (event) => {
     return false;
   }
 
-  if (isShortcutKey(event, 's', 'KeyS')) {
+  if (isShortcutKey(event, 's', 'KeyS') && !event.altKey) {
     event.preventDefault();
     event.stopPropagation();
     requestSave();
+    return true;
+  }
+
+  if (isShortcutKey(event, 'f', 'KeyF') && !event.altKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    openFindPanel('find');
+    return true;
+  }
+
+  if (
+    (isMac && isShortcutKey(event, 'f', 'KeyF') && event.altKey) ||
+    (!isMac && isShortcutKey(event, 'h', 'KeyH') && !event.altKey)
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    openFindPanel('replace');
     return true;
   }
 
@@ -483,14 +702,14 @@ const handleEditorShortcut = (event) => {
     return false;
   }
 
-  if (isShortcutKey(event, 'a', 'KeyA')) {
+  if (isShortcutKey(event, 'a', 'KeyA') && !event.altKey) {
     event.preventDefault();
     event.stopPropagation();
     editor.selectAll();
     return true;
   }
 
-  if (isShortcutKey(event, 'z', 'KeyZ') && !event.shiftKey) {
+  if (isShortcutKey(event, 'z', 'KeyZ') && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     event.stopPropagation();
     editor.undo();
@@ -498,8 +717,9 @@ const handleEditorShortcut = (event) => {
   }
 
   if (
-    (isShortcutKey(event, 'z', 'KeyZ') && event.shiftKey) ||
-    isShortcutKey(event, 'y', 'KeyY')
+    ((isShortcutKey(event, 'z', 'KeyZ') && event.shiftKey) ||
+      isShortcutKey(event, 'y', 'KeyY')) &&
+    !event.altKey
   ) {
     event.preventDefault();
     event.stopPropagation();
@@ -525,6 +745,7 @@ const queueChanges = (nextText) => {
   if (outlineVisible) {
     updateOutline();
   }
+  updateFindStatusSummary();
 };
 
 const handleInit = (message) => {
@@ -549,6 +770,7 @@ const handleInit = (message) => {
   if (outlineVisible) {
     updateOutline();
   }
+  updateFindStatusSummary();
 };
 
 window.addEventListener('message', (event) => {
@@ -635,6 +857,7 @@ window.addEventListener('message', (event) => {
     }
 
     editor.setText(message.text);
+    updateFindStatusSummary();
     return;
   }
 
@@ -677,6 +900,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 window.addEventListener('resize', () => {
+  if (findPanelVisible) {
+    updateFindPanelAnchor();
+  }
   if (editor) {
     editor.refreshSelectionOverlay();
   }
@@ -703,6 +929,54 @@ const handleFormatAction = (action) => {
   editor.insertFormat(action);
   editor.focus();
 };
+
+findInput.addEventListener('input', () => {
+  updateFindStatusSummary();
+});
+
+findInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    runFind(event.shiftKey);
+    return;
+  }
+});
+
+replaceInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    runReplace();
+    return;
+  }
+});
+
+findPrevBtn.addEventListener('click', () => {
+  runFind(true);
+});
+
+findNextBtn.addEventListener('click', () => {
+  runFind(false);
+});
+
+replaceBtn.addEventListener('click', () => {
+  runReplace();
+});
+
+replaceAllBtn.addEventListener('click', () => {
+  runReplaceAll();
+});
+
+closeFindBtn.addEventListener('click', () => {
+  closeFindPanel();
+});
+
+findToggleBtn.addEventListener('click', () => {
+  if (findPanelVisible) {
+    closeFindPanel();
+    return;
+  }
+  openFindPanel('find');
+});
 
 selectionMenu.addEventListener('pointerdown', (event) => {
   event.preventDefault();
