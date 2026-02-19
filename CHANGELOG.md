@@ -1,5 +1,11 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.3
+- Added support for different list indentations.
+- Added frontmatter support with enhanced styling for the editor.
+- Added git associations resolver for native source control file loading.
+- Improved editor loading time and performance.
+
 ## 0.1.2
 - Added full find/replace support in the editor, including next/previous navigation, replace current, and replace all.
 
