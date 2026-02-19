@@ -16,6 +16,7 @@ import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './hel
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import { addListMarkerDecoration, listMarkerData } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
+import { parseFrontmatter, isThematicBreakLine } from './helpers/frontmatter';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -42,6 +43,8 @@ const lineStyleDecos = {
   h6: Decoration.line({ class: 'meo-md-h6' }),
   quote: Decoration.line({ class: 'meo-md-quote' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
+  frontmatterContent: Decoration.line({ class: 'meo-md-frontmatter-content' }),
+  frontmatterBoundary: Decoration.line({ class: 'meo-md-hr meo-md-frontmatter-boundary' }),
   hr: Decoration.line({ class: 'meo-md-hr' })
 };
 
@@ -70,6 +73,46 @@ const inlineStyleDecos = {
   strike: Decoration.mark({ class: 'meo-md-strike' }),
   inlineCode: Decoration.mark({ class: 'meo-md-inline-code' })
 };
+
+function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLines) {
+  if (frontmatter.contentTo > frontmatter.contentFrom) {
+    addLineClass(builder, state, frontmatter.contentFrom, frontmatter.contentTo, lineStyleDecos.frontmatterContent);
+  }
+
+  const boundaries = [
+    { from: frontmatter.openingFrom, to: frontmatter.openingTo },
+    { from: frontmatter.closingFrom, to: frontmatter.closingTo }
+  ];
+
+  for (const boundary of boundaries) {
+    addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.frontmatterBoundary);
+    const lineNo = state.doc.lineAt(boundary.from).number;
+    if (activeLines.has(lineNo)) {
+      addRange(builder, boundary.from, boundary.to, activeLineMarkerDeco);
+    } else {
+      addRange(builder, boundary.from, boundary.to, hrMarkerDeco);
+    }
+  }
+}
+
+function isInsideFrontmatter(frontmatter, pos) {
+  return Boolean(frontmatter && pos >= frontmatter.from && pos < frontmatter.to);
+}
+
+function addForcedThematicBreakDecorations(builder, state, activeLines, frontmatter) {
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    if (!isThematicBreakLine(line.text) || isInsideFrontmatter(frontmatter, line.from)) {
+      continue;
+    }
+    addLineClass(builder, state, line.from, line.to, lineStyleDecos.hr);
+    if (activeLines.has(lineNo)) {
+      addRange(builder, line.from, line.to, activeLineMarkerDeco);
+    } else {
+      addRange(builder, line.from, line.to, hrMarkerDeco);
+    }
+  }
+}
 
 function getNodeHref(state, node) {
   const href = state.doc.sliceString(node.from, node.to).trim();
@@ -245,16 +288,6 @@ function addLineClass(builder, state, from, to, deco) {
   }
 }
 
-function shouldSuppressTransientSetextHeading(state, node, activeLines) {
-  const underlineLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
-  if (!activeLines.has(underlineLine.number)) {
-    return false;
-  }
-
-  const underlineText = state.doc.sliceString(underlineLine.from, underlineLine.to);
-  return /^[ \t]{0,3}-[ \t]*$/.test(underlineText);
-}
-
 function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -314,6 +347,17 @@ function buildDecorations(state) {
   const parsedTableRanges = [];
   let tableDepth = 0;
 
+  let frontmatter = null;
+  try {
+    frontmatter = parseFrontmatter(state);
+    if (frontmatter) {
+      addFrontmatterBoundaryDecorations(ranges, state, frontmatter, activeLines);
+    }
+  } catch {
+    frontmatter = null;
+  }
+  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter);
+
   tree.iterate({
     enter: (node) => {
       if (node.name === 'Table') {
@@ -322,21 +366,16 @@ function buildDecorations(state) {
 
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
-        if (tableDepth === 0) {
+        if (tableDepth === 0 && !isInsideFrontmatter(frontmatter, node.from)) {
           addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos[`h${headingLevel}`]);
         }
       }
 
-      if (node.name === 'SetextHeading1') {
-        if (tableDepth === 0) {
-          addLineClass(ranges, state, node.from, node.to, lineStyleDecos.h1);
+      if (node.name === 'HorizontalRule') {
+        if (isInsideFrontmatter(frontmatter, node.from)) {
+          return;
         }
-      } else if (node.name === 'SetextHeading2') {
-        if (tableDepth === 0 && !shouldSuppressTransientSetextHeading(state, node, activeLines)) {
-          addLineClass(ranges, state, node.from, node.to, lineStyleDecos.h2);
-        }
-      } else if (node.name === 'HorizontalRule') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.hr);
         if (activeLines.has(state.doc.lineAt(node.from).number)) {
           addRange(ranges, node.from, node.to, activeLineMarkerDeco);
@@ -395,7 +434,7 @@ function buildDecorations(state) {
       }
 
       const line = state.doc.lineAt(node.from);
-      if (tableDepth > 0 && (node.name === 'HeaderMark' || node.name === 'SetextHeadingMark')) {
+      if (tableDepth > 0 && node.name === 'HeaderMark') {
         return;
       }
       if (isFenceMarker(state, node.from, node.to)) {
@@ -474,6 +513,7 @@ function detectTableBlocks(state) {
   for (let lineNo = 2; lineNo <= state.doc.lines; lineNo += 1) {
     const delimiterLine = state.doc.line(lineNo);
     const delimiterText = state.doc.sliceString(delimiterLine.from, delimiterLine.to);
+    if (isThematicBreakLine(delimiterText)) continue;
     if (!isTableDelimiterLine(delimiterText)) continue;
 
     const headerLineNo = lineNo - 1;
@@ -534,7 +574,12 @@ const liveLineNumberMarkerField = StateField.define({
 
 export function liveModeExtensions() {
   return [
-    markdown({ base: markdownLanguage, addKeymap: false, codeLanguages: resolveCodeLanguage }),
+    markdown({
+      base: markdownLanguage,
+      addKeymap: false,
+      codeLanguages: resolveCodeLanguage,
+      extensions: [{ remove: ['SetextHeading'] }]
+    }),
     syntaxHighlighting(highlightStyle),
     liveDecorationField,
     liveLineNumberMarkerField

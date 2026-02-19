@@ -25,7 +25,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 ## Feedback
 
-For suggestions or feature requests, please [open an issue](https://github.com/vadimmelnicuk/meo/issues).
+For any issues, suggestions, or feature requests, please [open a ticket](https://github.com/vadimmelnicuk/meo/issues).
 
 ## License
 

@@ -31,16 +31,6 @@ export function extractHeadings(state) {
           from: node.from
         });
       }
-
-      if (node.name === 'SetextHeading1') {
-        const line = state.doc.lineAt(node.from);
-        const text = state.doc.sliceString(line.from, line.to).trim();
-        headings.push({ level: 1, text, line: line.number, from: node.from });
-      } else if (node.name === 'SetextHeading2') {
-        const line = state.doc.lineAt(node.from);
-        const text = state.doc.sliceString(line.from, line.to).trim();
-        headings.push({ level: 2, text, line: line.number, from: node.from });
-      }
     }
   });
 

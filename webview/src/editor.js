@@ -19,6 +19,7 @@ import {
   outdentListByTwoSpaces
 } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
+import { sourceFrontmatterField } from './helpers/frontmatter';
 
 const setSearchQueryEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
@@ -938,14 +939,16 @@ function sourceMode() {
     markdown({
       base: markdownLanguage,
       addKeymap: false,
-      codeLanguages: resolveCodeLanguage
+      codeLanguages: resolveCodeLanguage,
+      extensions: [{ remove: ['SetextHeading'] }]
     }),
     syntaxHighlighting(highlightStyle),
     sourceCodeBlockField,
     sourceListBorderField,
     sourceListMarkerField,
     sourceStrikeMarkerField,
-    sourceTableHeaderLineField
+    sourceTableHeaderLineField,
+    sourceFrontmatterField
   ];
 }
 
