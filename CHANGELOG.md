@@ -1,7 +1,7 @@
 # Markdown Editor Optimized (MEO)
 ---
 ## 0.1.2
-- 
+- Added full find/replace support in the editor, including next/previous navigation, replace current, and replace all.
 
 ## 0.1.1
 - Improved list handling, including consistent two-space indentation for nested lists.
