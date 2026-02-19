@@ -7,3 +7,4 @@ webview/dist
 bun.lockb
 AGENTS.md
 *.vsix
+releases/
