@@ -42,9 +42,27 @@ const lineStyleDecos = {
   h6: Decoration.line({ class: 'meo-md-h6' }),
   quote: Decoration.line({ class: 'meo-md-quote' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
-  list: Decoration.line({ class: 'meo-md-list-line' }),
   hr: Decoration.line({ class: 'meo-md-hr' })
 };
+
+const listLineDecoCache = new Map();
+
+function listLineDeco(contentOffsetColumns, indentColumns, selected = false) {
+  const offset = Math.max(0, contentOffsetColumns);
+  const indent = Math.max(0, indentColumns);
+  const key = `${offset}:${indent}:${selected ? 1 : 0}`;
+  let deco = listLineDecoCache.get(key);
+  if (deco) {
+    return deco;
+  }
+
+  deco = Decoration.line({
+    class: selected ? 'meo-md-list-line meo-md-list-line-selected' : 'meo-md-list-line',
+    attributes: { style: `--meo-list-hanging-indent:${offset}ch;--meo-list-indent-columns:${indent}ch;` }
+  });
+  listLineDecoCache.set(key, deco);
+  return deco;
+}
 
 const inlineStyleDecos = {
   em: Decoration.mark({ class: 'meo-md-em' }),
@@ -198,6 +216,26 @@ function collectActiveLines(state) {
   return lines;
 }
 
+function collectIndentSelectedLines(state) {
+  const lines = new Set();
+  for (const range of state.selection.ranges) {
+    if (range.empty) {
+      continue;
+    }
+    const from = Math.min(range.from, range.to);
+    const to = Math.max(range.from, range.to);
+    const startLine = state.doc.lineAt(from).number;
+    const endLine = state.doc.lineAt(to - 1).number;
+    for (let lineNo = startLine; lineNo <= endLine; lineNo += 1) {
+      const lineStart = state.doc.line(lineNo).from;
+      if (lineStart >= from && lineStart < to) {
+        lines.add(lineNo);
+      }
+    }
+  }
+  return lines;
+}
+
 function addLineClass(builder, state, from, to, deco) {
   const startLine = state.doc.lineAt(from).number;
   const endLine = state.doc.lineAt(Math.max(from, to - 1)).number;
@@ -233,7 +271,7 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   addRange(builder, line.from, prefixTo, markerDeco);
 }
 
-function addListLineDecorations(builder, state) {
+function addListLineDecorations(builder, state, indentSelectedLines) {
   const orderedCountsByLevel = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
@@ -256,7 +294,13 @@ function addListLineDecorations(builder, state) {
       orderedCountsByLevel[level] = 0;
     }
 
-    addLineClass(builder, state, line.from, line.to, lineStyleDecos.list);
+    builder.push(
+      listLineDeco(
+        marker.contentOffsetColumns ?? marker.toOffset,
+        marker.indentColumns ?? 0,
+        indentSelectedLines.has(lineNo)
+      ).range(line.from)
+    );
     addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex);
   }
 }
@@ -264,6 +308,7 @@ function addListLineDecorations(builder, state) {
 function buildDecorations(state) {
   const ranges = [];
   const activeLines = collectActiveLines(state);
+  const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
   const strikeRanges = collectStrikethroughRanges(tree);
   const parsedTableRanges = [];
@@ -387,7 +432,7 @@ function buildDecorations(state) {
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
-  addListLineDecorations(ranges, state);
+  addListLineDecorations(ranges, state, indentSelectedLines);
 
   const result = Decoration.set(ranges, true);
   return result;

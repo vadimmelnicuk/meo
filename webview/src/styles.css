@@ -529,6 +529,41 @@ body {
   padding-left: 2ch;
 }
 
+.cm-editor.meo-mode-live .cm-line.meo-md-list-line {
+  --meo-list-hanging-indent: 0ch;
+  --meo-list-indent-columns: 0ch;
+  padding-left: var(--meo-list-hanging-indent);
+  text-indent: calc(var(--meo-list-hanging-indent) * -1);
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--meo-color-base03) 0,
+    var(--meo-color-base03) 1px,
+    transparent 1px,
+    transparent 2ch
+  );
+  background-size: var(--meo-list-indent-columns) 100%;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-list-line.meo-md-list-line-selected {
+  background-image: repeating-linear-gradient(
+      to right,
+      var(--meo-color-base03) 0,
+      var(--meo-color-base03) 1px,
+      transparent 1px,
+      transparent 2ch
+    ),
+    linear-gradient(
+      to right,
+      var(--vscode-editor-selectionBackground),
+      var(--vscode-editor-selectionBackground)
+    );
+  background-size: var(--meo-list-indent-columns) 100%, var(--meo-list-hanging-indent) 100%;
+  background-position: left top, left top;
+  background-repeat: no-repeat, no-repeat;
+}
+
 .cm-editor .meo-md-list-marker {
   display: inline;
 }
@@ -587,6 +622,8 @@ body {
 .cm-editor .meo-md-list-border {
   display: inline-block;
   box-sizing: border-box;
+  width: 1ch;
+  min-width: 1ch;
   height: 100%;
   border-left: 1px solid var(--meo-color-base03);
 }

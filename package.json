@@ -2,7 +2,7 @@
   "name": "meo",
   "displayName": "Markdown Editor Optimized",
   "description": "Optimized editor for markdown files with live edit mode.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "vadimmelnicuk",
   "private": true,
   "icon": "logo.png",

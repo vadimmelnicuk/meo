@@ -11,6 +11,7 @@ import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
 import {
   sourceListBorderField,
   sourceListMarkerField,
+  handleEnterAtListContentStart,
   handleEnterContinueList,
   handleEnterBeforeNestedList,
   collectOrderedListRenumberChanges,
@@ -168,7 +169,13 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
         { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentWithTab(view) },
         { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
         { key: 'Backspace', run: deleteTableCellLineBreakBackward },
-        { key: 'Enter', run: (view) => handleEnterContinueList(view) || handleEnterBeforeNestedList(view) },
+        {
+          key: 'Enter',
+          run: (view) =>
+            handleEnterAtListContentStart(view) ||
+            handleEnterContinueList(view) ||
+            handleEnterBeforeNestedList(view)
+        },
         { key: 'Shift-Enter', run: insertTableCellLineBreak },
         ...markdownKeymap,
         ...defaultKeymap,

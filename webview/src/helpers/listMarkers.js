@@ -134,13 +134,17 @@ export function listMarkerData(lineText, orderedDisplayIndex = null) {
 
   const markerCharLength = match[2]?.length ?? (orderedNumber?.length ?? 0) + (orderedSuffix?.length ?? 0);
   const markerEndOffset = indent + markerCharLength;
+  const indentColumns = indentationColumns(leadingWhitespace);
+  const contentOffsetColumns = indentColumns + (match[0].length - indent);
 
   const result = {
     fromOffset: indent,
     leadingWhitespace,
-    indentLevel: Math.floor(indentationColumns(leadingWhitespace) / LIST_INDENT_WIDTH),
+    indentLevel: Math.floor(indentColumns / LIST_INDENT_WIDTH),
+    indentColumns,
     markerEndOffset,
     toOffset: match[0].length,
+    contentOffsetColumns,
     markerText,
     classes,
     orderedNumber
@@ -247,7 +251,6 @@ export function addListMarkerDecoration(builder, state, from, orderedDisplayInde
     );
   }
 
-  addListIndentBorders((from, to, deco) => builder.push(deco.range(from, to)), line.from, marker.leadingWhitespace);
 }
 
 export function continuedListMarker(lineText) {
@@ -310,6 +313,39 @@ export function handleEnterContinueList(view) {
   view.dispatch({
     changes: { from: position, insert },
     selection: { anchor: position + insert.length }
+  });
+  return true;
+}
+
+export function handleEnterAtListContentStart(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const position = selection.head;
+  const line = state.doc.lineAt(position);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const marker = listMarkerData(lineText);
+  if (!marker) {
+    return false;
+  }
+
+  const contentStart = line.from + marker.toOffset;
+  if (position !== contentStart) {
+    return false;
+  }
+
+  const content = lineText.slice(marker.toOffset).trim();
+  if (!content) {
+    return false;
+  }
+
+  const insert = `\n${marker.leadingWhitespace}`;
+  view.dispatch({
+    changes: { from: line.from, insert },
+    selection: { anchor: line.from + insert.length }
   });
   return true;
 }
