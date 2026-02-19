@@ -89,7 +89,7 @@
     "build": "bun run build:webview && bun run build:extension",
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist && bun build webview/src/index.js --target=browser --format=iife --minify --outfile=webview/dist/index.js && cp webview/src/styles.css webview/dist/index.css",
     "build:extension": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
-    "vscode:prepublish": "bun run build"
+    "vscode:publish": "vsce package"
   },
   "dependencies": {
     "@codemirror/commands": "6.8.1",
