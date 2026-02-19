@@ -80,18 +80,19 @@ const searchMatchField = StateField.define({
   }
 });
 
-export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange }) {
+export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange, initialMode = 'source' }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
   EditorView.EDIT_CONTEXT = false;
 
   const modeCompartment = new Compartment();
+  const startMode = initialMode === 'live' ? 'live' : 'source';
   let applyingExternal = false;
   let capturedPointerId = null;
   let inlineCodeClick = null;
   let checkboxClick = null;
   let view = null;
-  let currentMode = 'source';
+  let currentMode = startMode;
   let applyingRenumber = false;
   let tableInteractionActive = false;
   let onTableInteraction = null;
@@ -303,6 +304,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
   const state = EditorState.create({
     doc: text,
     extensions: [
+      EditorState.tabSize.of(4),
       indentUnit.of('  '),
       keymap.of([
         { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentWithTab(view) },
@@ -433,7 +435,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
           return false;
         }
       }),
-      modeCompartment.of(sourceMode()),
+      modeCompartment.of(startMode === 'live' ? liveModeExtensions() : sourceMode()),
       searchQueryField,
       searchMatchField,
       EditorView.updateListener.of((update) => {
@@ -589,21 +591,33 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
       emitSelectionChange();
     },
     setMode(mode) {
+      const nextMode = mode === 'live' ? 'live' : 'source';
+      if (nextMode === currentMode) {
+        return;
+      }
+
       const lineBlock = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 1);
       const lineNumber = view.state.doc.lineAt(lineBlock.from).number;
 
-      currentMode = mode;
+      currentMode = nextMode;
       view.dispatch({
-        effects: modeCompartment.reconfigure(mode === 'live' ? liveModeExtensions() : sourceMode())
+        effects: modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode())
       });
       forceParsing(view, view.state.doc.length, 500);
       syncModeClasses();
 
       let attempts = 0;
       const restoreScroll = () => {
-        if (!view || ++attempts > 20) return;
+        if (!view || ++attempts > 3) {
+          return;
+        }
         const targetLine = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
-        view.scrollDOM.scrollTop = view.lineBlockAt(targetLine.from).top;
+        const targetTop = view.lineBlockAt(targetLine.from).top;
+        const currentTop = view.scrollDOM.scrollTop;
+        view.scrollDOM.scrollTop = targetTop;
+        if (Math.abs(currentTop - targetTop) <= 1) {
+          return;
+        }
         requestAnimationFrame(restoreScroll);
       };
       requestAnimationFrame(restoreScroll);

@@ -1,24 +1,78 @@
 import { WidgetType } from '@codemirror/view';
-import mermaid from 'mermaid';
 import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2, X } from 'lucide';
 
 let mermaidInitialized = false;
+let mermaidRuntimePromise = null;
 const MERMAID_CACHE_LIMIT = 100;
 const mermaidCache = new Map();
 const mermaidRenderInFlight = new Map();
 let mermaidIdCounter = 0;
 
-function initMermaid() {
-  if (mermaidInitialized) {
-    return;
+function getMermaidRuntimeSource() {
+  return document.body?.dataset?.meoMermaidSrc ?? '';
+}
+
+function getMermaidRuntime() {
+  const runtime = globalThis.mermaid ?? window.mermaid;
+  if (!runtime || typeof runtime.render !== 'function') {
+    return null;
+  }
+  return runtime;
+}
+
+function loadMermaidRuntime() {
+  const existing = getMermaidRuntime();
+  if (existing) {
+    return Promise.resolve(existing);
   }
 
-  mermaid.initialize({
+  if (mermaidRuntimePromise) {
+    return mermaidRuntimePromise;
+  }
+
+  const source = getMermaidRuntimeSource();
+  if (!source) {
+    return Promise.reject(new Error('Missing Mermaid runtime source'));
+  }
+
+  mermaidRuntimePromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = source;
+    script.async = true;
+    script.dataset.meoMermaidRuntime = 'true';
+    script.onload = () => {
+      const runtime = getMermaidRuntime();
+      if (!runtime) {
+        reject(new Error('Mermaid runtime loaded but unavailable'));
+        return;
+      }
+      resolve(runtime);
+    };
+    script.onerror = () => {
+      reject(new Error('Failed to load Mermaid runtime'));
+    };
+    document.head.appendChild(script);
+  }).catch((error) => {
+    mermaidRuntimePromise = null;
+    throw error;
+  });
+
+  return mermaidRuntimePromise;
+}
+
+async function initMermaid() {
+  const runtime = await loadMermaidRuntime();
+  if (mermaidInitialized) {
+    return runtime;
+  }
+
+  runtime.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'dark'
   });
   mermaidInitialized = true;
+  return runtime;
 }
 
 function getCachedMermaidResult(diagramText) {
@@ -59,8 +113,8 @@ async function renderMermaidDiagram(diagramText) {
   }
 
   const id = `mermaid-${++mermaidIdCounter}`;
-  const renderPromise = mermaid
-    .render(id, diagramText)
+  const renderPromise = initMermaid()
+    .then((runtime) => runtime.render(id, diagramText))
     .then(({ svg }) => {
       const result = { svg };
       cacheMermaidResult(diagramText, result);
@@ -129,7 +183,6 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   toDOM() {
-    initMermaid();
     const container = document.createElement('div');
     container.className = 'meo-mermaid-block';
 
@@ -145,7 +198,7 @@ export class MermaidDiagramWidget extends WidgetType {
 
     const loading = document.createElement('div');
     loading.className = 'meo-mermaid-loading';
-    loading.textContent = 'Rendering diagram...';
+    loading.textContent = 'Loading...';
     container.appendChild(loading);
 
     (async () => {

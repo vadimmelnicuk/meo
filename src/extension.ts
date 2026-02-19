@@ -286,6 +286,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     const styleUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'index.css'))
       .toString();
+    const mermaidRuntimeUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'mermaid.min.js'))
+      .toString();
     const nonce = getNonce();
     const csp = [
       "default-src 'none'",
@@ -304,8 +307,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <title>Markdown Editor Optimized</title>
         <link href="${styleUri}" rel="stylesheet" />
       </head>
-      <body>
-        <div id="app"></div>
+      <body data-meo-mermaid-src="${mermaidRuntimeUri}">
+        <div id="app" class="editor-root">
+        </div>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
     </html>`;

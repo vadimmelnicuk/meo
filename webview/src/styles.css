@@ -435,6 +435,14 @@ body {
   caret-color: var(--vscode-editorCursor-foreground, #ffffff);
 }
 
+.cm-editor,
+.cm-editor .cm-scroller,
+.cm-editor .cm-content,
+.cm-editor .cm-line {
+  tab-size: 4 !important;
+  -moz-tab-size: 4 !important;
+}
+
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content *::selection {
   background-color: var(--vscode-editor-selectionBackground);
@@ -635,6 +643,7 @@ body {
 .cm-editor.meo-mode-live .cm-line.meo-md-list-line {
   --meo-list-hanging-indent: 0ch;
   --meo-list-indent-columns: 0ch;
+  --meo-list-guide-step: 2ch;
   padding-left: var(--meo-list-hanging-indent);
   text-indent: calc(var(--meo-list-hanging-indent) * -1);
   background-image: repeating-linear-gradient(
@@ -642,7 +651,7 @@ body {
     var(--meo-color-base03) 0,
     var(--meo-color-base03) 1px,
     transparent 1px,
-    transparent 2ch
+    transparent var(--meo-list-guide-step)
   );
   background-size: var(--meo-list-indent-columns) 100%;
   background-position: left top;
@@ -655,7 +664,7 @@ body {
       var(--meo-color-base03) 0,
       var(--meo-color-base03) 1px,
       transparent 1px,
-      transparent 2ch
+      transparent var(--meo-list-guide-step)
     ),
     linear-gradient(
       to right,
@@ -669,6 +678,11 @@ body {
 
 .cm-editor .meo-md-list-marker {
   display: inline;
+}
+
+.cm-editor .meo-md-list-indent-spacer {
+  display: inline-block;
+  min-width: 0;
 }
 
 .cm-editor .meo-md-list-prefix {
@@ -695,6 +709,7 @@ body {
   cursor: pointer;
   vertical-align: middle;
   position: relative;
+  top: -1px;
   flex-shrink: 0;
 }
 
@@ -723,10 +738,11 @@ body {
 }
 
 .cm-editor .meo-md-list-border {
+  --meo-list-border-width: 1ch;
   display: inline-block;
   box-sizing: border-box;
-  width: 1ch;
-  min-width: 1ch;
+  width: var(--meo-list-border-width);
+  min-width: var(--meo-list-border-width);
   height: 100%;
   border-left: 1px solid var(--meo-color-base03);
 }

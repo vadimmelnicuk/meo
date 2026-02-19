@@ -2,12 +2,48 @@ import { StateField, RangeSetBuilder } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { base02 } from '../theme';
 
-const listBorderDeco = Decoration.mark({ class: 'meo-md-list-border' });
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
-const LIST_INDENT_WIDTH = 2;
 const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])\s+/;
 const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))\s+(?:\[([ xX])\]\s+)?/;
+const TWO_SPACE_INDENT = '  ';
+const FOUR_SPACE_INDENT = '    ';
+const TAB_INDENT = '\t';
+const TWO_SPACE_INDENT_COLUMNS = 2;
+const FOUR_SPACE_INDENT_COLUMNS = 4;
+
+const listIndentStyle = {
+  twoSpaces: {
+    columns: TWO_SPACE_INDENT_COLUMNS,
+    insert: TWO_SPACE_INDENT
+  },
+  fourSpaces: {
+    columns: FOUR_SPACE_INDENT_COLUMNS,
+    insert: FOUR_SPACE_INDENT
+  },
+  tabs: {
+    columns: FOUR_SPACE_INDENT_COLUMNS,
+    insert: TAB_INDENT
+  }
+};
+
+const defaultListIndentStyle = listIndentStyle.twoSpaces;
+const listBorderDecoCache = new Map();
+
+function listBorderDecoration(widthColumns = 1) {
+  const width = Math.max(1, widthColumns);
+  let deco = listBorderDecoCache.get(width);
+  if (deco) {
+    return deco;
+  }
+
+  deco = Decoration.mark({
+    class: 'meo-md-list-border',
+    attributes: { style: `--meo-list-border-width:${width}ch;` }
+  });
+  listBorderDecoCache.set(width, deco);
+  return deco;
+}
 
 function forEachSelectionLine(state, callback) {
   const seen = new Set();
@@ -29,15 +65,77 @@ function isListLine(lineText) {
   return listItemRegex.test(lineText);
 }
 
-function indentationColumns(leadingWhitespace) {
+function inferListIndentStyle(listLineTexts) {
+  const spaceIndents = [];
+  for (const lineText of listLineTexts) {
+    const match = listItemRegex.exec(lineText);
+    if (!match || !match[1]) {
+      continue;
+    }
+
+    const leadingWhitespace = match[1];
+    if (leadingWhitespace.includes('\t')) {
+      return listIndentStyle.tabs;
+    }
+
+    if (/^ +$/.test(leadingWhitespace)) {
+      spaceIndents.push(leadingWhitespace.length);
+    }
+  }
+
+  if (!spaceIndents.length) {
+    return defaultListIndentStyle;
+  }
+
+  const isFourSpaceList = spaceIndents.every((length) => length % FOUR_SPACE_INDENT_COLUMNS === 0);
+  return isFourSpaceList ? listIndentStyle.fourSpaces : defaultListIndentStyle;
+}
+
+export function detectListIndentStylesByLine(state) {
+  const stylesByLine = new Map();
+  let lineNo = 1;
+
+  while (lineNo <= state.doc.lines) {
+    const startLineNo = lineNo;
+    const listLineTexts = [];
+
+    while (lineNo <= state.doc.lines) {
+      const line = state.doc.line(lineNo);
+      const lineText = state.doc.sliceString(line.from, line.to);
+      if (!isListLine(lineText)) {
+        break;
+      }
+      listLineTexts.push(lineText);
+      lineNo += 1;
+    }
+
+    if (!listLineTexts.length) {
+      lineNo += 1;
+      continue;
+    }
+
+    const style = inferListIndentStyle(listLineTexts);
+    for (let currentLine = startLineNo; currentLine < lineNo; currentLine += 1) {
+      stylesByLine.set(currentLine, style);
+    }
+  }
+
+  return stylesByLine;
+}
+
+function lineIndentStyle(lineNumber, stylesByLine) {
+  return stylesByLine?.get(lineNumber) ?? defaultListIndentStyle;
+}
+
+function indentationColumns(leadingWhitespace, style = defaultListIndentStyle) {
   let columns = 0;
   for (let index = 0; index < leadingWhitespace.length; index += 1) {
-    columns += leadingWhitespace[index] === '\t' ? LIST_INDENT_WIDTH : 1;
+    columns += leadingWhitespace[index] === '\t' ? style.columns : 1;
   }
   return columns;
 }
 
-function listBorderOffsets(leadingWhitespace) {
+function listBorderOffsets(leadingWhitespace, style = defaultListIndentStyle) {
   const offsets = [];
   let columns = 0;
   let levelStart = 0;
@@ -46,8 +144,8 @@ function listBorderOffsets(leadingWhitespace) {
     if (columns === 0) {
       levelStart = index;
     }
-    columns += leadingWhitespace[index] === '\t' ? LIST_INDENT_WIDTH : 1;
-    if (columns >= LIST_INDENT_WIDTH) {
+    columns += leadingWhitespace[index] === '\t' ? style.columns : 1;
+    if (columns >= style.columns) {
       offsets.push(levelStart);
       columns = 0;
     }
@@ -56,14 +154,17 @@ function listBorderOffsets(leadingWhitespace) {
   return offsets;
 }
 
-function addListIndentBorders(addRange, lineStart, leadingWhitespace) {
-  for (const offset of listBorderOffsets(leadingWhitespace)) {
-    addRange(lineStart + offset, lineStart + offset + 1, listBorderDeco);
+function addListIndentBorders(addRange, lineStart, leadingWhitespace, style = defaultListIndentStyle) {
+  for (const offset of listBorderOffsets(leadingWhitespace, style)) {
+    const char = leadingWhitespace[offset];
+    const borderWidth = char === '\t' ? style.columns : 1;
+    addRange(lineStart + offset, lineStart + offset + 1, listBorderDecoration(borderWidth));
   }
 }
 
 export function indentListByTwoSpaces(view) {
   const { state } = view;
+  const stylesByLine = detectListIndentStylesByLine(state);
   const changes = [];
 
   forEachSelectionLine(state, (line) => {
@@ -71,7 +172,8 @@ export function indentListByTwoSpaces(view) {
     if (!isListLine(lineText)) {
       return;
     }
-    changes.push({ from: line.from, insert: '  ' });
+    const style = lineIndentStyle(line.number, stylesByLine);
+    changes.push({ from: line.from, insert: style.insert });
   });
 
   if (!changes.length) {
@@ -84,6 +186,7 @@ export function indentListByTwoSpaces(view) {
 
 export function outdentListByTwoSpaces(view) {
   const { state } = view;
+  const stylesByLine = detectListIndentStylesByLine(state);
   const changes = [];
 
   forEachSelectionLine(state, (line) => {
@@ -94,9 +197,10 @@ export function outdentListByTwoSpaces(view) {
     }
 
     const leadingWhitespace = listMatch[1];
+    const style = lineIndentStyle(line.number, stylesByLine);
     const deleteLength = leadingWhitespace.startsWith('\t')
       ? 1
-      : Math.min(LIST_INDENT_WIDTH, leadingWhitespace.match(/^ +/)?.[0]?.length ?? 0);
+      : Math.min(style.columns, leadingWhitespace.match(/^ +/)?.[0]?.length ?? 0);
     if (!deleteLength) {
       return;
     }
@@ -112,7 +216,7 @@ export function outdentListByTwoSpaces(view) {
   return true;
 }
 
-export function listMarkerData(lineText, orderedDisplayIndex = null) {
+export function listMarkerData(lineText, orderedDisplayIndex = null, style = defaultListIndentStyle) {
   const match = listMarkerRegex.exec(lineText);
   if (!match) {
     return null;
@@ -134,13 +238,13 @@ export function listMarkerData(lineText, orderedDisplayIndex = null) {
 
   const markerCharLength = match[2]?.length ?? (orderedNumber?.length ?? 0) + (orderedSuffix?.length ?? 0);
   const markerEndOffset = indent + markerCharLength;
-  const indentColumns = indentationColumns(leadingWhitespace);
+  const indentColumns = indentationColumns(leadingWhitespace, style);
   const contentOffsetColumns = indentColumns + (match[0].length - indent);
 
   const result = {
     fromOffset: indent,
     leadingWhitespace,
-    indentLevel: Math.floor(indentColumns / LIST_INDENT_WIDTH),
+    indentLevel: Math.floor(indentColumns / style.columns),
     indentColumns,
     markerEndOffset,
     toOffset: match[0].length,
@@ -215,10 +319,16 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
-export function addListMarkerDecoration(builder, state, from, orderedDisplayIndex = null) {
+export function addListMarkerDecoration(
+  builder,
+  state,
+  from,
+  orderedDisplayIndex = null,
+  style = defaultListIndentStyle
+) {
   const line = state.doc.lineAt(from);
   const lineText = state.doc.sliceString(line.from, line.to);
-  const marker = listMarkerData(lineText, orderedDisplayIndex);
+  const marker = listMarkerData(lineText, orderedDisplayIndex, style);
   if (!marker) {
     return;
   }
@@ -386,12 +496,14 @@ export function handleEnterBeforeNestedList(view) {
 
 export function collectOrderedListRenumberChanges(state) {
   const changes = [];
+  const stylesByLine = detectListIndentStylesByLine(state);
   const orderedCountsByLevel = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
-    const marker = listMarkerData(lineText);
+    const style = lineIndentStyle(lineNo, stylesByLine);
+    const marker = listMarkerData(lineText, null, style);
 
     if (!marker) {
       orderedCountsByLevel.length = 0;
@@ -422,25 +534,34 @@ export function collectOrderedListRenumberChanges(state) {
 }
 
 function computeSourceListBorders(state) {
+  const stylesByLine = detectListIndentStylesByLine(state);
   const ranges = new RangeSetBuilder();
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
-    const marker = listMarkerData(lineText);
+    const style = lineIndentStyle(lineNo, stylesByLine);
+    const marker = listMarkerData(lineText, null, style);
     if (!marker || marker.fromOffset === 0) {
       continue;
     }
-    addListIndentBorders((from, to, deco) => ranges.add(from, to, deco), line.from, marker.leadingWhitespace);
+    addListIndentBorders(
+      (from, to, deco) => ranges.add(from, to, deco),
+      line.from,
+      marker.leadingWhitespace,
+      style
+    );
   }
   return ranges.finish();
 }
 
 function computeSourceListMarkers(state) {
+  const stylesByLine = detectListIndentStylesByLine(state);
   const ranges = new RangeSetBuilder();
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
-    const marker = listMarkerData(lineText);
+    const style = lineIndentStyle(lineNo, stylesByLine);
+    const marker = listMarkerData(lineText, null, style);
     if (!marker) {
       continue;
     }

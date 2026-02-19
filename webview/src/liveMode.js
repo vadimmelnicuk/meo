@@ -14,7 +14,7 @@ import {
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
-import { addListMarkerDecoration, listMarkerData } from './helpers/listMarkers';
+import { addListMarkerDecoration, listMarkerData, detectListIndentStylesByLine } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 import { parseFrontmatter, isThematicBreakLine } from './helpers/frontmatter';
 
@@ -49,11 +49,42 @@ const lineStyleDecos = {
 };
 
 const listLineDecoCache = new Map();
+const listIndentWidgetCache = new Map();
 
-function listLineDeco(contentOffsetColumns, indentColumns, selected = false) {
+class ListIndentWidget extends WidgetType {
+  constructor(indentColumns) {
+    super();
+    this.indentColumns = indentColumns;
+  }
+
+  eq(other) {
+    return other instanceof ListIndentWidget && other.indentColumns === this.indentColumns;
+  }
+
+  toDOM() {
+    const spacer = document.createElement('span');
+    spacer.className = 'meo-md-list-indent-spacer';
+    spacer.style.width = `${Math.max(0, this.indentColumns)}ch`;
+    return spacer;
+  }
+}
+
+function listIndentWidget(indentColumns) {
+  const normalized = Math.max(0, Math.round(indentColumns));
+  let widget = listIndentWidgetCache.get(normalized);
+  if (widget) {
+    return widget;
+  }
+  widget = new ListIndentWidget(normalized);
+  listIndentWidgetCache.set(normalized, widget);
+  return widget;
+}
+
+function listLineDeco(contentOffsetColumns, indentColumns, guideStepColumns = 2, selected = false) {
   const offset = Math.max(0, contentOffsetColumns);
   const indent = Math.max(0, indentColumns);
-  const key = `${offset}:${indent}:${selected ? 1 : 0}`;
+  const guideStep = Math.max(2, guideStepColumns);
+  const key = `${offset}:${indent}:${guideStep}:${selected ? 1 : 0}`;
   let deco = listLineDecoCache.get(key);
   if (deco) {
     return deco;
@@ -61,7 +92,9 @@ function listLineDeco(contentOffsetColumns, indentColumns, selected = false) {
 
   deco = Decoration.line({
     class: selected ? 'meo-md-list-line meo-md-list-line-selected' : 'meo-md-list-line',
-    attributes: { style: `--meo-list-hanging-indent:${offset}ch;--meo-list-indent-columns:${indent}ch;` }
+    attributes: {
+      style: `--meo-list-hanging-indent:${offset}ch;--meo-list-indent-columns:${indent}ch;--meo-list-guide-step:${guideStep}ch;`
+    }
   });
   listLineDecoCache.set(key, deco);
   return deco;
@@ -305,12 +338,14 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
 }
 
 function addListLineDecorations(builder, state, indentSelectedLines) {
+  const stylesByLine = detectListIndentStylesByLine(state);
   const orderedCountsByLevel = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
-    const marker = listMarkerData(lineText);
+    const style = stylesByLine.get(lineNo);
+    const marker = listMarkerData(lineText, null, style);
     if (!marker) {
       orderedCountsByLevel.length = 0;
       continue;
@@ -327,14 +362,24 @@ function addListLineDecorations(builder, state, indentSelectedLines) {
       orderedCountsByLevel[level] = 0;
     }
 
+    if (marker.fromOffset > 0 && (marker.indentColumns ?? 0) > 0) {
+      builder.push(
+        Decoration.replace({
+          widget: listIndentWidget(marker.indentColumns ?? 0),
+          inclusive: false
+        }).range(line.from, line.from + marker.fromOffset)
+      );
+    }
+
     builder.push(
       listLineDeco(
         marker.contentOffsetColumns ?? marker.toOffset,
         marker.indentColumns ?? 0,
+        style?.columns ?? 2,
         indentSelectedLines.has(lineNo)
       ).range(line.from)
     );
-    addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex);
+    addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style);
   }
 }
 

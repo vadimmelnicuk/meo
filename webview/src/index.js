@@ -16,7 +16,7 @@ if (!root) {
   throw new Error('Webview root element not found');
 }
 
-root.className = 'editor-root';
+root.classList.add('editor-root');
 
 const toolbar = document.createElement('div');
 toolbar.className = 'mode-toolbar';
@@ -405,7 +405,12 @@ selectionMenu.append(
 );
 
 editorWrapper.append(editorHost, outlineSidebar, selectionMenu);
-root.append(toolbar, editorWrapper);
+root.replaceChildren(toolbar);
+window.requestAnimationFrame(() => {
+  if (!root.contains(editorWrapper)) {
+    root.append(editorWrapper);
+  }
+});
 
 let editor = null;
 let documentVersion = 0;
@@ -418,6 +423,8 @@ let saveAfterSync = false;
 let currentMode = 'live';
 let hasLocalModePreference = false;
 let findPanelVisible = false;
+let pendingInitialText = null;
+let initialEditorMountQueued = false;
 
 const hideSelectionMenu = () => {
   selectionMenu.classList.remove('is-visible');
@@ -748,26 +755,53 @@ const queueChanges = (nextText) => {
   updateFindStatusSummary();
 };
 
+const mountInitialEditor = () => {
+  if (editor || pendingInitialText === null) {
+    return;
+  }
+  const initialText = pendingInitialText;
+  pendingInitialText = null;
+  editor = createEditor({
+    parent: editorHost,
+    text: initialText,
+    initialMode: currentMode,
+    onApplyChanges: queueChanges,
+    onOpenLink: (href) => {
+      vscode.postMessage({ type: 'openLink', href });
+    },
+    onSelectionChange: updateSelectionMenu
+  });
+};
+
+const scheduleInitialEditorMount = () => {
+  if (editor || initialEditorMountQueued) {
+    return;
+  }
+  initialEditorMountQueued = true;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      initialEditorMountQueued = false;
+      mountInitialEditor();
+      if (outlineVisible) {
+        updateOutline();
+      }
+      updateFindStatusSummary();
+    });
+  });
+};
+
 const handleInit = (message) => {
   if (!editor) {
-    editor = createEditor({
-      parent: editorHost,
-      text: message.text,
-      onApplyChanges: queueChanges,
-      onOpenLink: (href) => {
-        vscode.postMessage({ type: 'openLink', href });
-      },
-      onSelectionChange: updateSelectionMenu
-    });
+    pendingInitialText = message.text;
+    scheduleInitialEditorMount();
   } else {
     editor.setText(message.text);
   }
-  editor.setMode(currentMode);
   if (typeof message.autoSave === 'boolean') {
     autoSaveEnabled = message.autoSave;
     updateAutoSaveUI();
   }
-  if (outlineVisible) {
+  if (editor && outlineVisible) {
     updateOutline();
   }
   updateFindStatusSummary();
@@ -795,6 +829,13 @@ window.addEventListener('message', (event) => {
     } else {
       applyMode(nextMode, { post: false, persist: false });
     }
+    return;
+  }
+
+  if (message.type === 'docChanged' && !editor && pendingInitialText !== null) {
+    documentVersion = message.version;
+    syncedText = message.text;
+    pendingInitialText = message.text;
     return;
   }
 
