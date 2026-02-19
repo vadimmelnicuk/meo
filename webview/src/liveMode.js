@@ -11,6 +11,7 @@ import {
   addMermaidDiagram,
   addCopyCodeButton
 } from './helpers/codeBlocks';
+import { ImageWidget, getImageData } from './helpers/images';
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
@@ -239,10 +240,16 @@ function addMarkdownLinkDecorations(builder, state, node, activeLines) {
 
   const textFrom = node.from + 1;
   const textTo = node.from + closeTextAt;
+  if (textFrom >= textTo) {
+    return;
+  }
   const href = getNodeHref(state, urlNode);
+  addLinkMark(builder, textFrom, textTo, href);
+  if (!href) {
+    return;
+  }
   const urlLine = state.doc.lineAt(urlNode.from);
   const isActiveLine = activeLines.has(urlLine.number);
-  addLinkMark(builder, textFrom, textTo, href);
   if (!isActiveLine) {
     addRange(builder, urlNode.from, urlNode.to, hiddenLinkUrlDeco);
     return;
@@ -472,6 +479,26 @@ function buildDecorations(state) {
         if (parentName !== 'Link' && parentName !== 'Autolink') {
           addLinkMark(ranges, node.from, node.to, getNodeHref(state, node));
         }
+      } else if (node.name === 'Image') {
+        const line = state.doc.lineAt(node.from);
+        if (activeLines.has(line.number)) {
+          return;
+        }
+        const imageSelection = state.selection.ranges.some(
+          (r) => r.from < node.to && r.to > node.from
+        );
+        if (imageSelection) {
+          return;
+        }
+        const { url, altText, linkUrl } = getImageData(state, node);
+        if (url) {
+          ranges.push(
+            Decoration.replace({
+              widget: new ImageWidget(url, altText, linkUrl),
+              inclusive: false
+            }).range(node.from, node.to)
+          );
+        }
       }
 
       if (!node.name.endsWith('Mark')) {
@@ -496,6 +523,22 @@ function buildDecorations(state) {
           addRange(ranges, node.from, node.to, strikeMarkerDeco);
         }
       } else if (node.name === 'LinkMark') {
+        const parentName = node.node.parent?.name ?? '';
+        if (parentName === 'Image') {
+          const { url } = getImageData(state, node.node.parent);
+          if (!url) {
+            return;
+          }
+        } else if (parentName === 'Link') {
+          const urlNode = findChildNode(node.node.parent, 'URL');
+          if (!urlNode) {
+            return;
+          }
+          const href = getNodeHref(state, urlNode);
+          if (!href) {
+            return;
+          }
+        }
         if (activeLines.has(line.number)) {
           addRange(ranges, node.from, node.to, activeLinkMarkerDeco);
         } else {

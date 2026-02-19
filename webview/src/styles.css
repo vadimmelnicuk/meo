@@ -857,6 +857,55 @@ body {
   font-family: var(--vscode-editor-font-family);
 }
 
+.cm-editor .meo-md-image {
+  display: inline-block;
+  vertical-align: baseline;
+  text-align: left;
+  line-height: normal;
+  margin: 0;
+  padding: 0;
+}
+
+.cm-editor .meo-md-image-img {
+  max-width: 100%;
+  max-height: none;
+  height: auto;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  vertical-align: bottom;
+}
+
+.cm-editor .meo-md-image-img.meo-md-image-loaded {
+  opacity: 1;
+}
+
+.cm-editor .meo-md-image-loading {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.cm-editor .meo-md-image-fallback {
+  display: inline;
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 2px;
+}
+
+.cm-editor .meo-md-image-fallback-text {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  color: var(--vscode-descriptionForeground);
+}
+
+.cm-editor .meo-md-image-linked {
+  cursor: pointer;
+}
+
+.cm-editor .meo-md-image-linked .meo-md-image-img {
+  cursor: pointer;
+}
+
 .meo-mermaid-fullscreen-scrim {
   position: fixed;
   inset: 0;

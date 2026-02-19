@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -192,6 +192,13 @@ linkBtn.dataset.action = 'link';
 linkBtn.title = 'Link';
 linkBtn.appendChild(createElement(Link, { width: 18, height: 18 }));
 
+const imageBtn = document.createElement('button');
+imageBtn.type = 'button';
+imageBtn.className = 'format-button';
+imageBtn.dataset.action = 'image';
+imageBtn.title = 'Image';
+imageBtn.appendChild(createElement(Image, { width: 18, height: 18 }));
+
 const tableBtn = document.createElement('button');
 tableBtn.type = 'button';
 tableBtn.className = 'format-button';
@@ -267,7 +274,7 @@ tableGrid.addEventListener('click', (event) => {
   editor.focus();
 });
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, linkBtn, quoteBtn, hrBtn);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, linkBtn, imageBtn, quoteBtn, hrBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -1050,8 +1057,9 @@ taskBtn.addEventListener('click', () => handleFormatAction('task'));
 codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
 quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
 hrBtn.addEventListener('click', () => handleFormatAction('hr'));
-linkBtn.addEventListener('click', () => handleFormatAction('link'));
-autoSaveBtn.addEventListener('click', toggleAutoSave);
+  linkBtn.addEventListener('click', () => handleFormatAction('link'));
+  imageBtn.addEventListener('click', () => handleFormatAction('image'));
+  autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
 
 vscode.setState({ mode: currentMode });

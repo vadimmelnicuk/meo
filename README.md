@@ -2,6 +2,10 @@
 
 An optimized markdown editor with live editing mode for VS Code.
 
+[![](https://vsmarketplacebadges.dev/version-short/vadimmelnicuk.meo.svg)](https://marketplace.visualstudio.com/items?itemName=vadimmelnicuk.meo)
+
+
+
 ## Features
 
 - **Live/Source modes** - Switch between clean writing and raw markdown in a single tab

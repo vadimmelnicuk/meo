@@ -678,6 +678,8 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
           return insertTable(view, selection, level?.cols, level?.rows);
         case 'link':
           return insertLink(view, selection);
+        case 'image':
+          return insertImage(view, selection);
       }
 
       const newMarkerLen = insert.length;
@@ -945,6 +947,26 @@ function insertLink(view, selection) {
   view.dispatch({
     changes: { from: selection.from, insert },
     selection: { anchor: selection.from + 1 }
+  });
+}
+
+function insertImage(view, selection) {
+  const { state } = view;
+
+  if (!selection.empty) {
+    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    const insert = `![${selectedText}]()`;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length - 1 }
+    });
+    return;
+  }
+
+  const insert = '![]()';
+  view.dispatch({
+    changes: { from: selection.from, insert },
+    selection: { anchor: selection.from + 2 }
   });
 }
 
