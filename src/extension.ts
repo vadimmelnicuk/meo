@@ -62,6 +62,11 @@ type WebviewMessage =
   | { type: 'ready' };
 
 export function activate(context: vscode.ExtensionContext): void {
+  const useAsDefault = vscode.workspace.getConfiguration('markdownEditorOptimized').get<boolean>('useAsDefault', true);
+  if (useAsDefault) {
+    void updateEditorAssociations();
+  }
+
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(VIEW_TYPE, new MarkdownWebviewProvider(context), {
       supportsMultipleEditorsPerDocument: false,
@@ -88,11 +93,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('markdownEditorOptimized.setDefaultEditor', async () => {
-      const config = vscode.workspace.getConfiguration('workbench');
-      const associations = config.get<Record<string, string>>('editorAssociations') || {};
-      associations['*.md'] = VIEW_TYPE;
-      associations['*.markdown'] = VIEW_TYPE;
-      await config.update('editorAssociations', associations, vscode.ConfigurationTarget.Global);
+      await updateEditorAssociations();
       void vscode.window.showInformationMessage('Markdown Editor Optimized is now set as the default editor for Markdown files.');
     })
   );
@@ -115,6 +116,11 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const redirectedToNativeEditor = await this.redirectGitResourceToNativeEditor(document, panel);
+    if (redirectedToNativeEditor) {
+      return;
+    }
+
     this.activePanels.add(panel);
 
     panel.webview.options = {
@@ -226,6 +232,53 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     });
   }
 
+  private async redirectGitResourceToNativeEditor(
+    document: vscode.TextDocument,
+    panel: vscode.WebviewPanel
+  ): Promise<boolean> {
+    if (document.uri.scheme !== 'git') {
+      return false;
+    }
+
+    const viewColumn = panel.viewColumn ?? vscode.ViewColumn.Active;
+    const editorOptions = {
+      preserveFocus: false,
+      preview: true,
+      override: 'default'
+    };
+    const existingDiff = findDiffContextForGitUri(document.uri);
+
+    if (existingDiff) {
+      await vscode.commands.executeCommand(
+        '_workbench.diff',
+        existingDiff.original,
+        existingDiff.modified,
+        existingDiff.title,
+        [viewColumn, editorOptions]
+      );
+      panel.dispose();
+      return true;
+    }
+
+    const ref = getGitUriRef(document.uri);
+    if (isWorkingTreeOrIndexRef(ref)) {
+      const targetUri = resolveWorktreeUri(document);
+      const title = getNativeWorkingTreeTitle(document.uri, targetUri);
+
+      await vscode.commands.executeCommand(
+        '_workbench.diff',
+        document.uri,
+        targetUri,
+        title,
+        [viewColumn, editorOptions]
+      );
+      panel.dispose();
+      return true;
+    }
+
+    return false;
+  }
+
   private getWebviewHtml(webview: vscode.Webview): string {
     const scriptUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'index.js'))
@@ -309,4 +362,114 @@ function getNonce(): string {
   return nonce;
 }
 
+function resolveWorktreeUriFromGitUri(uri: vscode.Uri): vscode.Uri | undefined {
+  if (uri.scheme !== 'git') {
+    return undefined;
+  }
+
+  const query = parseGitUriQuery(uri.query);
+  if (query?.path && typeof query.path === 'string') {
+    return vscode.Uri.file(query.path);
+  }
+
+  return uri.path ? vscode.Uri.file(uri.path) : undefined;
+}
+
+function resolveWorktreeUri(document: vscode.TextDocument): vscode.Uri {
+  if (document.fileName) {
+    return vscode.Uri.file(document.fileName);
+  }
+
+  return resolveWorktreeUriFromGitUri(document.uri) ?? document.uri;
+}
+
+function findDiffContextForGitUri(uri: vscode.Uri): { original: vscode.Uri; modified: vscode.Uri; title: string } | undefined {
+  const target = uri.toString();
+
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input = tab.input;
+      if (!(input instanceof vscode.TabInputTextDiff)) {
+        continue;
+      }
+
+      const original = input.original;
+      const modified = input.modified;
+      if (original.toString() !== target && modified.toString() !== target) {
+        continue;
+      }
+
+      return {
+        original,
+        modified,
+        title: tab.label
+      };
+    }
+  }
+
+  return undefined;
+}
+
+function getGitUriRef(uri: vscode.Uri): string | undefined {
+  const query = parseGitUriQuery(uri.query);
+  return typeof query?.ref === 'string' ? query.ref : undefined;
+}
+
+function isWorkingTreeOrIndexRef(ref: string | undefined): boolean {
+  return ref === '~' || ref === 'HEAD' || ref === '';
+}
+
+function getNativeWorkingTreeTitle(gitUri: vscode.Uri, fileUri: vscode.Uri): string {
+  const fileName = vscode.workspace.asRelativePath(fileUri, false) || fileUri.path;
+  const ref = getGitUriRef(gitUri);
+
+  if (ref === '~') {
+    return `${fileName} (Working Tree)`;
+  }
+
+  if (ref === 'HEAD' || ref === '') {
+    return `${fileName} (Index)`;
+  }
+
+  return fileName;
+}
+
+function parseGitUriQuery(query: string): { path?: unknown; ref?: unknown } | undefined {
+  if (!query) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(query);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as { path?: unknown; ref?: unknown }) : undefined;
+  } catch {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(query));
+      return typeof parsed === 'object' && parsed !== null ? (parsed as { path?: unknown; ref?: unknown }) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 export function deactivate(): void {}
+
+async function updateEditorAssociations(): Promise<void> {
+  const config = vscode.workspace.getConfiguration('workbench');
+  const associations = { ...(config.get<Record<string, string>>('editorAssociations') || {}) };
+  const next = {
+    ...associations,
+    '*.md': VIEW_TYPE,
+    '*.markdown': VIEW_TYPE,
+    'git:/**/*.md': 'default',
+    'git:/**/*.markdown': 'default',
+    'git:**/*.md': 'default',
+    'git:**/*.markdown': 'default'
+  };
+
+  if (JSON.stringify(associations) === JSON.stringify(next)) {
+    return;
+  }
+
+  await config.update('editorAssociations', next, vscode.ConfigurationTarget.Global);
+}

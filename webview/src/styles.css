@@ -581,7 +581,7 @@ body {
 }
 
 .cm-editor .meo-md-quote {
-  border-left: 3px solid var(--meo-color-base05);
+  border-left: 3px solid var(--meo-color-base09);
   padding-left: 3ch;
   text-indent: -1ch;
 }
