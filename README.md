@@ -4,7 +4,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 [![](https://vsmarketplacebadges.dev/version-short/vadimmelnicuk.meo.svg)](https://marketplace.visualstudio.com/items?itemName=vadimmelnicuk.meo)
 
-![Demo GIF](./demo.gif)
+![Demo GIF](https://i.postimg.cc/DwN9H80c/demo.gif)
 
 ## Features
 
