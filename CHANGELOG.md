@@ -1,5 +1,8 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.4
+- Added image insertion and rendering functionality in the editor.
+
 ## 0.1.3
 - Added support for different list indentations.
 - Added frontmatter support with enhanced styling for the editor.
