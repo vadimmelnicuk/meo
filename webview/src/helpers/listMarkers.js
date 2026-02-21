@@ -427,6 +427,27 @@ export function handleEnterContinueList(view) {
   return true;
 }
 
+export function handleBackspaceAtListContentStart(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const line = state.doc.lineAt(selection.head);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const marker = listMarkerData(lineText);
+  if (!marker || selection.head !== line.from + marker.toOffset) {
+    return false;
+  }
+
+  view.dispatch({
+    changes: { from: line.from, to: line.from + marker.toOffset, insert: '' },
+    selection: { anchor: line.from }
+  });
+  return true;
+}
+
 export function handleEnterAtListContentStart(view) {
   const { state } = view;
   const selection = state.selection.main;

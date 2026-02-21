@@ -12,6 +12,7 @@ import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
 import {
   sourceListBorderField,
   sourceListMarkerField,
+  handleBackspaceAtListContentStart,
   handleEnterAtListContentStart,
   handleEnterContinueList,
   handleEnterBeforeNestedList,
@@ -311,7 +312,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
       keymap.of([
         { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentWithTab(view) },
         { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
-        { key: 'Backspace', run: deleteTableCellLineBreakBackward },
+        { key: 'Backspace', run: deleteBackwardSmart },
         {
           key: 'Enter',
           run: (view) =>
@@ -755,6 +756,10 @@ function deleteTableCellLineBreakBackward(view) {
     selection: { anchor: start }
   });
   return true;
+}
+
+function deleteBackwardSmart(view) {
+  return handleBackspaceAtListContentStart(view) || deleteTableCellLineBreakBackward(view);
 }
 
 function isInsideTableCell(state, position) {
