@@ -404,7 +404,11 @@ async function applyDocumentChanges(
 
 async function openExternalLink(rawHref: string): Promise<void> {
   try {
-    const uri = vscode.Uri.parse(rawHref, true);
+    const href = normalizeExternalHref(rawHref);
+    if (!href) {
+      return;
+    }
+    const uri = vscode.Uri.parse(href, true);
     await vscode.env.openExternal(uri);
   } catch {
     // Ignore invalid URIs emitted by the webview.
@@ -415,7 +419,22 @@ async function openLink(rawHref: string, documentUri: vscode.Uri): Promise<void>
   if (await openWikiLink(rawHref, documentUri)) {
     return;
   }
+  if (await openLocalLink(rawHref, documentUri)) {
+    return;
+  }
   await openExternalLink(rawHref);
+}
+
+async function openLocalLink(rawHref: string, documentUri: vscode.Uri): Promise<boolean> {
+  const targetUri = await resolveLocalLinkTargetUri(rawHref, documentUri);
+  if (!targetUri) {
+    return false;
+  }
+
+  await vscode.commands.executeCommand('vscode.open', targetUri, {
+    preview: false
+  });
+  return true;
 }
 
 async function openWikiLink(rawHref: string, documentUri: vscode.Uri): Promise<boolean> {
@@ -483,6 +502,49 @@ async function resolveWikiLinkTargetUri(target: string, documentUri: vscode.Uri)
       return uri;
     }
   }
+  return null;
+}
+
+async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
+  const trimmed = rawHref.trim();
+  if (!trimmed || trimmed.startsWith('#')) {
+    return null;
+  }
+
+  const [targetPath = ''] = trimmed.split(/[?#]/, 1);
+  if (!targetPath) {
+    return null;
+  }
+
+  if (/^file:/i.test(targetPath)) {
+    try {
+      const fileUri = vscode.Uri.parse(targetPath, true);
+      return (await uriExists(fileUri)) ? fileUri : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (SCHEME_RE.test(targetPath)) {
+    return null;
+  }
+
+  const decodedPath = safeDecodeURIComponent(targetPath).replace(/\\/g, path.sep);
+  const basePath = path.isAbsolute(decodedPath)
+    ? decodedPath
+    : path.resolve(path.dirname(documentUri.fsPath), decodedPath);
+  const ext = path.extname(decodedPath);
+  const candidates = ext
+    ? [basePath]
+    : [basePath, `${basePath}.md`, `${basePath}.markdown`];
+
+  for (const candidate of candidates) {
+    const uri = vscode.Uri.file(candidate);
+    if (await uriExists(uri)) {
+      return uri;
+    }
+  }
+
   return null;
 }
 
@@ -560,6 +622,20 @@ function safeDecodeURIComponent(value: string): string {
   } catch {
     return value;
   }
+}
+
+function normalizeExternalHref(rawHref: string): string {
+  const trimmed = rawHref.trim();
+  if (!trimmed || trimmed.startsWith('#')) {
+    return '';
+  }
+  if (/^\/\//.test(trimmed)) {
+    return `https:${trimmed}`;
+  }
+  if (SCHEME_RE.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
 }
 
 function resolveWorktreeUriFromGitUri(uri: vscode.Uri): vscode.Uri | undefined {

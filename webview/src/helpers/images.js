@@ -149,9 +149,6 @@ export function getImageData(state, node) {
     const linkUrlNode = findChildNode(parentNode, 'URL');
     if (linkUrlNode) {
       linkUrl = state.doc.sliceString(linkUrlNode.from, linkUrlNode.to).trim();
-      if (linkUrl && !/^[a-z][a-z0-9+.-]*:/i.test(linkUrl)) {
-        linkUrl = `https://${linkUrl}`;
-      }
     }
   }
 

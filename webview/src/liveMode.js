@@ -154,13 +154,7 @@ function addForcedThematicBreakDecorations(builder, state, activeLines, frontmat
 
 function getNodeHref(state, node) {
   const href = state.doc.sliceString(node.from, node.to).trim();
-  if (!href) {
-    return '';
-  }
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-    return href;
-  }
-  return `https://${href}`;
+  return href || '';
 }
 
 function addLinkMark(builder, from, to, href) {
