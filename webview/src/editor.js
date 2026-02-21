@@ -7,6 +7,7 @@ import { highlightStyle } from './theme';
 import { liveModeExtensions } from './liveMode';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
+import { sourceWikiMarkerField } from './helpers/wikiLinks';
 import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
 import {
   sourceListBorderField,
@@ -22,6 +23,7 @@ import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 import { sourceFrontmatterField } from './helpers/frontmatter';
 
 const setSearchQueryEffect = StateEffect.define();
+const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
 
 const buildSearchDecorations = (doc, query) => {
@@ -678,6 +680,8 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
           return insertTable(view, selection, level?.cols, level?.rows);
         case 'link':
           return insertLink(view, selection);
+        case 'wikiLink':
+          return insertWikiLink(view, selection);
         case 'image':
           return insertImage(view, selection);
       }
@@ -704,6 +708,9 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
     },
     refreshSelectionOverlay() {
       emitSelectionChange();
+    },
+    refreshDecorations() {
+      view.dispatch({ effects: refreshDecorationsEffect.of(null) });
     }
   };
 }
@@ -946,7 +953,7 @@ function insertLink(view, selection) {
   const insert = '[]()';
   view.dispatch({
     changes: { from: selection.from, insert },
-    selection: { anchor: selection.from + 1 }
+    selection: { anchor: selection.from + 3 }
   });
 }
 
@@ -966,6 +973,26 @@ function insertImage(view, selection) {
   const insert = '![]()';
   view.dispatch({
     changes: { from: selection.from, insert },
+    selection: { anchor: selection.from + 4 }
+  });
+}
+
+function insertWikiLink(view, selection) {
+  const { state } = view;
+
+  if (!selection.empty) {
+    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    const insert = `[[${selectedText}]]`;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length }
+    });
+    return;
+  }
+
+  const insert = '[[]]';
+  view.dispatch({
+    changes: { from: selection.from, insert },
     selection: { anchor: selection.from + 2 }
   });
 }
@@ -983,6 +1010,7 @@ function sourceMode() {
     sourceListBorderField,
     sourceListMarkerField,
     sourceStrikeMarkerField,
+    sourceWikiMarkerField,
     sourceTableHeaderLineField,
     sourceFrontmatterField
   ];

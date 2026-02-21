@@ -1,5 +1,19 @@
 import { WidgetType } from '@codemirror/view';
 
+const IMAGE_EXT_RE = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp)(?:$|[?#])/i;
+let imageSrcResolver = (url) => url;
+
+export function setImageSrcResolver(resolver) {
+  imageSrcResolver = typeof resolver === 'function' ? resolver : ((url) => url);
+}
+
+export function isImageUrl(url) {
+  if (!url) {
+    return false;
+  }
+  return IMAGE_EXT_RE.test(url);
+}
+
 export class ImageWidget extends WidgetType {
   constructor(url, altText, linkUrl) {
     super();
@@ -29,7 +43,6 @@ export class ImageWidget extends WidgetType {
     const img = document.createElement('img');
     img.className = 'meo-md-image-img';
     img.alt = this.altText;
-    img.src = this.url;
     img.loading = 'lazy';
 
     const loadingPlaceholder = document.createElement('div');
@@ -52,6 +65,7 @@ export class ImageWidget extends WidgetType {
 
     container.appendChild(loadingPlaceholder);
     container.appendChild(img);
+    this.setImageSource(img, container, loadingPlaceholder);
 
     if (this.linkUrl) {
       container.classList.add('meo-md-image-linked');
@@ -66,7 +80,35 @@ export class ImageWidget extends WidgetType {
     const fallback = document.createElement('code');
     fallback.className = 'meo-md-image-fallback-text';
     fallback.textContent = `![${this.altText}](${this.url})`;
-    container.appendChild(fallback);
+    container.replaceChildren(fallback);
+  }
+
+  setImageSource(img, container, loadingPlaceholder) {
+    const fail = () => {
+      if (container.contains(loadingPlaceholder)) {
+        container.removeChild(loadingPlaceholder);
+      }
+      this.renderFallback(container);
+    };
+
+    const resolved = imageSrcResolver(this.url);
+    if (isPromiseLike(resolved)) {
+      resolved.then((value) => {
+        if (!value || !container.isConnected) {
+          fail();
+          return;
+        }
+        img.src = value;
+      }).catch(fail);
+      return;
+    }
+
+    if (!resolved) {
+      fail();
+      return;
+    }
+
+    img.src = resolved;
   }
 
   ignoreEvent(event) {
@@ -75,6 +117,10 @@ export class ImageWidget extends WidgetType {
     }
     return true;
   }
+}
+
+function isPromiseLike(value) {
+  return Boolean(value) && typeof value.then === 'function';
 }
 
 function findChildNode(node, name) {

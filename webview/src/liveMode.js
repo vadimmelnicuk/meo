@@ -2,7 +2,7 @@ import { RangeSetBuilder, StateField } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
 import { Decoration, EditorView, GutterMarker, WidgetType, gutterLineClass } from '@codemirror/view';
-import { createElement, Delete } from 'lucide';
+import { createElement, AlertCircle, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
   isFenceMarker,
@@ -11,18 +11,22 @@ import {
   addMermaidDiagram,
   addCopyCodeButton
 } from './helpers/codeBlocks';
-import { ImageWidget, getImageData } from './helpers/images';
+import { ImageWidget, getImageData, isImageUrl } from './helpers/images';
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import { addListMarkerDecoration, listMarkerData, detectListIndentStylesByLine } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 import { parseFrontmatter, isThematicBreakLine } from './helpers/frontmatter';
+import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
 const linkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker' });
 const activeLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active' });
+const wikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker' });
+const activeWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active meo-md-wiki-marker' });
+const emptyWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker meo-md-wiki-empty-marker' });
 const strikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-strike-marker' });
 const activeStrikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-strike-marker-active' });
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
@@ -175,7 +179,11 @@ function addLinkMark(builder, from, to, href) {
 }
 
 function findChildNode(node, name) {
-  for (let child = node.node.firstChild; child; child = child.nextSibling) {
+  const syntaxNode = node?.node ?? node;
+  if (!syntaxNode?.firstChild) {
+    return null;
+  }
+  for (let child = syntaxNode.firstChild; child; child = child.nextSibling) {
     if (child.name === name) {
       return child;
     }
@@ -226,6 +234,25 @@ class ClearLinkUrlWidget extends WidgetType {
   }
 }
 
+class MissingWikiLinkWidget extends WidgetType {
+  eq(other) {
+    return other instanceof MissingWikiLinkWidget;
+  }
+
+  toDOM() {
+    const badge = document.createElement('span');
+    badge.className = 'meo-md-wiki-missing-icon';
+    badge.title = 'Wiki link target not found locally';
+    badge.setAttribute('aria-label', 'Wiki link target not found locally');
+    badge.appendChild(createElement(AlertCircle, { 'aria-hidden': 'true' }));
+    return badge;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
 function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   const urlNode = findChildNode(node, 'URL');
   if (!urlNode) {
@@ -263,6 +290,28 @@ function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   );
 }
 
+function getEmptyImageLinkUrl(state, node) {
+  const urlNode = findChildNode(node, 'URL');
+  if (!urlNode) {
+    return '';
+  }
+
+  const prefix = state.doc.sliceString(node.from, urlNode.from);
+  const closeTextAt = prefix.lastIndexOf('](');
+  if (closeTextAt < 1) {
+    return '';
+  }
+
+  const textFrom = node.from + 1;
+  const textTo = node.from + closeTextAt;
+  if (state.doc.sliceString(textFrom, textTo).trim()) {
+    return '';
+  }
+
+  const url = state.doc.sliceString(urlNode.from, urlNode.to).trim();
+  return isImageUrl(url) ? url : '';
+}
+
 function addAutolinkDecorations(builder, state, node) {
   const urlNode = findChildNode(node, 'URL');
   if (!urlNode) {
@@ -270,6 +319,43 @@ function addAutolinkDecorations(builder, state, node) {
   }
 
   addLinkMark(builder, urlNode.from, urlNode.to, getNodeHref(state, urlNode));
+}
+
+function addWikiLinkDecorations(builder, state, node, activeLines) {
+  const wikiLink = parseWikiLinkData(state, node);
+  if (!wikiLink) {
+    return false;
+  }
+
+  const hasVisibleText = wikiLink.textFrom >= 0 && wikiLink.textTo > wikiLink.textFrom;
+  if (wikiLink.href && hasVisibleText) {
+    addLinkMark(builder, wikiLink.textFrom, wikiLink.textTo, wikiLink.href);
+  }
+  const lineNo = state.doc.lineAt(node.from).number;
+  const marker = activeLines.has(lineNo)
+    ? activeWikiLinkMarkerDeco
+    : hasVisibleText
+      ? wikiLinkMarkerDeco
+      : emptyWikiLinkMarkerDeco;
+  addRange(builder, wikiLink.openFrom, wikiLink.openTo, marker);
+  addRange(builder, wikiLink.closeFrom, wikiLink.closeTo, marker);
+
+  if (!activeLines.has(lineNo) && wikiLink.hideTo > wikiLink.hideFrom) {
+    addRange(builder, wikiLink.hideFrom, wikiLink.hideTo, hiddenLinkUrlDeco);
+  }
+
+  const localTargetStatus = getWikiLinkStatus(wikiLink.localTarget);
+  if (wikiLink.localTarget && localTargetStatus === false) {
+    const iconPos = hasVisibleText ? wikiLink.textFrom : wikiLink.openTo;
+    builder.push(
+      Decoration.widget({
+        widget: new MissingWikiLinkWidget(),
+        side: -1
+      }).range(iconPos)
+    );
+  }
+
+  return true;
 }
 
 function addRange(builder, from, to, deco) {
@@ -471,6 +557,27 @@ function buildDecorations(state) {
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
       } else if (node.name === 'Link') {
+        if (addWikiLinkDecorations(ranges, state, node, activeLines)) {
+          return;
+        }
+        const emptyImageUrl = getEmptyImageLinkUrl(state, node);
+        if (emptyImageUrl) {
+          const line = state.doc.lineAt(node.from);
+          if (!activeLines.has(line.number)) {
+            const linkSelection = state.selection.ranges.some(
+              (r) => r.from < node.to && r.to > node.from
+            );
+            if (!linkSelection) {
+              ranges.push(
+                Decoration.replace({
+                  widget: new ImageWidget(emptyImageUrl, '', ''),
+                  inclusive: false
+                }).range(node.from, node.to)
+              );
+              return;
+            }
+          }
+        }
         addMarkdownLinkDecorations(ranges, state, node, activeLines);
       } else if (node.name === 'Autolink') {
         addAutolinkDecorations(ranges, state, node);
@@ -530,6 +637,9 @@ function buildDecorations(state) {
             return;
           }
         } else if (parentName === 'Link') {
+          if (isWikiLinkNode(state, node.node.parent)) {
+            return;
+          }
           const urlNode = findChildNode(node.node.parent, 'URL');
           if (!urlNode) {
             return;

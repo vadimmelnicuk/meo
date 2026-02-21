@@ -1,5 +1,7 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
+import { setImageSrcResolver } from './helpers/images';
+import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
 
 import * as colors from './theme';
 for (const [name, value] of Object.entries(colors)) {
@@ -9,6 +11,116 @@ for (const [name, value] of Object.entries(colors)) {
 }
 
 const vscode = acquireVsCodeApi();
+const imageSrcCache = new Map();
+const pendingImageResolvers = new Map();
+const imageRequestById = new Map();
+let imageRequestCounter = 0;
+let wikiLinkRequestCounter = 0;
+let latestWikiLinkRequestId = '';
+let pendingWikiStatusRefresh = null;
+const wikiStatusDebounceMs = 1000;
+
+const isImmediateImageSrc = (url) => /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i.test(url);
+
+const requestImageSrcResolution = (url) => new Promise((resolve) => {
+  const waiting = pendingImageResolvers.get(url);
+  if (waiting) {
+    waiting.push(resolve);
+    return;
+  }
+
+  pendingImageResolvers.set(url, [resolve]);
+  const requestId = `img-${imageRequestCounter++}`;
+  imageRequestById.set(requestId, url);
+  vscode.postMessage({ type: 'resolveImageSrc', requestId, url });
+});
+
+const settleImageSrcRequest = (requestId, resolvedUrl) => {
+  const rawUrl = imageRequestById.get(requestId);
+  if (typeof rawUrl !== 'string') {
+    return;
+  }
+
+  imageRequestById.delete(requestId);
+  const finalUrl = resolvedUrl || rawUrl;
+  imageSrcCache.set(rawUrl, finalUrl);
+  const waiters = pendingImageResolvers.get(rawUrl) ?? [];
+  pendingImageResolvers.delete(rawUrl);
+  for (const resolve of waiters) {
+    resolve(finalUrl);
+  }
+};
+
+const resolveImageSrc = (rawUrl) => {
+  const url = (rawUrl ?? '').trim();
+  if (!url || isImmediateImageSrc(url)) {
+    return url;
+  }
+  const cached = imageSrcCache.get(url);
+  if (typeof cached === 'string') {
+    return cached;
+  }
+  return requestImageSrcResolution(url);
+};
+
+setImageSrcResolver(resolveImageSrc);
+
+const isEscapedAt = (text, index) => {
+  let slashCount = 0;
+  for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+};
+
+const collectWikiLinkTargets = (text) => {
+  const targets = new Set();
+  for (let i = 0; i < text.length - 1; i += 1) {
+    if (text[i] !== '[' || text[i + 1] !== '[') {
+      continue;
+    }
+    if ((i > 0 && text[i - 1] === '!') || isEscapedAt(text, i)) {
+      continue;
+    }
+
+    const close = text.indexOf(']]', i + 2);
+    if (close < 0) {
+      break;
+    }
+    const content = text.slice(i + 2, close);
+    const pipeIndex = content.indexOf('|');
+    const targetRaw = (pipeIndex >= 0 ? content.slice(0, pipeIndex) : content).trim();
+    const target = normalizeWikiTarget(targetRaw);
+    if (target) {
+      targets.add(target);
+    }
+    i = close + 1;
+  }
+  return Array.from(targets);
+};
+
+const requestWikiLinkStatuses = (text) => {
+  const targets = collectWikiLinkTargets(text);
+  if (!targets.length) {
+    replaceWikiLinkStatuses([]);
+    editor?.refreshDecorations();
+    return;
+  }
+
+  const requestId = `wiki-${wikiLinkRequestCounter++}`;
+  latestWikiLinkRequestId = requestId;
+  vscode.postMessage({ type: 'resolveWikiLinks', requestId, targets });
+};
+
+const scheduleWikiLinkStatusRefresh = (text) => {
+  if (pendingWikiStatusRefresh !== null) {
+    window.clearTimeout(pendingWikiStatusRefresh);
+  }
+  pendingWikiStatusRefresh = window.setTimeout(() => {
+    pendingWikiStatusRefresh = null;
+    requestWikiLinkStatuses(text);
+  }, wikiStatusDebounceMs);
+};
 
 const root = document.getElementById('app');
 
@@ -192,6 +304,13 @@ linkBtn.dataset.action = 'link';
 linkBtn.title = 'Link';
 linkBtn.appendChild(createElement(Link, { width: 18, height: 18 }));
 
+const wikiLinkBtn = document.createElement('button');
+wikiLinkBtn.type = 'button';
+wikiLinkBtn.className = 'format-button';
+wikiLinkBtn.dataset.action = 'wikiLink';
+wikiLinkBtn.title = 'Wiki Link';
+wikiLinkBtn.appendChild(createElement(Brackets, { width: 18, height: 18 }));
+
 const imageBtn = document.createElement('button');
 imageBtn.type = 'button';
 imageBtn.className = 'format-button';
@@ -274,7 +393,7 @@ tableGrid.addEventListener('click', (event) => {
   editor.focus();
 });
 
-formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, linkBtn, imageBtn, quoteBtn, hrBtn);
+formatGroup.append(headingWrapper, bulletListBtn, numberedListBtn, taskBtn, separator, tableWrapper, codeBlockBtn, linkBtn, wikiLinkBtn, imageBtn, quoteBtn, hrBtn);
 
 const rightGroup = document.createElement('div');
 rightGroup.className = 'right-group';
@@ -402,13 +521,15 @@ const selectionItalicBtn = createSelectionActionButton('italic', 'Italic', Itali
 const selectionLineoverBtn = createSelectionActionButton('lineover', 'Lineover', Strikethrough);
 const selectionInlineCodeBtn = createSelectionActionButton('inlineCode', 'Inline Code', Terminal);
 const selectionLinkBtn = createSelectionActionButton('link', 'Link', Link);
+const selectionWikiLinkBtn = createSelectionActionButton('wikiLink', 'Wiki Link', Brackets);
 
 selectionMenu.append(
   selectionBoldBtn,
   selectionItalicBtn,
   selectionLineoverBtn,
   selectionInlineCodeBtn,
-  selectionLinkBtn
+  selectionLinkBtn,
+  selectionWikiLinkBtn
 );
 
 editorWrapper.append(editorHost, outlineSidebar, selectionMenu);
@@ -759,6 +880,7 @@ const queueChanges = (nextText) => {
   if (outlineVisible) {
     updateOutline();
   }
+  scheduleWikiLinkStatusRefresh(nextText);
   updateFindStatusSummary();
 };
 
@@ -778,6 +900,7 @@ const mountInitialEditor = () => {
     },
     onSelectionChange: updateSelectionMenu
   });
+  requestWikiLinkStatuses(initialText);
 };
 
 const scheduleInitialEditorMount = () => {
@@ -811,6 +934,7 @@ const handleInit = (message) => {
   if (editor && outlineVisible) {
     updateOutline();
   }
+  scheduleWikiLinkStatusRefresh(message.text);
   updateFindStatusSummary();
 };
 
@@ -905,6 +1029,7 @@ window.addEventListener('message', (event) => {
     }
 
     editor.setText(message.text);
+    scheduleWikiLinkStatusRefresh(message.text);
     updateFindStatusSummary();
     return;
   }
@@ -929,6 +1054,19 @@ window.addEventListener('message', (event) => {
     updateAutoSaveUI();
     return;
   }
+
+  if (message.type === 'resolvedImageSrc') {
+    settleImageSrcRequest(message.requestId, message.resolvedUrl);
+    return;
+  }
+
+  if (message.type === 'resolvedWikiLinks') {
+    if (message.requestId !== latestWikiLinkRequestId) {
+      return;
+    }
+    replaceWikiLinkStatuses(message.results ?? []);
+    editor?.refreshDecorations();
+  }
 });
 
 window.addEventListener('keydown', (event) => {
@@ -944,6 +1082,10 @@ window.addEventListener('blur', () => {
 });
 
 window.addEventListener('beforeunload', () => {
+  if (pendingWikiStatusRefresh !== null) {
+    window.clearTimeout(pendingWikiStatusRefresh);
+    pendingWikiStatusRefresh = null;
+  }
   flushChanges();
 });
 
@@ -1057,9 +1199,10 @@ taskBtn.addEventListener('click', () => handleFormatAction('task'));
 codeBlockBtn.addEventListener('click', () => handleFormatAction('codeBlock'));
 quoteBtn.addEventListener('click', () => handleFormatAction('quote'));
 hrBtn.addEventListener('click', () => handleFormatAction('hr'));
-  linkBtn.addEventListener('click', () => handleFormatAction('link'));
-  imageBtn.addEventListener('click', () => handleFormatAction('image'));
-  autoSaveBtn.addEventListener('click', toggleAutoSave);
+linkBtn.addEventListener('click', () => handleFormatAction('link'));
+wikiLinkBtn.addEventListener('click', () => handleFormatAction('wikiLink'));
+imageBtn.addEventListener('click', () => handleFormatAction('image'));
+autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
 
 vscode.setState({ mode: currentMode });

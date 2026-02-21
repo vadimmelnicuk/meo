@@ -561,6 +561,15 @@ body {
   color: var(--meo-color-base02) !important;
 }
 
+.cm-editor .meo-md-wiki-marker,
+.cm-editor .meo-md-wiki-marker * {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor.meo-mode-live .meo-md-wiki-empty-marker {
+  display: inline !important;
+}
+
 .cm-editor .meo-md-link-clear-btn {
   display: inline-flex;
   align-items: center;
@@ -587,6 +596,24 @@ body {
 
 .cm-editor .meo-md-link-clear-btn:hover {
   color: var(--vscode-editor-foreground);
+}
+
+.cm-editor .meo-md-wiki-missing-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  line-height: 1;
+  color: var(--vscode-editorWarning-foreground, #d7ba7d);
+  vertical-align: middle;
+}
+
+.cm-editor .meo-md-wiki-missing-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .cm-editor .meo-md-quote {

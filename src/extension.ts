@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
 const AUTO_SAVE_KEY = 'autoSaveEnabled';
+const WIKI_LINK_SCHEME = 'meo-wiki:';
 type EditorMode = 'live' | 'source';
 
 type AutoSaveChangedMessage = {
@@ -44,6 +46,18 @@ type OpenLinkMessage = {
   href: string;
 };
 
+type ResolveImageSrcMessage = {
+  type: 'resolveImageSrc';
+  requestId: string;
+  url: string;
+};
+
+type ResolveWikiLinksMessage = {
+  type: 'resolveWikiLinks';
+  requestId: string;
+  targets: string[];
+};
+
 type SaveDocumentMessage = {
   type: 'saveDocument';
 };
@@ -53,13 +67,30 @@ type SetAutoSaveMessage = {
   enabled: boolean;
 };
 
+type ResolvedImageSrcMessage = {
+  type: 'resolvedImageSrc';
+  requestId: string;
+  resolvedUrl: string;
+};
+
+type ResolvedWikiLinksMessage = {
+  type: 'resolvedWikiLinks';
+  requestId: string;
+  results: Array<{ target: string; exists: boolean }>;
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | SetModeMessage
   | SetAutoSaveMessage
   | OpenLinkMessage
+  | ResolveImageSrcMessage
+  | ResolveWikiLinksMessage
   | SaveDocumentMessage
   | { type: 'ready' };
+
+const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i;
+const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 
 export function activate(context: vscode.ExtensionContext): void {
   const useAsDefault = vscode.workspace.getConfiguration('markdownEditorOptimized').get<boolean>('useAsDefault', true);
@@ -123,9 +154,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     this.activePanels.add(panel);
 
+    const documentUri = resolveWorktreeUri(document);
+    const distRoot = vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist');
+    const localRoots = collectLocalResourceRoots(distRoot, documentUri);
     panel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist')]
+      localResourceRoots: localRoots
     };
 
     panel.webview.html = this.getWebviewHtml(panel.webview);
@@ -192,8 +226,28 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           this.broadcastAutoSaveChanged(raw.enabled);
           return;
         case 'openLink':
-          await openExternalLink(raw.href);
+          await openLink(raw.href, documentUri);
           return;
+        case 'resolveImageSrc': {
+          const resolvedUrl = resolveWebviewImageSrc(raw.url, documentUri, panel.webview);
+          const response: ResolvedImageSrcMessage = {
+            type: 'resolvedImageSrc',
+            requestId: raw.requestId,
+            resolvedUrl
+          };
+          await panel.webview.postMessage(response);
+          return;
+        }
+        case 'resolveWikiLinks': {
+          const results = await resolveWikiLinkTargets(raw.targets, documentUri);
+          const response: ResolvedWikiLinksMessage = {
+            type: 'resolvedWikiLinks',
+            requestId: raw.requestId,
+            results
+          };
+          await panel.webview.postMessage(response);
+          return;
+        }
         case 'applyChanges':
           isApplyingOwnChange = true;
           await enqueue(() => applyDocumentChanges(document, raw, sendDocChanged, sendApplied));
@@ -357,6 +411,90 @@ async function openExternalLink(rawHref: string): Promise<void> {
   }
 }
 
+async function openLink(rawHref: string, documentUri: vscode.Uri): Promise<void> {
+  if (await openWikiLink(rawHref, documentUri)) {
+    return;
+  }
+  await openExternalLink(rawHref);
+}
+
+async function openWikiLink(rawHref: string, documentUri: vscode.Uri): Promise<boolean> {
+  if (!rawHref.toLowerCase().startsWith(WIKI_LINK_SCHEME)) {
+    return false;
+  }
+
+  const decoded = safeDecodeURIComponent(rawHref.slice(WIKI_LINK_SCHEME.length)).trim();
+  if (!decoded) {
+    return true;
+  }
+
+  const target = decoded.split('#', 1)[0]?.trim() ?? '';
+  if (!target) {
+    return true;
+  }
+
+  const targetUri = await resolveWikiLinkTargetUri(target, documentUri);
+  if (!targetUri) {
+    return true;
+  }
+
+  const targetDoc = await vscode.workspace.openTextDocument(targetUri);
+  await vscode.window.showTextDocument(targetDoc, { preview: false });
+  return true;
+}
+
+async function resolveWikiLinkTargets(
+  targets: string[],
+  documentUri: vscode.Uri
+): Promise<Array<{ target: string; exists: boolean }>> {
+  const uniqueTargets = Array.from(new Set(targets
+    .map((target) => normalizeWikiTarget(target))
+    .filter((target) => target.length > 0)));
+
+  const resolved = await Promise.all(uniqueTargets.map(async (target) => {
+    const targetUri = await resolveWikiLinkTargetUri(target, documentUri);
+    return { target, exists: Boolean(targetUri) };
+  }));
+
+  return resolved;
+}
+
+function normalizeWikiTarget(target: string): string {
+  const normalized = target.split('#', 1)[0]?.trim() ?? '';
+  if (!normalized || SCHEME_RE.test(normalized)) {
+    return '';
+  }
+  return normalized;
+}
+
+async function resolveWikiLinkTargetUri(target: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
+  const normalized = target.replace(/\\/g, path.sep);
+  const basePath = path.isAbsolute(normalized)
+    ? normalized
+    : path.resolve(path.dirname(documentUri.fsPath), normalized);
+  const ext = path.extname(normalized);
+  const candidates = ext
+    ? [basePath]
+    : [`${basePath}.md`, `${basePath}.markdown`, basePath];
+
+  for (const candidate of candidates) {
+    const uri = vscode.Uri.file(candidate);
+    if (await uriExists(uri)) {
+      return uri;
+    }
+  }
+  return null;
+}
+
+async function uriExists(uri: vscode.Uri): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let nonce = '';
@@ -364,6 +502,64 @@ function getNonce(): string {
     nonce += chars[Math.floor(Math.random() * chars.length)];
   }
   return nonce;
+}
+
+function collectLocalResourceRoots(distRoot: vscode.Uri, documentUri: vscode.Uri): vscode.Uri[] {
+  const roots = new Map<string, vscode.Uri>();
+  roots.set(distRoot.toString(), distRoot);
+
+  const documentDir = vscode.Uri.file(path.dirname(documentUri.fsPath));
+  roots.set(documentDir.toString(), documentDir);
+
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    roots.set(folder.uri.toString(), folder.uri);
+  }
+
+  return Array.from(roots.values());
+}
+
+function resolveWebviewImageSrc(rawUrl: string, documentUri: vscode.Uri, webview: vscode.Webview): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (ALLOWED_IMAGE_SRC_RE.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (SCHEME_RE.test(trimmed) && !/^file:/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const [pathPart = ''] = trimmed.split(/[?#]/, 1);
+  let filePath = '';
+  if (/^file:/i.test(trimmed)) {
+    try {
+      filePath = vscode.Uri.parse(pathPart, true).fsPath;
+    } catch {
+      filePath = '';
+    }
+  } else if (path.isAbsolute(pathPart)) {
+    filePath = pathPart;
+  } else {
+    const decoded = safeDecodeURIComponent(pathPart);
+    filePath = path.resolve(path.dirname(documentUri.fsPath), decoded);
+  }
+
+  if (!filePath) {
+    return trimmed;
+  }
+
+  return webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function resolveWorktreeUriFromGitUri(uri: vscode.Uri): vscode.Uri | undefined {
