@@ -1,5 +1,9 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.5
+- Added wiki link support, including link parsing, local file presense detection, and navigation for `[[...]]` references.
+- Added local image source resolution so workspace-relative image paths render correctly in the editor.
+
 ## 0.1.4
 - Added image insertion and rendering functionality in the editor.
 
