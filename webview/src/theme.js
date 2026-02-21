@@ -1,16 +1,17 @@
 import { HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
+import { defaultThemeColors } from '../../src/shared/themeDefaults';
 
 // Monokai-inspired color palette adapted for VS Code's theming system
 const base01 = 'var(--vscode-editor-foreground)';
-const base02 = '#676f7d';
-const base03 = '#3e444d';
-const base04 = '#e06c75';
-const base05 = '#61afef';
-const base06 = '#66D9EF';
-const base07 = '#e5c07b';
-const base08 = '#c678dd';
-const base09 = '#98c379';
+const base02 = `var(--meo-color-base02, ${defaultThemeColors.base02})`;
+const base03 = `var(--meo-color-base03, ${defaultThemeColors.base03})`;
+const base04 = `var(--meo-color-base04, ${defaultThemeColors.base04})`;
+const base05 = `var(--meo-color-base05, ${defaultThemeColors.base05})`;
+const base06 = `var(--meo-color-base06, ${defaultThemeColors.base06})`;
+const base07 = `var(--meo-color-base07, ${defaultThemeColors.base07})`;
+const base08 = `var(--meo-color-base08, ${defaultThemeColors.base08})`;
+const base09 = `var(--meo-color-base09, ${defaultThemeColors.base09})`;
 
 export { base01, base02, base03, base04, base05, base06, base07, base08, base09 };
 

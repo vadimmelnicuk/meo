@@ -1,14 +1,8 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
 import { setImageSrcResolver } from './helpers/images';
 import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
-
-import * as colors from './theme';
-for (const [name, value] of Object.entries(colors)) {
-  if (typeof value === 'string') {
-    document.documentElement.style.setProperty(`--meo-color-${name}`, value);
-  }
-}
+import { defaultThemeColors, themeColorKeys } from '../../src/shared/themeDefaults';
 
 const vscode = acquireVsCodeApi();
 const imageSrcCache = new Map();
@@ -19,6 +13,25 @@ let wikiLinkRequestCounter = 0;
 let latestWikiLinkRequestId = '';
 let pendingWikiStatusRefresh = null;
 const wikiStatusDebounceMs = 1000;
+const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
+
+const applyThemeSettings = (theme) => {
+  const rootStyle = document.documentElement.style;
+  const colors = theme?.colors ?? {};
+
+  for (const key of themeColorKeys) {
+    const fallback = defaultThemeColors[key];
+    const value = typeof colors[key] === 'string' ? colors[key].trim() : '';
+    rootStyle.setProperty(`--meo-color-${key}`, value || fallback);
+  }
+
+  const fonts = theme?.fonts ?? {};
+  const liveFont = typeof fonts.live === 'string' ? fonts.live.trim() : '';
+  const sourceFont = typeof fonts.source === 'string' ? fonts.source.trim() : '';
+  rootStyle.setProperty('--meo-font-live', liveFont || vscodeEditorFontFamily);
+  rootStyle.setProperty('--meo-font-source', sourceFont || vscodeEditorFontFamily);
+};
+applyThemeSettings();
 
 const isImmediateImageSrc = (url) => /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i.test(url);
 
@@ -198,19 +211,27 @@ let autoSaveEnabled = true;
 
 const autoSaveBtn = document.createElement('button');
 autoSaveBtn.type = 'button';
-autoSaveBtn.className = 'format-button is-active';
+autoSaveBtn.className = 'format-button toggle-button is-active';
 autoSaveBtn.dataset.action = 'autoSave';
 autoSaveBtn.title = 'Auto Save';
 autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
 let outlineVisible = false;
+let lineNumbersVisible = true;
 
 const outlineBtn = document.createElement('button');
 outlineBtn.type = 'button';
-outlineBtn.className = 'format-button';
+outlineBtn.className = 'format-button toggle-button';
 outlineBtn.dataset.action = 'outline';
 outlineBtn.title = 'Toggle Outline';
 outlineBtn.appendChild(createElement(ListTree, { width: 18, height: 18 }));
+
+const lineNumbersBtn = document.createElement('button');
+lineNumbersBtn.type = 'button';
+lineNumbersBtn.className = 'format-button toggle-button is-active';
+lineNumbersBtn.dataset.action = 'lineNumbers';
+lineNumbersBtn.title = 'Hide Line Numbers';
+lineNumbersBtn.appendChild(createElement(Hash, { width: 18, height: 18 }));
 
 const outlineSidebar = document.createElement('div');
 outlineSidebar.className = 'outline-sidebar';
@@ -229,6 +250,12 @@ const updateAutoSaveUI = () => {
 const updateOutlineUI = () => {
   outlineBtn.classList.toggle('is-active', outlineVisible);
   root.classList.toggle('outline-visible', outlineVisible);
+};
+
+const updateLineNumbersUI = () => {
+  lineNumbersBtn.classList.toggle('is-active', lineNumbersVisible);
+  lineNumbersBtn.setAttribute('aria-pressed', lineNumbersVisible ? 'true' : 'false');
+  lineNumbersBtn.title = lineNumbersVisible ? 'Hide Line Numbers' : 'Show Line Numbers';
 };
 
 const toggleOutline = () => {
@@ -270,6 +297,27 @@ const toggleAutoSave = () => {
   autoSaveEnabled = !autoSaveEnabled;
   updateAutoSaveUI();
   vscode.postMessage({ type: 'setAutoSave', enabled: autoSaveEnabled });
+};
+
+const persistModeState = () => {
+  vscode.setState({ mode: currentMode });
+};
+
+const setLineNumbersVisible = (visible, { post = true } = {}) => {
+  const nextVisible = visible !== false;
+  const changed = nextVisible !== lineNumbersVisible;
+  if (changed) {
+    lineNumbersVisible = nextVisible;
+    editor?.setLineNumbers(lineNumbersVisible);
+  }
+  updateLineNumbersUI();
+  if (post && changed) {
+    vscode.postMessage({ type: 'setLineNumbers', enabled: lineNumbersVisible });
+  }
+};
+
+const toggleLineNumbers = () => {
+  setLineNumbersVisible(!lineNumbersVisible);
 };
 
 const separator = document.createElement('div');
@@ -400,12 +448,12 @@ rightGroup.className = 'right-group';
 
 const findToggleBtn = document.createElement('button');
 findToggleBtn.type = 'button';
-findToggleBtn.className = 'format-button';
+findToggleBtn.className = 'format-button toggle-button';
 findToggleBtn.dataset.action = 'find';
 findToggleBtn.title = 'Find and Replace';
 findToggleBtn.appendChild(createElement(Search, { width: 18, height: 18 }));
 
-rightGroup.append(outlineBtn, findToggleBtn, autoSaveBtn);
+rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, autoSaveBtn);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -730,7 +778,7 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false } 
   }
 
   if (persist) {
-    vscode.setState({ mode });
+    persistModeState();
   }
 
   if (post) {
@@ -894,6 +942,7 @@ const mountInitialEditor = () => {
     parent: editorHost,
     text: initialText,
     initialMode: currentMode,
+    initialLineNumbers: lineNumbersVisible,
     onApplyChanges: queueChanges,
     onOpenLink: (href) => {
       vscode.postMessage({ type: 'openLink', href });
@@ -931,6 +980,9 @@ const handleInit = (message) => {
     autoSaveEnabled = message.autoSave;
     updateAutoSaveUI();
   }
+  if (typeof message.lineNumbers === 'boolean') {
+    setLineNumbersVisible(message.lineNumbers, { post: false });
+  }
   if (editor && outlineVisible) {
     updateOutline();
   }
@@ -946,6 +998,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'init') {
+    applyThemeSettings(message.theme);
     const nextMode = hasLocalModePreference ? currentMode : message.mode;
     documentVersion = message.version;
     syncedText = message.text;
@@ -960,6 +1013,11 @@ window.addEventListener('message', (event) => {
     } else {
       applyMode(nextMode, { post: false, persist: false });
     }
+    return;
+  }
+
+  if (message.type === 'themeChanged') {
+    applyThemeSettings(message.theme);
     return;
   }
 
@@ -1055,6 +1113,11 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'lineNumbersChanged') {
+    setLineNumbersVisible(message.enabled, { post: false });
+    return;
+  }
+
   if (message.type === 'resolvedImageSrc') {
     settleImageSrcRequest(message.requestId, message.resolvedUrl);
     return;
@@ -1100,11 +1163,12 @@ window.addEventListener('resize', () => {
 
 const state = vscode.getState();
 if (state && (state.mode === 'live' || state.mode === 'source')) {
-  applyMode(state.mode, { post: false });
+  applyMode(state.mode, { post: false, persist: false });
   hasLocalModePreference = true;
 } else {
   updateModeUI();
 }
+updateLineNumbersUI();
 
 liveButton.addEventListener('click', () => {
   applyMode('live', { userTriggered: true });
@@ -1204,7 +1268,8 @@ wikiLinkBtn.addEventListener('click', () => handleFormatAction('wikiLink'));
 imageBtn.addEventListener('click', () => handleFormatAction('image'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
 outlineBtn.addEventListener('click', toggleOutline);
+lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 
-vscode.setState({ mode: currentMode });
+persistModeState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });
 vscode.postMessage({ type: 'ready' });

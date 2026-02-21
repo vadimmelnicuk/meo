@@ -7,6 +7,21 @@ const MERMAID_CACHE_LIMIT = 100;
 const mermaidCache = new Map();
 const mermaidRenderInFlight = new Map();
 let mermaidIdCounter = 0;
+const MERMAID_MATH_CLASS = 'meoMath';
+const MERMAID_DIAGRAM_START_RE =
+  /^(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|c4Context|xychart(?:-beta)?|sankey-beta|block-beta|packet-beta|radar-beta)\b/i;
+const MERMAID_DISPLAY_MATH_RE = /^\$\$[\s\S]*\$\$$/;
+const DISPLAY_MATH_VIEWBOX_PADDING = 2;
+const DISPLAY_MATH_TRIM_RETRY_DELAYS_MS = [80, 220];
+const DISPLAY_MATH_LABEL_SELECTORS = [
+  '.nodeLabel .katex-mathml math',
+  '.nodeLabel .katex-display',
+  '.nodeLabel'
+];
+const MERMAID_DISPLAY_MATH_THEME_CSS =
+  '.nodeLabel > div{line-height:1 !important;margin:0 !important;padding:0 !important;}' +
+  '.katex-display{margin:0 !important;}' +
+  '.katex{line-height:1 !important;}';
 
 function getMermaidRuntimeSource() {
   return document.body?.dataset?.meoMermaidSrc ?? '';
@@ -69,7 +84,15 @@ async function initMermaid() {
   runtime.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
-    theme: 'dark'
+    theme: 'dark',
+    htmlLabels: true,
+    markdownAutoWrap: true,
+    flowchart: {
+      htmlLabels: true
+    },
+    // VS Code webviews can vary in MathML support, so force KaTeX-backed output.
+    legacyMathML: true,
+    forceLegacyMathML: true
   });
   mermaidInitialized = true;
   return runtime;
@@ -102,6 +125,7 @@ function cacheMermaidResult(diagramText, result) {
 }
 
 async function renderMermaidDiagram(diagramText) {
+  const normalizedDiagramText = normalizeMermaidDiagramText(diagramText);
   const cached = getCachedMermaidResult(diagramText);
   if (cached) {
     return cached;
@@ -114,7 +138,7 @@ async function renderMermaidDiagram(diagramText) {
 
   const id = `mermaid-${++mermaidIdCounter}`;
   const renderPromise = initMermaid()
-    .then((runtime) => runtime.render(id, diagramText))
+    .then((runtime) => runtime.render(id, normalizedDiagramText))
     .then(({ svg }) => {
       const result = { svg };
       cacheMermaidResult(diagramText, result);
@@ -131,6 +155,49 @@ async function renderMermaidDiagram(diagramText) {
 
   mermaidRenderInFlight.set(diagramText, renderPromise);
   return renderPromise;
+}
+
+function isDisplayMathDiagram(diagramText) {
+  return MERMAID_DISPLAY_MATH_RE.test(diagramText.trim());
+}
+
+function compactDisplayMath(diagramText) {
+  const inner = diagramText.trim().slice(2, -2).trim();
+  const singleLine = inner
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ');
+  return `$$${singleLine}$$`;
+}
+
+function escapeForMermaidLabel(text) {
+  return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function normalizeMermaidDiagramText(diagramText) {
+  const trimmed = diagramText.trim();
+  if (!trimmed || MERMAID_DIAGRAM_START_RE.test(trimmed)) {
+    return diagramText;
+  }
+  if (!isDisplayMathDiagram(trimmed)) {
+    return diagramText;
+  }
+
+  const escapedMath = escapeForMermaidLabel(compactDisplayMath(trimmed));
+  const initConfig = JSON.stringify({
+    flowchart: { diagramPadding: 0 },
+    themeCSS: MERMAID_DISPLAY_MATH_THEME_CSS
+  });
+
+  return [
+    `%%{init: ${initConfig}}%%`,
+    'flowchart LR',
+    `  MATH["${escapedMath}"]`,
+    '  style MATH fill:transparent,stroke:transparent,stroke-width:0px',
+    `  classDef ${MERMAID_MATH_CLASS} font-size:22px,padding:0px;`,
+    `  class MATH ${MERMAID_MATH_CLASS}`
+  ].join('\n');
 }
 
 export function getFencedCodeContent(state, node) {
@@ -165,6 +232,7 @@ export class MermaidDiagramWidget extends WidgetType {
   constructor(diagramText) {
     super();
     this.diagramText = diagramText;
+    this.isDisplayMath = isDisplayMathDiagram(diagramText);
     this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
@@ -185,6 +253,9 @@ export class MermaidDiagramWidget extends WidgetType {
   toDOM() {
     const container = document.createElement('div');
     container.className = 'meo-mermaid-block';
+    if (this.isDisplayMath) {
+      container.classList.add('meo-mermaid-math-block');
+    }
 
     const cached = getCachedMermaidResult(this.diagramText);
     if (cached) {
@@ -223,11 +294,113 @@ export class MermaidDiagramWidget extends WidgetType {
     svgWrapper.innerHTML = svgContent;
 
     container.appendChild(svgWrapper);
+    if (this.isDisplayMath) {
+      this.trimDisplayMathSvg(svgWrapper);
+      return;
+    }
 
     const controls = this.createZoomControls(svgWrapper);
     container.appendChild(controls);
 
     this.attachInteractions(svgWrapper, container);
+  }
+
+  trimDisplayMathSvg(svgWrapper) {
+    const applyTrim = () => {
+      const svg = svgWrapper.querySelector('svg');
+      if (!(svg instanceof SVGSVGElement)) {
+        return;
+      }
+
+      const bbox = this.getDisplayMathContentBox(svg) ?? this.getSvgContentBox(svg);
+      if (!bbox || bbox.width <= 0 || bbox.height <= 0) {
+        return;
+      }
+
+      const pad = DISPLAY_MATH_VIEWBOX_PADDING;
+      const x = bbox.x - pad;
+      const y = bbox.y - pad;
+      const width = bbox.width + pad * 2;
+      const height = bbox.height + pad * 2;
+
+      svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
+      svg.setAttribute('width', `${width}`);
+      svg.setAttribute('height', `${height}`);
+    };
+
+    requestAnimationFrame(applyTrim);
+    for (const delay of DISPLAY_MATH_TRIM_RETRY_DELAYS_MS) {
+      setTimeout(applyTrim, delay);
+    }
+  }
+
+  getDisplayMathContentBox(svg) {
+    const screenCtm = svg.getScreenCTM();
+    if (!screenCtm) {
+      return null;
+    }
+
+    let inverse;
+    try {
+      inverse = screenCtm.inverse();
+    } catch {
+      return null;
+    }
+
+    const points = DISPLAY_MATH_LABEL_SELECTORS
+      .map((selector) => svg.querySelector(selector))
+      .filter((node) => node instanceof Element)
+      .flatMap((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          return [];
+        }
+        return [
+          this.transformClientPointToSvg(svg, inverse, rect.left, rect.top),
+          this.transformClientPointToSvg(svg, inverse, rect.right, rect.top),
+          this.transformClientPointToSvg(svg, inverse, rect.right, rect.bottom),
+          this.transformClientPointToSvg(svg, inverse, rect.left, rect.bottom)
+        ];
+      });
+    if (!points.length) {
+      return null;
+    }
+
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
+  transformClientPointToSvg(svg, inverseCtm, x, y) {
+    if (typeof DOMPoint === 'function') {
+      return new DOMPoint(x, y).matrixTransform(inverseCtm);
+    }
+    const point = svg.createSVGPoint();
+    point.x = x;
+    point.y = y;
+    return point.matrixTransform(inverseCtm);
+  }
+
+  getSvgContentBox(svg) {
+    if (typeof svg.getBBox !== 'function') {
+      return null;
+    }
+    try {
+      const contentNode = svg.querySelector('.nodes') ?? svg;
+      return contentNode.getBBox();
+    } catch {
+      return null;
+    }
   }
 
   createZoomControls(svgContainer) {

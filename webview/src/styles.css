@@ -1,7 +1,10 @@
 :root {
   color-scheme: light dark;
-  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 75%, #000);
-  --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent);
+  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 25%, transparent 75%);
+  --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent 50%);
+  --meo-font-live: var(--vscode-editor-font-family);
+  --meo-font-source: var(--vscode-editor-font-family);
+  --meo-active-editor-font: var(--vscode-editor-font-family);
 }
 
 html,
@@ -102,7 +105,7 @@ body {
   --find-input-width: 200px;
   max-width: calc(100vw - 24px);
   padding: 8px;
-  background-color: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  background-color: var(--vscode-sideBar-background);
   z-index: 250;
 }
 
@@ -309,15 +312,8 @@ body {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-.format-button[data-action='autoSave']:not(.is-active),
-.format-button[data-action='outline']:not(.is-active),
-.format-button[data-action='find']:not(.is-active) {
+.format-button.toggle-button:not(.is-active) {
   color: var(--meo-color-base03);
-}
-
-.format-button[data-action='outline']:not(.is-active):hover,
-.format-button[data-action='find']:not(.is-active):hover {
-  color: var(--vscode-editor-foreground);
 }
 
 .heading-dropdown-option {
@@ -371,13 +367,23 @@ body {
 }
 
 .cm-editor {
+  font-family: var(--meo-active-editor-font);
   font-size: var(--vscode-editor-font-size);
   min-width: 0;
+}
+
+.cm-editor.meo-mode-live {
+  --meo-active-editor-font: var(--meo-font-live);
+}
+
+.cm-editor.meo-mode-source {
+  --meo-active-editor-font: var(--meo-font-source);
 }
 
 .cm-editor .cm-scroller,
 .cm-editor .cm-content,
 .cm-editor .cm-line {
+  font-family: var(--meo-active-editor-font);
   min-width: 0;
   min-height: 1.2em;
 }
@@ -416,6 +422,11 @@ body {
 .cm-editor .cm-gutterElement.cm-activeLineGutter {
   background: transparent !important;
   color: var(--vscode-editor-foreground);
+}
+
+.cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement,
+.cm-editor.meo-line-numbers-hidden .cm-gutterElement.cm-activeLineGutter {
+  color: transparent !important;
 }
 
 .cm-editor.meo-table-interaction-active .cm-gutterElement.cm-activeLineGutter {
@@ -783,6 +794,22 @@ body {
   cursor: grab;
 }
 
+.cm-editor .meo-mermaid-block.meo-mermaid-math-block {
+  padding: 0;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: default;
+}
+
+.cm-editor .meo-mermaid-block.meo-mermaid-math-block .katex-display,
+.meo-mermaid-fullscreen .katex-display {
+  margin: 0 !important;
+}
+
+.cm-editor .meo-mermaid-block.meo-mermaid-math-block .nodeLabel > div,
+.meo-mermaid-fullscreen .nodeLabel > div {
+  line-height: 1 !important;
+}
+
 .cm-editor .meo-mermaid-svg-wrapper,
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper {
   display: flex;
@@ -803,6 +830,12 @@ body {
 .cm-editor .meo-mermaid-svg-wrapper svg {
   max-width: 100%;
   height: auto;
+}
+
+/* Hide duplicate unformatted KaTeX HTML layer in inline and fullscreen Mermaid views. */
+.cm-editor .meo-mermaid-block .katex-html,
+.meo-mermaid-fullscreen .katex-html {
+  display: none;
 }
 
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper svg {
@@ -870,7 +903,7 @@ body {
 }
 
 .cm-editor .meo-mermaid-fallback code {
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--meo-active-editor-font);
   font-size: var(--vscode-editor-font-size);
 }
 
@@ -882,7 +915,7 @@ body {
   color: var(--vscode-inputValidation-errorForeground, #ffffff);
   background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
   font-size: 12px;
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--meo-active-editor-font);
 }
 
 .cm-editor .meo-md-image {
@@ -921,7 +954,7 @@ body {
 }
 
 .cm-editor .meo-md-image-fallback-text {
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--meo-active-editor-font);
   font-size: var(--vscode-editor-font-size);
   color: var(--vscode-descriptionForeground);
 }
@@ -1036,7 +1069,7 @@ body {
 }
 
 .cm-editor .meo-md-table-line {
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--meo-active-editor-font);
 }
 
 .cm-editor .meo-md-html-table-wrap {

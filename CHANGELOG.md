@@ -1,5 +1,11 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.6
+- Added settings for theme overrides and per-mode fonts.
+- Added a `Markdown Editor Optimized: Reset Theme to Defaults` command to reset all theme colors/fonts to defaults.
+- Added line number visibility toggle
+- Added rendering for mermaid math blocks
+
 ## 0.1.5
 - Added wiki link support, including link parsing, local file presense detection, and navigation for `[[...]]` references.
 - Added local image source resolution so workspace-relative image paths render correctly in the editor.

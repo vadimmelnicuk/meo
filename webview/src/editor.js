@@ -83,13 +83,22 @@ const searchMatchField = StateField.define({
   }
 });
 
-export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelectionChange, initialMode = 'source' }) {
+export function createEditor({
+  parent,
+  text,
+  onApplyChanges,
+  onOpenLink,
+  onSelectionChange,
+  initialMode = 'source',
+  initialLineNumbers = true
+}) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
   EditorView.EDIT_CONTEXT = false;
 
   const modeCompartment = new Compartment();
   const startMode = initialMode === 'live' ? 'live' : 'source';
+  let lineNumbersVisible = initialLineNumbers !== false;
   let applyingExternal = false;
   let capturedPointerId = null;
   let inlineCodeClick = null;
@@ -142,6 +151,13 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
     }
     view.dom.classList.toggle('meo-mode-live', currentMode === 'live');
     view.dom.classList.toggle('meo-mode-source', currentMode !== 'live');
+  };
+
+  const syncLineNumbersVisibility = () => {
+    if (!view) {
+      return;
+    }
+    view.dom.classList.toggle('meo-line-numbers-hidden', !lineNumbersVisible);
   };
 
   const releasePointerCaptureIfHeld = (pointerId) => {
@@ -327,8 +343,8 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
       ]),
       history(),
       lineNumbers(),
-      highlightActiveLine(),
       highlightActiveLineGutter(),
+      highlightActiveLine(),
       EditorView.lineWrapping,
       scrollPastEnd(),
       EditorView.domEventHandlers({
@@ -443,6 +459,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
       searchMatchField,
       EditorView.updateListener.of((update) => {
         syncModeClasses();
+        syncLineNumbersVisibility();
 
         if (update.selectionSet) {
           syncSelectionClass();
@@ -486,6 +503,7 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
   };
   view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
   syncModeClasses();
+  syncLineNumbersVisibility();
   syncSelectionClass();
   emitSelectionChange();
 
@@ -624,6 +642,14 @@ export function createEditor({ parent, text, onApplyChanges, onOpenLink, onSelec
         requestAnimationFrame(restoreScroll);
       };
       requestAnimationFrame(restoreScroll);
+    },
+    setLineNumbers(visible) {
+      const nextVisible = visible !== false;
+      if (nextVisible === lineNumbersVisible) {
+        return;
+      }
+      lineNumbersVisible = nextVisible;
+      syncLineNumbersVisibility();
     },
     insertFormat(action, level) {
       const { state } = view;

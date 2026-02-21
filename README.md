@@ -15,6 +15,7 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Table editing** - Insert and edit tables directly
 - **Contents outline sidebar** - Navigate long documents quickly
 - **Syntax highlighting** - Monokai-inspired theme for better readability
+- **Theming** - Customise the syntax colors and fonts
 - **Auto-save** - Optional automatic saving while editing
 
 ## Usage

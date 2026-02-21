@@ -1,13 +1,26 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import {
+  defaultThemeColors,
+  defaultThemeFonts,
+  themeColorKeys,
+  type ThemeColors,
+  type ThemeSettings
+} from './shared/themeDefaults';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
 const AUTO_SAVE_KEY = 'autoSaveEnabled';
+const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 const WIKI_LINK_SCHEME = 'meo-wiki:';
 type EditorMode = 'live' | 'source';
 
 type AutoSaveChangedMessage = {
   type: 'autoSaveChanged';
+  enabled: boolean;
+};
+
+type LineNumbersChangedMessage = {
+  type: 'lineNumbersChanged';
   enabled: boolean;
 };
 
@@ -17,6 +30,8 @@ type InitMessage = {
   version: number;
   mode: EditorMode;
   autoSave: boolean;
+  lineNumbers: boolean;
+  theme: ThemeSettings;
 };
 
 type DocChangedMessage = {
@@ -67,6 +82,11 @@ type SetAutoSaveMessage = {
   enabled: boolean;
 };
 
+type SetLineNumbersMessage = {
+  type: 'setLineNumbers';
+  enabled: boolean;
+};
+
 type ResolvedImageSrcMessage = {
   type: 'resolvedImageSrc';
   requestId: string;
@@ -79,10 +99,16 @@ type ResolvedWikiLinksMessage = {
   results: Array<{ target: string; exists: boolean }>;
 };
 
+type ThemeChangedMessage = {
+  type: 'themeChanged';
+  theme: ThemeSettings;
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | SetModeMessage
   | SetAutoSaveMessage
+  | SetLineNumbersMessage
   | OpenLinkMessage
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
@@ -94,14 +120,27 @@ const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 
 export function activate(context: vscode.ExtensionContext): void {
   const useAsDefault = vscode.workspace.getConfiguration('markdownEditorOptimized').get<boolean>('useAsDefault', true);
-  if (useAsDefault) {
-    void updateEditorAssociations();
-  }
+  void syncEditorAssociations(useAsDefault);
+
+  const provider = new MarkdownWebviewProvider(context);
 
   context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(VIEW_TYPE, new MarkdownWebviewProvider(context), {
+    vscode.window.registerCustomEditorProvider(VIEW_TYPE, provider, {
       supportsMultipleEditorsPerDocument: false,
       webviewOptions: { retainContextWhenHidden: true }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('markdownEditorOptimized.useAsDefault')) {
+        const shouldUseAsDefault = vscode.workspace
+          .getConfiguration('markdownEditorOptimized')
+          .get<boolean>('useAsDefault', true);
+        void syncEditorAssociations(shouldUseAsDefault);
+      }
+
+      void provider.handleConfigurationChanged(event);
     })
   );
 
@@ -128,6 +167,14 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage('Markdown Editor Optimized is now set as the default editor for Markdown files.');
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.resetThemeToDefaults', async () => {
+      await resetThemeSettingsToDefaults();
+      provider.notifyThemeChanged();
+      void vscode.window.showInformationMessage('Markdown Editor Optimized theme and font settings were reset to defaults.');
+    })
+  );
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
@@ -140,6 +187,33 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     for (const panel of this.activePanels) {
       void panel.webview.postMessage(message);
     }
+  }
+
+  private broadcastLineNumbersChanged(enabled: boolean): void {
+    const message: LineNumbersChangedMessage = { type: 'lineNumbersChanged', enabled };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
+  private broadcastThemeChanged(theme: ThemeSettings): void {
+    const message: ThemeChangedMessage = { type: 'themeChanged', theme };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
+  async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (
+      event.affectsConfiguration('markdownEditorOptimized.theme') ||
+      event.affectsConfiguration('markdownEditorOptimized.fonts')
+    ) {
+      this.broadcastThemeChanged(getThemeSettings());
+    }
+  }
+
+  notifyThemeChanged(): void {
+    this.broadcastThemeChanged(getThemeSettings());
   }
 
   async resolveCustomTextEditor(
@@ -176,12 +250,15 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     const sendInit = async (): Promise<boolean> => {
       const autoSave = this.context.globalState.get<boolean>(AUTO_SAVE_KEY, true);
+      const lineNumbers = this.context.globalState.get<boolean>(LINE_NUMBERS_KEY, true);
       const message: InitMessage = {
         type: 'init',
         text: document.getText(),
         version: document.version,
         mode,
-        autoSave
+        autoSave,
+        lineNumbers,
+        theme: getThemeSettings()
       };
       return panel.webview.postMessage(message);
     };
@@ -224,6 +301,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         case 'setAutoSave':
           await this.context.globalState.update(AUTO_SAVE_KEY, raw.enabled);
           this.broadcastAutoSaveChanged(raw.enabled);
+          return;
+        case 'setLineNumbers':
+          await this.context.globalState.update(LINE_NUMBERS_KEY, raw.enabled);
+          this.broadcastLineNumbersChanged(raw.enabled);
           return;
         case 'openLink':
           await openLink(raw.href, documentUri);
@@ -728,15 +809,70 @@ function parseGitUriQuery(query: string): { path?: unknown; ref?: unknown } | un
   }
 }
 
+function getThemeSettings(): ThemeSettings {
+  const config = vscode.workspace.getConfiguration('markdownEditorOptimized');
+  const colors = {} as ThemeColors;
+
+  for (const key of themeColorKeys) {
+    colors[key] = readThemeColor(config, `theme.${key}`, defaultThemeColors[key]);
+  }
+
+  return {
+    colors,
+    fonts: {
+      live: readThemeFont(config, 'fonts.live', defaultThemeFonts.live),
+      source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source)
+    }
+  };
+}
+
+function readThemeColor(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
+  const value = config.get<string>(key, fallback);
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value.trim();
+  return normalized || fallback;
+}
+
+function readThemeFont(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
+  const value = config.get<string>(key, fallback);
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  return value.trim() || fallback;
+}
+
+async function resetThemeSettingsToDefaults(): Promise<void> {
+  const section = 'markdownEditorOptimized';
+  const config = vscode.workspace.getConfiguration(section);
+  const keys = [...themeColorKeys.map((key) => `theme.${key}`), 'fonts.live', 'fonts.source'];
+
+  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Global);
+  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Workspace);
+}
+
+async function clearThemeKeysForTarget(
+  config: vscode.WorkspaceConfiguration,
+  keys: string[],
+  target: vscode.ConfigurationTarget,
+  clearValue: unknown = undefined
+): Promise<void> {
+  for (const key of keys) {
+    await config.update(key, clearValue, target);
+  }
+}
+
 export function deactivate(): void {}
 
-async function updateEditorAssociations(): Promise<void> {
+async function syncEditorAssociations(useAsDefault: boolean): Promise<void> {
   const config = vscode.workspace.getConfiguration('workbench');
   const associations = { ...(config.get<Record<string, string>>('editorAssociations') || {}) };
+  const markdownAssociation = useAsDefault ? VIEW_TYPE : 'default';
   const next = {
     ...associations,
-    '*.md': VIEW_TYPE,
-    '*.markdown': VIEW_TYPE,
+    '*.md': markdownAssociation,
+    '*.markdown': markdownAssociation,
     'git:/**/*.md': 'default',
     'git:/**/*.markdown': 'default',
     'git:**/*.md': 'default',
@@ -748,4 +884,8 @@ async function updateEditorAssociations(): Promise<void> {
   }
 
   await config.update('editorAssociations', next, vscode.ConfigurationTarget.Global);
+}
+
+async function updateEditorAssociations(): Promise<void> {
+  await syncEditorAssociations(true);
 }

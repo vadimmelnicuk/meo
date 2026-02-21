@@ -2,7 +2,7 @@
   "name": "meo",
   "displayName": "Markdown Editor Optimized",
   "description": "An optimized markdown editor with live editing mode for VS Code.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "vadimmelnicuk",
   "private": true,
   "icon": "logo.png",
@@ -27,7 +27,10 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onCommand:markdownEditorOptimized.open",
+    "onCommand:markdownEditorOptimized.setDefaultEditor",
+    "onCommand:markdownEditorOptimized.resetThemeToDefaults"
   ],
     "contributes": {
     "commands": [
@@ -40,6 +43,11 @@
         "command": "markdownEditorOptimized.setDefaultEditor",
         "title": "Markdown Editor Optimized: Set as Default",
         "icon": "$(check)"
+      },
+      {
+        "command": "markdownEditorOptimized.resetThemeToDefaults",
+        "title": "Markdown Editor Optimized: Reset Theme to Defaults",
+        "icon": "$(discard)"
       }
     ],
     "customEditors": [
@@ -79,7 +87,66 @@
         "markdownEditorOptimized.useAsDefault": {
           "type": "boolean",
           "default": true,
+          "order": 1,
           "description": "Use Markdown Editor Optimized as the default editor for Markdown files"
+        },
+        "markdownEditorOptimized.theme.base02": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#676f7d",
+          "description": "Subtle syntax markers and comments."
+        },
+        "markdownEditorOptimized.theme.base03": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#3e444d",
+          "description": "Muted borders and guides."
+        },
+        "markdownEditorOptimized.theme.base04": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#e06c75",
+          "description": "Headings and keywords."
+        },
+        "markdownEditorOptimized.theme.base05": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#61afef",
+          "description": "Links and primary identifiers."
+        },
+        "markdownEditorOptimized.theme.base06": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#66D9EF",
+          "description": "Type and function accents."
+        },
+        "markdownEditorOptimized.theme.base07": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#e5c07b",
+          "description": "Strings and strong emphasis."
+        },
+        "markdownEditorOptimized.theme.base08": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#c678dd",
+          "description": "Numbers and constants."
+        },
+        "markdownEditorOptimized.theme.base09": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#98c379",
+          "description": "Quotes and attributes."
+        },
+        "markdownEditorOptimized.fonts.live": {
+          "type": "string",
+          "default": "",
+          "description": "Font family for Live mode. Leave empty to use VS Code editor font."
+        },
+        "markdownEditorOptimized.fonts.source": {
+          "type": "string",
+          "default": "",
+          "description": "Font family for Source mode. Leave empty to use VS Code editor font."
         }
       }
     }
