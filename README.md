@@ -4,17 +4,17 @@ An optimized markdown editor with live editing mode for VS Code.
 
 [![](https://vsmarketplacebadges.dev/version-short/vadimmelnicuk.meo.svg)](https://marketplace.visualstudio.com/items?itemName=vadimmelnicuk.meo)
 
-![Demo GIF](./demo.gif)
+![demo](https://github.com/vadimmelnicuk/meo/blob/ed165a91abd5338ad940487e59325c3331bec21b/demo.gif?raw=1)
 
 ## Features
 
 - **Live/Source modes** - Switch between clean writing and raw markdown in a single tab
 - **Interactive editing** - Toggle tasks, open links with `Cmd/Ctrl + Click`, render Mermaid diagrams
-- **Toolbar formatting** - Headings, lists, tasks, tables, code blocks, links, and quotes
-- **Selection menu** - Bold, italic, strikethrough, inline code, and links on text selection
+- **Toolbar formatting** - Headings, lists, tasks, tables, code blocks, links, images, and quotes
+- **Floating selection menu** - Bold, italic, strikethrough, inline code, and links on text selection
 - **Table editing** - Insert and edit tables directly
-- **Outline sidebar** - Navigate long documents quickly
-- **Syntax highlighting** - Using a Monokai-inspired theme for better readability
+- **Contents outline sidebar** - Navigate long documents quickly
+- **Syntax highlighting** - Monokai-inspired theme for better readability
 - **Auto-save** - Optional automatic saving while editing
 
 ## Usage
