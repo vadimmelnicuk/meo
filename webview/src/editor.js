@@ -9,7 +9,7 @@ import { headingCollapseSharedExtensions } from './helpers/headingCollapse';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
-import { resolvedSyntaxTree, extractHeadings } from './helpers/markdownSyntax';
+import { resolvedSyntaxTree, extractHeadings, extractHeadingSections } from './helpers/markdownSyntax';
 import {
   sourceListBorderField,
   sourceListMarkerField,
@@ -770,11 +770,55 @@ export function createEditor({
     getHeadings() {
       return extractHeadings(view.state);
     },
-    scrollToLine(lineNumber) {
+    moveHeadingSection(sourceHeadingFrom, targetHeadingFrom, placement) {
+      if (placement !== 'before' && placement !== 'after') {
+        return false;
+      }
+
+      const sections = extractHeadingSections(view.state);
+      const source = sections.find((heading) => heading.from === sourceHeadingFrom);
+      const target = sections.find((heading) => heading.from === targetHeadingFrom);
+      if (!source || !target) {
+        return false;
+      }
+
+      const insertionPoint = placement === 'before' ? target.sectionFrom : target.sectionTo;
+      if (insertionPoint > source.sectionFrom && insertionPoint < source.sectionTo) {
+        return false;
+      }
+
+      const currentText = view.state.doc.toString();
+      const movedText = currentText.slice(source.sectionFrom, source.sectionTo);
+      if (!movedText) {
+        return false;
+      }
+
+      const textWithoutSource = currentText.slice(0, source.sectionFrom) + currentText.slice(source.sectionTo);
+      const sourceLength = source.sectionTo - source.sectionFrom;
+      const adjustedInsertionPoint = insertionPoint >= source.sectionTo ? insertionPoint - sourceLength : insertionPoint;
+      const nextText =
+        textWithoutSource.slice(0, adjustedInsertionPoint) +
+        movedText +
+        textWithoutSource.slice(adjustedInsertionPoint);
+
+      if (nextText === currentText) {
+        return false;
+      }
+
+      const nextAnchor = Math.min(adjustedInsertionPoint, nextText.length);
+      view.dispatch({
+        changes: { from: 0, to: currentText.length, insert: nextText },
+        selection: { anchor: nextAnchor },
+        effects: EditorView.scrollIntoView(nextAnchor, { y: 'start' })
+      });
+      return true;
+    },
+    scrollToLine(lineNumber, align = 'center') {
       const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
+      const y = align === 'top' ? 'start' : 'center';
       view.dispatch({
         selection: { anchor: line.from },
-        effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+        effects: EditorView.scrollIntoView(line.from, { y })
       });
       view.focus();
     },

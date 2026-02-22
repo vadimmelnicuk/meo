@@ -1,6 +1,7 @@
 import { createEditor } from './editor';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
 import { setImageSrcResolver } from './helpers/images';
+import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
 import { defaultThemeColors, defaultThemeFonts, maxThemeLineHeight, minThemeLineHeight, themeColorKeys } from '../../src/shared/themeDefaults';
 
@@ -227,7 +228,6 @@ autoSaveBtn.dataset.action = 'autoSave';
 autoSaveBtn.title = 'Auto Save';
 autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
-let outlineVisible = false;
 let lineNumbersVisible = true;
 
 const outlineBtn = document.createElement('button');
@@ -244,27 +244,9 @@ lineNumbersBtn.dataset.action = 'lineNumbers';
 lineNumbersBtn.title = 'Hide Line Numbers';
 lineNumbersBtn.appendChild(createElement(Hash, { width: 18, height: 18 }));
 
-const outlineSidebar = document.createElement('div');
-outlineSidebar.className = 'outline-sidebar';
-outlineSidebar.setAttribute('role', 'navigation');
-outlineSidebar.setAttribute('aria-label', 'Document outline');
-
-const outlineContent = document.createElement('div');
-outlineContent.className = 'outline-content';
-outlineSidebar.appendChild(outlineContent);
-
 const updateAutoSaveUI = () => {
   autoSaveBtn.classList.toggle('is-active', autoSaveEnabled);
   autoSaveBtn.title = `Auto Save`;
-};
-
-const updateOutlineUI = () => {
-  outlineBtn.classList.toggle('is-active', outlineVisible);
-  root.classList.toggle('outline-visible', outlineVisible);
-};
-
-const setOutlinePosition = (position) => {
-  editorWrapper.dataset.outlinePosition = position === 'left' ? 'left' : 'right';
 };
 
 const updateLineNumbersUI = () => {
@@ -273,40 +255,6 @@ const updateLineNumbersUI = () => {
   lineNumbersBtn.title = lineNumbersVisible ? 'Hide Line Numbers' : 'Show Line Numbers';
 };
 
-const toggleOutline = () => {
-  outlineVisible = !outlineVisible;
-  updateOutlineUI();
-  if (outlineVisible && editor) {
-    updateOutline();
-  }
-};
-
-const updateOutline = () => {
-  if (!editor) return;
-  const headings = editor.getHeadings();
-  outlineContent.innerHTML = '';
-  
-  if (headings.length === 0) {
-    const emptyMsg = document.createElement('div');
-    emptyMsg.className = 'outline-empty';
-    emptyMsg.textContent = 'No headings';
-    outlineContent.appendChild(emptyMsg);
-    return;
-  }
-  
-  for (const heading of headings) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = `outline-item outline-level-${heading.level}`;
-    item.textContent = heading.text;
-    item.addEventListener('click', () => {
-      if (editor) {
-        editor.scrollToLine(heading.line);
-      }
-    });
-    outlineContent.appendChild(item);
-  }
-};
 
 const toggleAutoSave = () => {
   autoSaveEnabled = !autoSaveEnabled;
@@ -595,7 +543,15 @@ selectionMenu.append(
   selectionWikiLinkBtn
 );
 
-editorWrapper.append(editorHost, outlineSidebar, selectionMenu);
+let editor = null;
+const outlineController = createOutlineController({
+  root,
+  editorWrapper,
+  outlineButton: outlineBtn,
+  getEditor: () => editor
+});
+
+editorWrapper.append(editorHost, outlineController.sidebar, selectionMenu);
 root.replaceChildren(toolbar);
 window.requestAnimationFrame(() => {
   if (!root.contains(editorWrapper)) {
@@ -603,7 +559,6 @@ window.requestAnimationFrame(() => {
   }
 });
 
-let editor = null;
 let documentVersion = 0;
 let pendingDebounce = null;
 let pendingText = null;
@@ -940,8 +895,8 @@ const queueChanges = (nextText) => {
     flushChanges();
   }, 1000);
   
-  if (outlineVisible) {
-    updateOutline();
+  if (outlineController.isVisible()) {
+    outlineController.refresh();
   }
   scheduleWikiLinkStatusRefresh(nextText);
   updateFindStatusSummary();
@@ -976,8 +931,8 @@ const scheduleInitialEditorMount = () => {
     window.requestAnimationFrame(() => {
       initialEditorMountQueued = false;
       mountInitialEditor();
-      if (outlineVisible) {
-        updateOutline();
+      if (outlineController.isVisible()) {
+        outlineController.refresh();
       }
       updateFindStatusSummary();
     });
@@ -998,9 +953,9 @@ const handleInit = (message) => {
   if (typeof message.lineNumbers === 'boolean') {
     setLineNumbersVisible(message.lineNumbers, { post: false });
   }
-  setOutlinePosition(message.outlinePosition);
-  if (editor && outlineVisible) {
-    updateOutline();
+  outlineController.setPosition(message.outlinePosition);
+  if (editor && outlineController.isVisible()) {
+    outlineController.refresh();
   }
   scheduleWikiLinkStatusRefresh(message.text);
   updateFindStatusSummary();
@@ -1135,7 +1090,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'outlinePositionChanged') {
-    setOutlinePosition(message.position);
+    outlineController.setPosition(message.position);
     return;
   }
 
@@ -1189,7 +1144,7 @@ if (state && (state.mode === 'live' || state.mode === 'source')) {
 } else {
   updateModeUI();
 }
-setOutlinePosition('right');
+outlineController.setPosition('right');
 updateLineNumbersUI();
 
 liveButton.addEventListener('click', () => {
@@ -1299,7 +1254,9 @@ linkBtn.addEventListener('click', () => handleFormatAction('link'));
 wikiLinkBtn.addEventListener('click', () => handleFormatAction('wikiLink'));
 imageBtn.addEventListener('click', () => handleFormatAction('image'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
-outlineBtn.addEventListener('click', toggleOutline);
+outlineBtn.addEventListener('click', () => {
+  outlineController.toggle();
+});
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 
 persistModeState();

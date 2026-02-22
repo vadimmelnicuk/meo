@@ -1121,6 +1121,7 @@ body {
 
 .outline-item {
   display: block;
+  position: relative;
   width: 100%;
   padding: 6px 14px;
   border: none;
@@ -1133,6 +1134,39 @@ body {
   color: var(--vscode-sideBar-foreground);
   background: transparent;
   cursor: pointer;
+}
+
+.outline-content.is-dragging-outline .outline-item {
+  cursor: grab;
+}
+
+.outline-item.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.outline-item.outline-drop-before,
+.outline-item.outline-drop-after {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.outline-item.outline-drop-before::before,
+.outline-item.outline-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background-color: var(--vscode-focusBorder);
+  pointer-events: none;
+}
+
+.outline-item.outline-drop-before::before {
+  top: 0;
+}
+
+.outline-item.outline-drop-after::after {
+  bottom: 0;
 }
 
 .outline-item:hover {

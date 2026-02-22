@@ -49,9 +49,15 @@ export function extractHeadingSections(state) {
       }
 
       const line = state.doc.lineAt(node.from);
+      let text = state.doc.sliceString(node.from, node.to);
+      text = text.replace(/^#{1,6}\s+/, '').replace(/\s+#+$/, '').trim();
       headings.push({
         level: headingLevel,
+        text,
+        from: node.from,
         line: line.number,
+        sectionFrom: node.from,
+        sectionTo: state.doc.length,
         headingFrom: node.from,
         headingTo: node.to,
         lineFrom: line.from,
@@ -68,6 +74,7 @@ export function extractHeadingSections(state) {
     for (let nextIndex = index + 1; nextIndex < headings.length; nextIndex += 1) {
       const nextHeading = headings[nextIndex];
       if (nextHeading.level <= heading.level) {
+        heading.sectionTo = nextHeading.headingFrom;
         // Stop before the next heading line start so its gutter/line decorations remain visible.
         const previousLineNo = Math.max(heading.line, nextHeading.line - 1);
         heading.collapseTo = state.doc.line(previousLineNo).to;
