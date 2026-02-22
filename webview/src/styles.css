@@ -5,6 +5,9 @@
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
   --meo-active-editor-font: var(--vscode-editor-font-family);
+  --meo-line-height-live: 1.5;
+  --meo-line-height-source: 1.5;
+  --meo-active-editor-line-height: 1.5;
   --meo-task-checkbox-size: 17px;
 }
 
@@ -396,10 +399,12 @@ body {
 
 .cm-editor.meo-mode-live {
   --meo-active-editor-font: var(--meo-font-live);
+  --meo-active-editor-line-height: var(--meo-line-height-live);
 }
 
 .cm-editor.meo-mode-source {
   --meo-active-editor-font: var(--meo-font-source);
+  --meo-active-editor-line-height: var(--meo-line-height-source);
 }
 
 .cm-editor .cm-scroller,
@@ -436,7 +441,7 @@ body {
 
 .cm-editor .cm-lineNumbers .cm-gutterElement {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   text-align: right;
 }
@@ -461,7 +466,7 @@ body {
 
 .cm-editor .cm-line {
   padding-left: 0;
-  line-height: 1.5em;
+  line-height: var(--meo-active-editor-line-height);
 }
 
 .cm-editor .cm-content {
@@ -662,8 +667,8 @@ body {
 
 .cm-editor .meo-md-hr {
   position: relative;
-  min-height: 1.5em;
-  line-height: 1.5em;
+  min-height: calc(var(--meo-active-editor-line-height) * 1em);
+  line-height: var(--meo-active-editor-line-height);
 }
 
 .cm-editor .meo-md-hr::after {

@@ -2,7 +2,7 @@ import { createEditor } from './editor';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
 import { setImageSrcResolver } from './helpers/images';
 import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
-import { defaultThemeColors, themeColorKeys } from '../../src/shared/themeDefaults';
+import { defaultThemeColors, defaultThemeFonts, maxThemeLineHeight, minThemeLineHeight, themeColorKeys } from '../../src/shared/themeDefaults';
 
 const vscode = acquireVsCodeApi();
 const imageSrcCache = new Map();
@@ -14,6 +14,13 @@ let latestWikiLinkRequestId = '';
 let pendingWikiStatusRefresh = null;
 const wikiStatusDebounceMs = 1000;
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
+
+const normalizeThemeLineHeight = (value, fallback) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
+};
 
 const applyThemeSettings = (theme) => {
   const rootStyle = document.documentElement.style;
@@ -28,8 +35,12 @@ const applyThemeSettings = (theme) => {
   const fonts = theme?.fonts ?? {};
   const liveFont = typeof fonts.live === 'string' ? fonts.live.trim() : '';
   const sourceFont = typeof fonts.source === 'string' ? fonts.source.trim() : '';
+  const liveLineHeight = normalizeThemeLineHeight(fonts.liveLineHeight, defaultThemeFonts.liveLineHeight);
+  const sourceLineHeight = normalizeThemeLineHeight(fonts.sourceLineHeight, defaultThemeFonts.sourceLineHeight);
   rootStyle.setProperty('--meo-font-live', liveFont || vscodeEditorFontFamily);
   rootStyle.setProperty('--meo-font-source', sourceFont || vscodeEditorFontFamily);
+  rootStyle.setProperty('--meo-line-height-live', `${liveLineHeight}`);
+  rootStyle.setProperty('--meo-line-height-source', `${sourceLineHeight}`);
 };
 applyThemeSettings();
 

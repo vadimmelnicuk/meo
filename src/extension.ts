@@ -3,6 +3,8 @@ import * as path from 'node:path';
 import {
   defaultThemeColors,
   defaultThemeFonts,
+  maxThemeLineHeight,
+  minThemeLineHeight,
   themeColorKeys,
   type ThemeColors,
   type ThemeSettings
@@ -840,7 +842,9 @@ function getThemeSettings(): ThemeSettings {
     colors,
     fonts: {
       live: readThemeFont(config, 'fonts.live', defaultThemeFonts.live),
-      source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source)
+      source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source),
+      liveLineHeight: readThemeLineHeight(config, 'fonts.liveLineHeight', defaultThemeFonts.liveLineHeight),
+      sourceLineHeight: readThemeLineHeight(config, 'fonts.sourceLineHeight', defaultThemeFonts.sourceLineHeight)
     }
   };
 }
@@ -867,10 +871,24 @@ function readThemeFont(config: vscode.WorkspaceConfiguration, key: string, fallb
   return value.trim() || fallback;
 }
 
+function readThemeLineHeight(config: vscode.WorkspaceConfiguration, key: string, fallback: number): number {
+  const value = config.get<number>(key, fallback);
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
+}
+
 async function resetThemeSettingsToDefaults(): Promise<void> {
   const section = 'markdownEditorOptimized';
   const config = vscode.workspace.getConfiguration(section);
-  const keys = [...themeColorKeys.map((key) => `theme.${key}`), 'fonts.live', 'fonts.source'];
+  const keys = [
+    ...themeColorKeys.map((key) => `theme.${key}`),
+    'fonts.live',
+    'fonts.source',
+    'fonts.liveLineHeight',
+    'fonts.sourceLineHeight'
+  ];
 
   await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Global);
   await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Workspace);

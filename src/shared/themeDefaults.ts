@@ -12,10 +12,15 @@ export const themeColorKeys = [
 export type ThemeColorKey = typeof themeColorKeys[number];
 
 export type ThemeColors = Record<ThemeColorKey, string>;
+export const minThemeLineHeight = 1;
+export const maxThemeLineHeight = 3;
+export const defaultThemeLineHeight = 1.5;
 
 export type ThemeFonts = {
   live: string;
   source: string;
+  liveLineHeight: number;
+  sourceLineHeight: number;
 };
 
 export type ThemeSettings = {
@@ -36,5 +41,7 @@ export const defaultThemeColors: ThemeColors = {
 
 export const defaultThemeFonts: ThemeFonts = {
   live: '',
-  source: ''
+  source: '',
+  liveLineHeight: defaultThemeLineHeight,
+  sourceLineHeight: defaultThemeLineHeight
 };
