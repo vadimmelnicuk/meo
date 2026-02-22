@@ -2,7 +2,7 @@
   "name": "meo",
   "displayName": "Markdown Editor Optimized",
   "description": "An optimized markdown editor with live editing mode for VS Code.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "vadimmelnicuk",
   "private": true,
   "icon": "logo.png",
@@ -32,7 +32,7 @@
     "onCommand:markdownEditorOptimized.setDefaultEditor",
     "onCommand:markdownEditorOptimized.resetThemeToDefaults"
   ],
-    "contributes": {
+  "contributes": {
     "commands": [
       {
         "command": "markdownEditorOptimized.open",
@@ -92,7 +92,10 @@
         },
         "markdownEditorOptimized.outline.position": {
           "type": "string",
-          "enum": ["left", "right"],
+          "enum": [
+            "left",
+            "right"
+          ],
           "enumDescriptions": [
             "Show the document outline on the left side of the editor.",
             "Show the document outline on the right side of the editor."

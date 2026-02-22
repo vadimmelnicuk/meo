@@ -1,5 +1,10 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.8
+- Added language label for code blocks
+- Added outline position customization for the document sidebar
+- Added powerquery syntax highlighting
+
 ## 0.1.7
 - Fixed `Reset Theme to Defaults` so theme/font overrides are cleared correctly at global, workspace, and workspace-folder scopes.
 - Improved live-mode thematic break decorations so active-line state and frontmatter boundary rendering stay consistent.
