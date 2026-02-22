@@ -1,5 +1,12 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.9
+- Added outline controller with drag-and-drop functionality for headings
+- Added heading collapse functionality
+- Added customizable line height settings for live and source modes
+- Added keyboard handling to close find panel with Escape key
+- Enhanced task list handling
+
 ## 0.1.8
 - Added language label for code blocks
 - Added outline position customization for the document sidebar
