@@ -8,6 +8,7 @@ import {
   isFenceMarker,
   getFencedCodeInfo,
   addFenceOpeningLineMarker,
+  addCodeLanguageLabel,
   addMermaidDiagram,
   addCopyCodeButton
 } from './helpers/codeBlocks';
@@ -530,7 +531,9 @@ function buildDecorations(state) {
             activeLineMarkerDeco,
             fenceMarkerDeco
           );
-          
+
+          addCodeLanguageLabel(ranges, state, node, activeLines);
+
           const codeInfo = getFencedCodeInfo(state, node);
           if (codeInfo === 'mermaid') {
             addMermaidDiagram(ranges, state, node);

@@ -267,12 +267,12 @@ class CopyCodeButtonWidget extends WidgetType {
   }
 
   eq(other) {
-    return other.codeContent === this.codeContent;
+    return other instanceof CopyCodeButtonWidget && other.codeContent === this.codeContent;
   }
 
   toDOM() {
     const container = document.createElement('span');
-    container.className = 'meo-copy-code-btn';
+    container.className = 'meo-code-block-pill meo-copy-code-btn';
     container.setAttribute('aria-label', 'Copy code');
     container.setAttribute('role', 'button');
     container.setAttribute('tabindex', '0');
@@ -310,6 +310,38 @@ class CopyCodeButtonWidget extends WidgetType {
   }
 }
 
+class CodeLanguageLabelWidget extends WidgetType {
+  constructor(labelText) {
+    super();
+    this.labelText = labelText;
+  }
+
+  eq(other) {
+    return other instanceof CodeLanguageLabelWidget && other.labelText === this.labelText;
+  }
+
+  toDOM() {
+    const label = document.createElement('span');
+    label.className = 'meo-code-block-pill meo-code-language-label';
+    label.textContent = this.labelText;
+    label.setAttribute('aria-hidden', 'true');
+    return label;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+function addTopLineWidget(builder, lineEnd, widget) {
+  builder.push(
+    Decoration.widget({
+      widget,
+      side: 1
+    }).range(lineEnd)
+  );
+}
+
 export function addFenceOpeningLineMarker(builder, state, from, activeLines, addRange, activeLineMarkerDeco, fenceMarkerDeco) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -322,6 +354,24 @@ export function addFenceOpeningLineMarker(builder, state, from, activeLines, add
     return;
   }
   addRange(builder, line.from, line.to, fenceMarkerDeco);
+}
+
+export function addCodeLanguageLabel(builder, state, node, activeLines) {
+  if (node.name !== 'FencedCode') {
+    return;
+  }
+
+  const startLine = state.doc.lineAt(node.from);
+  if (activeLines.has(startLine.number)) {
+    return;
+  }
+
+  const labelText = getFencedCodeInfo(state, node);
+  if (!labelText) {
+    return;
+  }
+
+  addTopLineWidget(builder, startLine.to, new CodeLanguageLabelWidget(labelText));
 }
 
 export function addMermaidDiagram(builder, state, node) {
@@ -346,13 +396,7 @@ export function addMermaidDiagram(builder, state, node) {
 
   const fullBlockText = state.doc.sliceString(startLine.from, endLine.to);
   const copyWidget = new CopyCodeButtonWidget(fullBlockText);
-  builder.push(
-    Decoration.widget({
-      widget: copyWidget,
-      side: 1,
-      class: 'meo-copy-code-btn'
-    }).range(startLine.to)
-  );
+  addTopLineWidget(builder, startLine.to, copyWidget);
 
   const widget = new MermaidDiagramWidget(diagramText);
   builder.push(
@@ -388,11 +432,5 @@ export function addCopyCodeButton(builder, state, from, to) {
   }
 
   const widget = new CopyCodeButtonWidget(codeContent);
-  builder.push(
-    Decoration.widget({
-      widget,
-      side: 1,
-      class: 'meo-copy-code-btn'
-    }).range(startLine.to)
-  );
+  addTopLineWidget(builder, startLine.to, widget);
 }

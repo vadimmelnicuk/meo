@@ -343,18 +343,19 @@ body {
 }
 
 .mode-button,
-.meo-copy-code-btn {
+.meo-code-block-pill {
   padding: 4px 8px;
   font-size: 12px;
   border: 0;
   border-radius: 6px;
-  cursor: pointer;
   user-select: none;
+  line-height: 1em;
   transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .mode-button {
   min-width: 52px;
+  cursor: pointer;
   color: var(--vscode-foreground);
   background: transparent;
 }
@@ -364,10 +365,26 @@ body {
   top: 4px;
   right: 5px;
   z-index: 10;
+  cursor: pointer;
   padding: 2px 8px;
-  line-height: 1em;
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-color-base02);
   background-color: transparent;
+}
+
+.meo-copy-code-btn:hover {
+  color: var(--vscode-editor-foreground);
+}
+
+.meo-code-language-label {
+  position: absolute;
+  top: 4px;
+  left: calc(2ch);
+  z-index: 10;
+  padding: 2px 5px;
+  color: var(--meo-color-base02);
+  background-color: transparent;
+  pointer-events: none;
+  cursor: default;
 }
 
 .cm-editor {
