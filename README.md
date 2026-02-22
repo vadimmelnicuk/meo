@@ -13,9 +13,10 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Toolbar formatting** - Quickly insert headings, lists, tasks, tables, code blocks, links, images, and quotes
 - **Floating selection menu** - Convert to bold, italic, strikethrough, inline code, and links on text selection
 - **Table editing** - Insert and edit tables directly
-- **Contents outline sidebar** - Navigate long documents quickly
+- **Contents outline sidebar** - Navigate and reorder sections of long documents quickly
 - **Syntax highlighting** - Monokai-inspired theme for better readability
 - **Theming** - Customise the syntax colors and fonts
+- **Export** - Markdown to HTML or PDF documents
 - **Auto-save** - Optional automatic saving while editing
 
 ## Usage

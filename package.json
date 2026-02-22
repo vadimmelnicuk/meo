@@ -11,6 +11,7 @@
   },
   "categories": [
     "Programming Languages",
+    "Formatters",
     "Other"
   ],
   "keywords": [
@@ -30,7 +31,9 @@
     "onLanguage:markdown",
     "onCommand:markdownEditorOptimized.open",
     "onCommand:markdownEditorOptimized.setDefaultEditor",
-    "onCommand:markdownEditorOptimized.resetThemeToDefaults"
+    "onCommand:markdownEditorOptimized.resetThemeToDefaults",
+    "onCommand:markdownEditorOptimized.exportHtml",
+    "onCommand:markdownEditorOptimized.exportPdf"
   ],
   "contributes": {
     "commands": [
@@ -48,6 +51,16 @@
         "command": "markdownEditorOptimized.resetThemeToDefaults",
         "title": "Markdown Editor Optimized: Reset Theme to Defaults",
         "icon": "$(discard)"
+      },
+      {
+        "command": "markdownEditorOptimized.exportHtml",
+        "title": "Markdown Editor Optimized: Export as HTML",
+        "icon": "$(export)"
+      },
+      {
+        "command": "markdownEditorOptimized.exportPdf",
+        "title": "Markdown Editor Optimized: Export as PDF",
+        "icon": "$(file-pdf)"
       }
     ],
     "customEditors": [
@@ -78,6 +91,16 @@
           "command": "markdownEditorOptimized.open",
           "when": "resourceFilename =~ /\\.(md|markdown)$/",
           "group": "navigation"
+        },
+        {
+          "command": "markdownEditorOptimized.exportHtml",
+          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "markdownEditorOptimized.exportPdf",
+          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "group": "navigation@2"
         }
       ]
     },
@@ -103,6 +126,12 @@
           "default": "right",
           "order": 2,
           "description": "Position of the document outline sidebar."
+        },
+        "markdownEditorOptimized.export.pdf.browserPath": {
+          "type": "string",
+          "default": "",
+          "order": 3,
+          "description": "Optional path to a Chrome/Edge executable used for direct PDF export. Leave empty to auto-detect."
         },
         "markdownEditorOptimized.theme.base02": {
           "type": "string",
@@ -185,7 +214,11 @@
     "install:all": "bun install && (cd webview && bun install)",
     "build": "bun run build:webview && bun run build:extension",
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist && bun build webview/src/index.js --target=browser --format=iife --minify --outfile=webview/dist/index.js && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js",
-    "build:extension": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
+    "build:extension": "bun run build:extension:main && bun run build:extension:export-runtime && bun run build:extension:puppeteer-runtime",
+    "build:extension:main": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode",
+    "build:extension:main:debug": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
+    "build:extension:export-runtime": "bun build src/export/runtime.ts --target=node --format=cjs --minify --outfile=dist/export-runtime.js",
+    "build:extension:puppeteer-runtime": "bun build src/export/puppeteerRuntime.ts --target=node --format=cjs --minify --outfile=dist/puppeteer-runtime.js",
     "release:prep": "bun scripts/release-prep.mjs",
     "release:finalize": "bun scripts/release-prep.mjs finalize",
     "vscode:publish": "vsce package"
@@ -204,7 +237,11 @@
     "@codemirror/view": "6.36.4",
     "@lezer/highlight": "^1.2.3",
     "@types/vscode": "^1.109.0",
+    "highlight.js": "^11.11.1",
     "lucide": "^0.564.0",
-    "mermaid": "^11.4.1"
+    "markdown-it": "^14.1.0",
+    "mermaid": "^11.4.1",
+    "puppeteer-core": "^24.1.1",
+    "sanitize-html": "^2.17.0"
   }
 }

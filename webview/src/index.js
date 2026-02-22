@@ -1,5 +1,5 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, X } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, Share, X } from 'lucide';
 import { setImageSrcResolver } from './helpers/images';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
@@ -416,7 +416,51 @@ findToggleBtn.dataset.action = 'find';
 findToggleBtn.title = 'Find and Replace';
 findToggleBtn.appendChild(createElement(Search, { width: 18, height: 18 }));
 
-rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, autoSaveBtn);
+const exportBtn = document.createElement('button');
+exportBtn.type = 'button';
+exportBtn.className = 'format-button export-button';
+exportBtn.dataset.action = 'export';
+exportBtn.title = 'Export';
+exportBtn.setAttribute('aria-label', 'Export');
+exportBtn.appendChild(createElement(Share, { width: 18, height: 18 }));
+
+const exportDropdown = document.createElement('div');
+exportDropdown.className = 'export-dropdown';
+exportDropdown.setAttribute('role', 'menu');
+exportDropdown.setAttribute('aria-label', 'Export formats');
+
+const exportDropdownWrapper = document.createElement('div');
+exportDropdownWrapper.className = 'export-dropdown-wrapper';
+
+const exportHtmlOption = document.createElement('button');
+exportHtmlOption.type = 'button';
+exportHtmlOption.className = 'export-dropdown-option';
+exportHtmlOption.dataset.format = 'html';
+exportHtmlOption.title = 'Export as HTML';
+exportHtmlOption.textContent = 'HTML';
+
+const exportPdfOption = document.createElement('button');
+exportPdfOption.type = 'button';
+exportPdfOption.className = 'export-dropdown-option';
+exportPdfOption.dataset.format = 'pdf';
+exportPdfOption.title = 'Export as PDF';
+exportPdfOption.textContent = 'PDF';
+
+exportDropdown.append(exportHtmlOption, exportPdfOption);
+exportDropdownWrapper.appendChild(exportDropdown);
+
+const exportWrapper = document.createElement('div');
+exportWrapper.className = 'export-wrapper';
+exportWrapper.append(exportBtn, exportDropdownWrapper);
+
+const requestExport = (format) => {
+  if (format !== 'html' && format !== 'pdf') {
+    return;
+  }
+  vscode.postMessage({ type: 'exportDocument', format });
+};
+
+rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, autoSaveBtn, exportWrapper);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -810,6 +854,109 @@ const requestSave = () => {
   maybeSaveAfterSync();
 };
 
+const delay = (ms) => new Promise((resolve) => {
+  window.setTimeout(resolve, ms);
+});
+
+const getCurrentExportText = () => {
+  if (editor) {
+    return editor.getText();
+  }
+  if (typeof pendingText === 'string') {
+    return pendingText;
+  }
+  if (typeof pendingInitialText === 'string') {
+    return pendingInitialText;
+  }
+  return syncedText;
+};
+
+const getExportStyleEnvironment = () => {
+  const rootStyles = getComputedStyle(document.documentElement);
+  const bodyStyles = getComputedStyle(document.body);
+  const editorEl = document.querySelector('.cm-editor');
+  const editorStyles = editorEl ? getComputedStyle(editorEl) : null;
+
+  const colorVar = (name, fallback = '') => {
+    const value = rootStyles.getPropertyValue(name).trim();
+    return value || fallback;
+  };
+
+  const fontSizeRaw = (editorStyles?.fontSize || bodyStyles.fontSize || '').trim();
+  const parsedFontSize = Number.parseFloat(fontSizeRaw);
+  const lineHeightLiveRaw = rootStyles.getPropertyValue('--meo-line-height-live').trim();
+  const lineHeightSourceRaw = rootStyles.getPropertyValue('--meo-line-height-source').trim();
+  const parsedLiveLineHeight = Number.parseFloat(lineHeightLiveRaw);
+  const parsedSourceLineHeight = Number.parseFloat(lineHeightSourceRaw);
+  const meoThemeColors = {};
+  for (const key of themeColorKeys) {
+    const value = rootStyles.getPropertyValue(`--meo-color-${key}`).trim();
+    if (value) {
+      meoThemeColors[key] = value;
+    }
+  }
+
+  return {
+    editorBackgroundColor: colorVar('--vscode-editor-background', bodyStyles.backgroundColor || ''),
+    editorForegroundColor: colorVar('--vscode-editor-foreground', bodyStyles.color || ''),
+    codeBlockBackgroundColor: colorVar('--vscode-textCodeBlock-background', ''),
+    sideBarBackgroundColor: colorVar('--vscode-sideBar-background', ''),
+    panelBorderColor: colorVar('--vscode-panel-border', ''),
+    editorFontFamily: (editorStyles?.fontFamily || bodyStyles.fontFamily || '').trim(),
+    editorFontSizePx: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
+    liveFontFamily: colorVar('--meo-font-live', ''),
+    sourceFontFamily: colorVar('--meo-font-source', ''),
+    liveLineHeight: Number.isFinite(parsedLiveLineHeight) ? parsedLiveLineHeight : undefined,
+    sourceLineHeight: Number.isFinite(parsedSourceLineHeight) ? parsedSourceLineHeight : undefined,
+    meoThemeColors
+  };
+};
+
+const waitForExportSyncIdle = async (timeoutMs = 15000) => {
+  const startedAt = Date.now();
+
+  while (true) {
+    if (!inFlight && pendingText !== null && pendingText !== syncedText) {
+      flushChanges();
+    }
+
+    if (!inFlight && (pendingText === null || pendingText === syncedText)) {
+      return;
+    }
+
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error('Timed out waiting for editor sync before export');
+    }
+
+    await delay(25);
+  }
+};
+
+const handleExportSnapshotRequest = async (requestId) => {
+  try {
+    if (pendingDebounce !== null) {
+      window.clearTimeout(pendingDebounce);
+      pendingDebounce = null;
+    }
+
+    flushChanges();
+    await waitForExportSyncIdle();
+
+    vscode.postMessage({
+      type: 'exportSnapshot',
+      requestId,
+      text: getCurrentExportText(),
+      environment: getExportStyleEnvironment()
+    });
+  } catch (error) {
+    vscode.postMessage({
+      type: 'exportSnapshotError',
+      requestId,
+      message: error instanceof Error ? error.message : 'Failed to collect export snapshot'
+    });
+  }
+};
+
 const isPrimaryModifier = (event) => {
   return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
 };
@@ -1105,6 +1252,14 @@ window.addEventListener('message', (event) => {
     }
     replaceWikiLinkStatuses(message.results ?? []);
     editor?.refreshDecorations();
+    return;
+  }
+
+  if (message.type === 'requestExportSnapshot') {
+    if (typeof message.requestId !== 'string' || !message.requestId) {
+      return;
+    }
+    void handleExportSnapshotRequest(message.requestId);
   }
 });
 
@@ -1254,6 +1409,12 @@ linkBtn.addEventListener('click', () => handleFormatAction('link'));
 wikiLinkBtn.addEventListener('click', () => handleFormatAction('wikiLink'));
 imageBtn.addEventListener('click', () => handleFormatAction('image'));
 autoSaveBtn.addEventListener('click', toggleAutoSave);
+exportHtmlOption.addEventListener('click', () => {
+  requestExport('html');
+});
+exportPdfOption.addEventListener('click', () => {
+  requestExport('pdf');
+});
 outlineBtn.addEventListener('click', () => {
   outlineController.toggle();
 });

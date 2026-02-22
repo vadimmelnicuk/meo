@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   defaultThemeColors,
   defaultThemeFonts,
@@ -9,6 +10,7 @@ import {
   type ThemeColors,
   type ThemeSettings
 } from './shared/themeDefaults';
+import type { ExportStyleEnvironment } from './export/runtime';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
 const AUTO_SAVE_KEY = 'autoSaveEnabled';
@@ -81,6 +83,24 @@ type SaveDocumentMessage = {
   type: 'saveDocument';
 };
 
+type ExportDocumentMessage = {
+  type: 'exportDocument';
+  format: 'html' | 'pdf';
+};
+
+type ExportSnapshotMessage = {
+  type: 'exportSnapshot';
+  requestId: string;
+  text: string;
+  environment?: ExportStyleEnvironment;
+};
+
+type ExportSnapshotErrorMessage = {
+  type: 'exportSnapshotError';
+  requestId: string;
+  message: string;
+};
+
 type SetAutoSaveMessage = {
   type: 'setAutoSave';
   enabled: boolean;
@@ -113,6 +133,11 @@ type OutlinePositionChangedMessage = {
   position: OutlinePosition;
 };
 
+type RequestExportSnapshotMessage = {
+  type: 'requestExportSnapshot';
+  requestId: string;
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | SetModeMessage
@@ -122,10 +147,58 @@ type WebviewMessage =
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
   | SaveDocumentMessage
+  | ExportDocumentMessage
+  | ExportSnapshotMessage
+  | ExportSnapshotErrorMessage
   | { type: 'ready' };
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+
+type PanelSession = {
+  panel: vscode.WebviewPanel;
+  document: vscode.TextDocument;
+  documentUri: vscode.Uri;
+  getMode: () => EditorMode;
+  ensureInitDelivered: () => Promise<void>;
+  requestExportSnapshot: () => Promise<{ text: string; environment?: ExportStyleEnvironment }>;
+  rejectPendingExportSnapshots: (reason: Error) => void;
+};
+
+type ExportRuntimeModule = {
+  renderExportHtmlDocument: (options: {
+    markdownText: string;
+    sourceDocumentPath: string;
+    outputFilePath: string;
+    target: 'html' | 'pdf';
+    theme: ThemeSettings;
+    styleEnvironment?: ExportStyleEnvironment;
+    editorFontEnvironment?: {
+      editorFontFamily?: string;
+      editorFontSizePx?: number;
+    };
+    mermaidRuntimeSrc: string;
+    baseHref: string;
+    title: string;
+  }) => { htmlDocument: string; hasMermaid: boolean };
+  writeFinalizedHtmlExport: (options: {
+    htmlDocument: string;
+    outputHtmlPath: string;
+    browserExecutablePath?: string;
+    puppeteerRuntimeModulePath?: string;
+    timeoutMs?: number;
+    skipHeadlessFinalize?: boolean;
+  }) => Promise<void>;
+  renderPdfFromHtmlExport: (options: {
+    htmlDocument: string;
+    outputPdfPath: string;
+    browserExecutablePath?: string;
+    puppeteerRuntimeModulePath?: string;
+    timeoutMs?: number;
+  }) => Promise<void>;
+};
+
+let exportRuntimeModulePromise: Promise<ExportRuntimeModule> | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
   const useAsDefault = vscode.workspace.getConfiguration('markdownEditorOptimized').get<boolean>('useAsDefault', true);
@@ -184,12 +257,35 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage('Markdown Editor Optimized theme and font settings were reset to defaults.');
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.exportHtml', async () => {
+      await provider.exportActiveDocumentAsHtml();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.exportPdf', async () => {
+      await provider.exportActiveDocumentAsPdf();
+    })
+  );
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly activePanels = new Set<vscode.WebviewPanel>();
+  private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
+  private lastActivePanel: vscode.WebviewPanel | null = null;
+  private exportSnapshotRequestCounter = 0;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  async exportActiveDocumentAsHtml(): Promise<void> {
+    await this.exportActiveDocument('html');
+  }
+
+  async exportActiveDocumentAsPdf(): Promise<void> {
+    await this.exportActiveDocument('pdf');
+  }
 
   private broadcastAutoSaveChanged(enabled: boolean): void {
     const message: AutoSaveChangedMessage = { type: 'autoSaveChanged', enabled };
@@ -236,6 +332,144 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     this.broadcastThemeChanged(getThemeSettings());
   }
 
+  private getActiveSessionForExport(): PanelSession | null {
+    if (this.lastActivePanel && this.panelSessions.has(this.lastActivePanel)) {
+      return this.panelSessions.get(this.lastActivePanel) ?? null;
+    }
+
+    for (const panel of this.activePanels) {
+      if (panel.active && this.panelSessions.has(panel)) {
+        this.lastActivePanel = panel;
+        return this.panelSessions.get(panel) ?? null;
+      }
+    }
+
+    const first = this.panelSessions.values().next();
+    return first.done ? null : first.value;
+  }
+
+  private nextExportSnapshotRequestId(): string {
+    this.exportSnapshotRequestCounter += 1;
+    return `export-${this.exportSnapshotRequestCounter}`;
+  }
+
+  private async exportActiveDocument(format: 'html' | 'pdf'): Promise<void> {
+    const session = this.getActiveSessionForExport();
+    if (!session) {
+      void vscode.window.showWarningMessage('Open a Markdown file in Markdown Editor Optimized before exporting.');
+      return;
+    }
+
+    await this.exportSessionDocument(session, format);
+  }
+
+  private async exportSessionDocument(session: PanelSession, format: 'html' | 'pdf'): Promise<void> {
+    this.lastActivePanel = session.panel;
+
+    if (session.documentUri.scheme !== 'file') {
+      void vscode.window.showWarningMessage('Export is only supported for local Markdown files in the current version.');
+      return;
+    }
+
+    const saveUri = await this.promptExportTargetUri(session.documentUri, format);
+    if (!saveUri) {
+      return;
+    }
+
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          cancellable: false,
+          title: format === 'html' ? 'Exporting Markdown to HTML' : 'Exporting Markdown to PDF'
+        },
+        async (progress) => {
+          progress.report({ message: 'Collecting editor content…' });
+          const snapshot = await session.requestExportSnapshot();
+
+          progress.report({ message: 'Rendering export document…' });
+          const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
+          const exportRender = await this.buildExportHtmlDocument(exportRuntime, {
+            markdownText: snapshot.text,
+            sourceDocumentUri: session.documentUri,
+            outputFileUri: saveUri,
+            target: format,
+            styleEnvironment: snapshot.environment
+          });
+
+          const browserExecutablePath = getExportPdfBrowserPath();
+          const puppeteerRuntimeModulePath = vscode.Uri.joinPath(
+            this.context.extensionUri,
+            'dist',
+            'puppeteer-runtime.js'
+          ).fsPath;
+          progress.report({ message: format === 'html' ? 'Finalizing HTML…' : 'Rendering PDF in headless browser…' });
+
+          if (format === 'html') {
+            await exportRuntime.writeFinalizedHtmlExport({
+              htmlDocument: exportRender.htmlDocument,
+              outputHtmlPath: saveUri.fsPath,
+              browserExecutablePath,
+              puppeteerRuntimeModulePath,
+              skipHeadlessFinalize: !exportRender.hasMermaid
+            });
+          } else {
+            await exportRuntime.renderPdfFromHtmlExport({
+              htmlDocument: exportRender.htmlDocument,
+              outputPdfPath: saveUri.fsPath,
+              browserExecutablePath,
+              puppeteerRuntimeModulePath
+            });
+          }
+        }
+      );
+
+      void vscode.window.setStatusBarMessage(
+        `${format.toUpperCase()} export completed: ${saveUri.fsPath}`,
+        5000
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Export failed';
+      void vscode.window.showErrorMessage(`${format.toUpperCase()} export failed: ${message}`);
+    }
+  }
+
+  private async promptExportTargetUri(documentUri: vscode.Uri, format: 'html' | 'pdf'): Promise<vscode.Uri | undefined> {
+    const defaultUri = vscode.Uri.file(replaceFileExtension(documentUri.fsPath, format === 'html' ? '.html' : '.pdf'));
+    return vscode.window.showSaveDialog({
+      defaultUri,
+      filters: format === 'html'
+        ? { HTML: ['html', 'htm'] }
+        : { PDF: ['pdf'] },
+      saveLabel: format === 'html' ? 'Export HTML' : 'Export PDF'
+    });
+  }
+
+  private async buildExportHtmlDocument(exportRuntime: ExportRuntimeModule, params: {
+    markdownText: string;
+    sourceDocumentUri: vscode.Uri;
+    outputFileUri: vscode.Uri;
+    target: 'html' | 'pdf';
+    styleEnvironment?: ExportStyleEnvironment;
+  }): Promise<{ htmlDocument: string; hasMermaid: boolean }> {
+    const mermaidRuntimeSrc = pathToFileURL(
+      vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'mermaid.min.js').fsPath
+    ).toString();
+    const baseHref = pathToFileURL(`${path.dirname(params.outputFileUri.fsPath)}${path.sep}`).toString();
+    return exportRuntime.renderExportHtmlDocument({
+      markdownText: params.markdownText,
+      sourceDocumentPath: params.sourceDocumentUri.fsPath,
+      outputFilePath: params.outputFileUri.fsPath,
+      target: params.target,
+      theme: getThemeSettings(),
+      styleEnvironment: params.styleEnvironment,
+      editorFontEnvironment: getExportEditorFontEnvironment(),
+      mermaidRuntimeSrc,
+      baseHref,
+      title: path.basename(params.outputFileUri.fsPath)
+    });
+  }
+
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
     panel: vscode.WebviewPanel,
@@ -262,6 +496,11 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     let applyQueue: Promise<void> = Promise.resolve();
     let initDelivered = false;
     let isApplyingOwnChange = false;
+    const pendingExportSnapshots = new Map<string, {
+      resolve: (value: { text: string; environment?: ExportStyleEnvironment }) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
 
     const enqueue = (task: () => Promise<void>): Promise<void> => {
       applyQueue = applyQueue.then(task, task);
@@ -311,6 +550,58 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
     };
 
+    const requestExportSnapshot = async (): Promise<{ text: string; environment?: ExportStyleEnvironment }> => {
+      await ensureInitDelivered();
+      const requestId = this.nextExportSnapshotRequestId();
+
+      const response = new Promise<{ text: string; environment?: ExportStyleEnvironment }>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pendingExportSnapshots.delete(requestId);
+          reject(new Error('Timed out waiting for export snapshot from the editor.'));
+        }, 20000);
+
+        pendingExportSnapshots.set(requestId, { resolve, reject, timer });
+      });
+
+      const message: RequestExportSnapshotMessage = {
+        type: 'requestExportSnapshot',
+        requestId
+      };
+      const posted = await panel.webview.postMessage(message);
+      if (!posted) {
+        const pending = pendingExportSnapshots.get(requestId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingExportSnapshots.delete(requestId);
+          pending.reject(new Error('The editor webview is not ready to export.'));
+        }
+      }
+
+      return response;
+    };
+
+    const rejectPendingExportSnapshots = (error: Error): void => {
+      for (const [requestId, pending] of pendingExportSnapshots) {
+        clearTimeout(pending.timer);
+        pendingExportSnapshots.delete(requestId);
+        pending.reject(error);
+      }
+    };
+
+    const session: PanelSession = {
+      panel,
+      document,
+      documentUri,
+      getMode: () => mode,
+      ensureInitDelivered,
+      requestExportSnapshot,
+      rejectPendingExportSnapshots
+    };
+    this.panelSessions.set(panel, session);
+    if (panel.active) {
+      this.lastActivePanel = panel;
+    }
+
     const messageSubscription = panel.webview.onDidReceiveMessage(async (raw: WebviewMessage) => {
       switch (raw.type) {
         case 'ready':
@@ -326,6 +617,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         case 'setLineNumbers':
           await this.context.globalState.update(LINE_NUMBERS_KEY, raw.enabled);
           this.broadcastLineNumbersChanged(raw.enabled);
+          return;
+        case 'exportDocument':
+          await this.exportSessionDocument(session, raw.format);
           return;
         case 'openLink':
           await openLink(raw.href, documentUri);
@@ -348,6 +642,29 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
             results
           };
           await panel.webview.postMessage(response);
+          return;
+        }
+        case 'exportSnapshot': {
+          const pending = pendingExportSnapshots.get(raw.requestId);
+          if (!pending) {
+            return;
+          }
+          clearTimeout(pending.timer);
+          pendingExportSnapshots.delete(raw.requestId);
+          pending.resolve({
+            text: raw.text,
+            environment: raw.environment
+          });
+          return;
+        }
+        case 'exportSnapshotError': {
+          const pending = pendingExportSnapshots.get(raw.requestId);
+          if (!pending) {
+            return;
+          }
+          clearTimeout(pending.timer);
+          pendingExportSnapshots.delete(raw.requestId);
+          pending.reject(new Error(raw.message || 'Failed to collect export snapshot.'));
           return;
         }
         case 'applyChanges':
@@ -381,10 +698,22 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     void ensureInitDelivered();
 
+    const viewStateSubscription = panel.onDidChangeViewState((event) => {
+      if (event.webviewPanel.active) {
+        this.lastActivePanel = event.webviewPanel;
+      }
+    });
+
     panel.onDidDispose(() => {
       this.activePanels.delete(panel);
+      this.panelSessions.delete(panel);
+      if (this.lastActivePanel === panel) {
+        this.lastActivePanel = null;
+      }
+      rejectPendingExportSnapshots(new Error('The editor was closed before export completed.'));
       messageSubscription.dispose();
       documentChangeSubscription.dispose();
+      viewStateSubscription.dispose();
     });
   }
 
@@ -668,6 +997,42 @@ function getNonce(): string {
   return nonce;
 }
 
+async function loadExportRuntimeModule(extensionUri: vscode.Uri): Promise<ExportRuntimeModule> {
+  if (!exportRuntimeModulePromise) {
+    const runtimePath = vscode.Uri.joinPath(extensionUri, 'dist', 'export-runtime.js').fsPath;
+    const runtimeUrl = pathToFileURL(runtimePath).toString();
+    exportRuntimeModulePromise = import(runtimeUrl)
+      .then((mod: any) => unwrapExportRuntimeModule(mod))
+      .catch((error) => {
+        exportRuntimeModulePromise = null;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load export runtime (${runtimePath}). Run the extension build to regenerate it. ${message}`);
+      });
+  }
+
+  return exportRuntimeModulePromise;
+}
+
+function unwrapExportRuntimeModule(mod: any): ExportRuntimeModule {
+  let current = mod;
+  for (let i = 0; i < 5; i += 1) {
+    if (
+      current &&
+      typeof current.renderExportHtmlDocument === 'function' &&
+      typeof current.writeFinalizedHtmlExport === 'function' &&
+      typeof current.renderPdfFromHtmlExport === 'function'
+    ) {
+      return current as ExportRuntimeModule;
+    }
+    if (!current || typeof current !== 'object' || !('default' in current)) {
+      break;
+    }
+    current = current.default;
+  }
+
+  throw new Error('Loaded export runtime does not expose the expected export functions.');
+}
+
 function collectLocalResourceRoots(distRoot: vscode.Uri, documentUri: vscode.Uri): vscode.Uri[] {
   const roots = new Map<string, vscode.Uri>();
   roots.set(distRoot.toString(), distRoot);
@@ -852,6 +1217,27 @@ function getThemeSettings(): ThemeSettings {
 function getOutlinePosition(): OutlinePosition {
   const value = vscode.workspace.getConfiguration('markdownEditorOptimized').get<string>('outline.position', 'right');
   return value === 'left' ? 'left' : 'right';
+}
+
+function getExportPdfBrowserPath(): string | undefined {
+  const configured = vscode.workspace.getConfiguration('markdownEditorOptimized').get<string>('export.pdf.browserPath', '');
+  const trimmed = `${configured ?? ''}`.trim();
+  return trimmed || undefined;
+}
+
+function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFontSizePx?: number } {
+  const editorConfig = vscode.workspace.getConfiguration('editor');
+  const fontFamily = `${editorConfig.get<string>('fontFamily', '') ?? ''}`.trim() || undefined;
+  const fontSize = editorConfig.get<number>('fontSize');
+  return {
+    editorFontFamily: fontFamily,
+    editorFontSizePx: typeof fontSize === 'number' && Number.isFinite(fontSize) ? fontSize : undefined
+  };
+}
+
+function replaceFileExtension(filePath: string, ext: '.html' | '.pdf'): string {
+  const parsed = path.parse(filePath);
+  return path.join(parsed.dir, `${parsed.name}${ext}`);
 }
 
 function readThemeColor(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
