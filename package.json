@@ -168,6 +168,7 @@
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist && bun build webview/src/index.js --target=browser --format=iife --minify --outfile=webview/dist/index.js && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js",
     "build:extension": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
     "release:prep": "bun scripts/release-prep.mjs",
+    "release:finalize": "bun scripts/release-prep.mjs finalize",
     "vscode:publish": "vsce package"
   },
   "dependencies": {

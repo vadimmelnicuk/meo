@@ -21,13 +21,21 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const [versionOrBump, ...flags] = argv;
-  if (!versionOrBump) {
-    fail("Usage: node scripts/release-prep.mjs <patch|minor|major|x.y.z> [--yes]");
+  const [first, ...rest] = argv;
+  if (!first) {
+    return { mode: "prepare", versionOrBump: "patch", write: true };
   }
 
-  const yes = flags.includes("--yes");
-  return { versionOrBump, yes };
+  if (first === "finalize") {
+    return { mode: "finalize" };
+  }
+
+  if (first === "--dry-run") {
+    return { mode: "prepare", versionOrBump: "patch", write: false };
+  }
+
+  const write = !rest.includes("--dry-run");
+  return { mode: "prepare", versionOrBump: first, write };
 }
 
 function parseVersion(version) {
@@ -57,6 +65,13 @@ function ensureMainBranch() {
 function ensureCleanTree() {
   const status = tryGit(["status", "--porcelain"]);
   if (status) fail("Working tree is not clean. Commit or stash changes first.");
+}
+
+function getStatusLines() {
+  return tryGit(["status", "--porcelain"])
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
 }
 
 function readPackageJson() {
@@ -108,15 +123,43 @@ function ensureTagDoesNotExist(tag) {
   if (exists) fail(`Tag '${tag}' already exists.`);
 }
 
+function ensureChangelogHasVersion(version) {
+  const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+  if (!changelog.includes(`## ${version}\n`)) {
+    fail(`CHANGELOG.md does not contain a '## ${version}' section.`);
+  }
+}
+
+function ensureOnlyReleaseFilesChanged() {
+  const statusLines = getStatusLines();
+  if (statusLines.length === 0) {
+    fail("No local changes found. Run prepare first.");
+  }
+
+  const allowed = new Set(["package.json", "CHANGELOG.md"]);
+  const disallowed = [];
+
+  for (const line of statusLines) {
+    const path = line.slice(3);
+    if (!allowed.has(path)) {
+      disallowed.push(line);
+    }
+  }
+
+  if (disallowed.length > 0) {
+    console.error("ERROR: Finalize only allows local changes in package.json and CHANGELOG.md.");
+    disallowed.forEach((line) => console.error(`  ${line}`));
+    process.exit(1);
+  }
+}
+
 function commitAndTag(version) {
   runGit(["add", "package.json", "CHANGELOG.md"]);
   runGit(["commit", "-m", `chore: update version to ${version}`]);
   runGit(["tag", "-a", version, "-m", `v${version}`]);
 }
 
-function main() {
-  const { versionOrBump, yes } = parseArgs(process.argv.slice(2));
-  ensureMainBranch();
+function prepareRelease(versionOrBump, write) {
   ensureCleanTree();
 
   const { data: pkg } = readPackageJson();
@@ -131,26 +174,50 @@ function main() {
   const subjects = commitSubjectsSince(tag);
   ensureTagDoesNotExist(nextVersion);
 
-  if (!yes) {
+  if (!write) {
     console.log(`Preparing release ${nextVersion}`);
     console.log(`Current version: ${pkg.version}`);
     console.log(`Latest tag: ${tag || "(none)"}`);
     console.log("Changelog entries:");
     subjects.forEach((subject) => console.log(`  - ${subject}`));
     console.log("");
-    console.log("Re-run with --yes to apply changes.");
+    console.log("Re-run without --dry-run to write package.json and CHANGELOG.md locally for review.");
     process.exit(0);
   }
 
   pkg.version = nextVersion;
   writePackageJson(pkg);
   prependChangelog(nextVersion, subjects);
-  commitAndTag(nextVersion);
 
-  console.log(`Release prepared locally for ${nextVersion}`);
-  console.log(`Next steps:`);
-  console.log(`  git push origin main`);
-  console.log(`  git push origin ${nextVersion}`);
+  console.log(`Release draft prepared locally for ${nextVersion}`);
+  console.log("Review/edit CHANGELOG.md, then finalize with:");
+  console.log("  bun run release:finalize");
+}
+
+function finalizeRelease() {
+  ensureOnlyReleaseFilesChanged();
+
+  const { data: pkg } = readPackageJson();
+  if (!pkg.version) fail("package.json is missing a version field.");
+
+  ensureTagDoesNotExist(pkg.version);
+  ensureChangelogHasVersion(pkg.version);
+  commitAndTag(pkg.version);
+
+  console.log(`Release finalized locally for ${pkg.version}`);
+  console.log("Next steps:");
+  console.log("  git push origin main");
+  console.log(`  git push origin ${pkg.version}`);
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  ensureMainBranch();
+  if (args.mode === "finalize") {
+    finalizeRelease();
+    return;
+  }
+  prepareRelease(args.versionOrBump, args.write);
 }
 
 main();
