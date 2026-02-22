@@ -251,12 +251,17 @@ export function listMarkerData(lineText, orderedDisplayIndex = null, style = def
     contentOffsetColumns,
     markerText,
     classes,
-    orderedNumber
+    orderedNumber,
+    isTask: false,
+    taskHiddenPrefixColumns: 0
   };
 
   if (taskState !== undefined) {
+    const hiddenTaskPrefixLength = Math.max(0, (match[0].length - indent) - 1);
     result.taskBracketStart = markerEndOffset + 1;
     result.taskState = taskState.toLowerCase() === 'x';
+    result.isTask = true;
+    result.taskHiddenPrefixColumns = hiddenTaskPrefixLength;
   }
 
   return result;

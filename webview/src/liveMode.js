@@ -87,20 +87,36 @@ function listIndentWidget(indentColumns) {
   return widget;
 }
 
-function listLineDeco(contentOffsetColumns, indentColumns, guideStepColumns = 2, selected = false) {
+function listLineDeco(
+  contentOffsetColumns,
+  indentColumns,
+  guideStepColumns = 2,
+  selected = false,
+  isTask = false,
+  taskHiddenPrefixColumns = 0
+) {
   const offset = Math.max(0, contentOffsetColumns);
   const indent = Math.max(0, indentColumns);
   const guideStep = Math.max(2, guideStepColumns);
-  const key = `${offset}:${indent}:${guideStep}:${selected ? 1 : 0}`;
+  const hiddenTaskPrefix = Math.max(0, taskHiddenPrefixColumns);
+  const key = `${offset}:${indent}:${guideStep}:${selected ? 1 : 0}:${isTask ? 1 : 0}:${hiddenTaskPrefix}`;
   let deco = listLineDecoCache.get(key);
   if (deco) {
     return deco;
   }
 
+  const classes = ['meo-md-list-line'];
+  if (selected) {
+    classes.push('meo-md-list-line-selected');
+  }
+  if (isTask) {
+    classes.push('meo-md-list-line-task');
+  }
+
   deco = Decoration.line({
-    class: selected ? 'meo-md-list-line meo-md-list-line-selected' : 'meo-md-list-line',
+    class: classes.join(' '),
     attributes: {
-      style: `--meo-list-hanging-indent:${offset}ch;--meo-list-indent-columns:${indent}ch;--meo-list-guide-step:${guideStep}ch;`
+      style: `--meo-list-hanging-indent:${offset}ch;--meo-list-indent-columns:${indent}ch;--meo-list-guide-step:${guideStep}ch;--meo-task-hidden-prefix-columns:${hiddenTaskPrefix}ch;`
     }
   });
   listLineDecoCache.set(key, deco);
@@ -472,7 +488,9 @@ function addListLineDecorations(builder, state, indentSelectedLines) {
         marker.contentOffsetColumns ?? marker.toOffset,
         marker.indentColumns ?? 0,
         style?.columns ?? 2,
-        indentSelectedLines.has(lineNo)
+        indentSelectedLines.has(lineNo),
+        Boolean(marker.isTask),
+        marker.taskHiddenPrefixColumns ?? 0
       ).range(line.from)
     );
     addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style);

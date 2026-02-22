@@ -5,6 +5,7 @@
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
   --meo-active-editor-font: var(--vscode-editor-font-family);
+  --meo-task-checkbox-size: 17px;
 }
 
 html,
@@ -707,10 +708,12 @@ body {
 
 .cm-editor.meo-mode-live .cm-line.meo-md-list-line {
   --meo-list-hanging-indent: 0ch;
+  --meo-effective-list-hanging-indent: var(--meo-list-hanging-indent);
+  --meo-task-hidden-prefix-columns: 0ch;
   --meo-list-indent-columns: 0ch;
   --meo-list-guide-step: 2ch;
-  padding-left: var(--meo-list-hanging-indent);
-  text-indent: calc(var(--meo-list-hanging-indent) * -1);
+  padding-left: var(--meo-effective-list-hanging-indent);
+  text-indent: calc(var(--meo-effective-list-hanging-indent) * -1);
   background-image: repeating-linear-gradient(
     to right,
     var(--meo-color-base03) 0,
@@ -736,9 +739,15 @@ body {
       var(--vscode-editor-selectionBackground),
       var(--vscode-editor-selectionBackground)
     );
-  background-size: var(--meo-list-indent-columns) 100%, var(--meo-list-hanging-indent) 100%;
+  background-size: var(--meo-list-indent-columns) 100%, var(--meo-effective-list-hanging-indent) 100%;
   background-position: left top, left top;
   background-repeat: no-repeat, no-repeat;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-list-line.meo-md-list-line-task {
+  --meo-effective-list-hanging-indent: calc(
+    var(--meo-list-hanging-indent) - var(--meo-task-hidden-prefix-columns) + var(--meo-task-checkbox-size)
+  );
 }
 
 .cm-editor .meo-md-list-marker {
@@ -766,8 +775,11 @@ body {
 .cm-editor .meo-task-checkbox {
   appearance: none;
   -webkit-appearance: none;
-  width: 17px;
-  height: 17px;
+  box-sizing: border-box;
+  width: var(--meo-task-checkbox-size);
+  height: var(--meo-task-checkbox-size);
+  margin: 0;
+  padding: 0;
   border: 1px solid var(--meo-color-base03);
   border-radius: 4px;
   background: var(--vscode-sideBar-background);
