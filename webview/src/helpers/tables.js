@@ -29,6 +29,103 @@ function isRedoShortcut(event) {
   return (key === 'z' && event.shiftKey) || key === 'y';
 }
 
+function isPreviewWhitespaceOnly(text) {
+  return /^\s+$/.test(text);
+}
+
+function isPreviewEscapedChar(text, index) {
+  let slashCount = 0;
+  for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) {
+    slashCount += 1;
+  }
+  return (slashCount % 2) === 1;
+}
+
+function findClosingInlineMarker(text, startIndex, marker) {
+  const markerLen = marker.length;
+  for (let i = startIndex; i <= text.length - markerLen; i += 1) {
+    if (!text.startsWith(marker, i)) continue;
+    if (isPreviewEscapedChar(text, i)) continue;
+    return i;
+  }
+  return -1;
+}
+
+function parseInlinePreviewSpan(text, index) {
+  const strongMarker = text.startsWith('**', index)
+    ? '**'
+    : (text.startsWith('__', index) ? '__' : null);
+  if (strongMarker) {
+    const contentStart = index + 2;
+    const closing = findClosingInlineMarker(text, contentStart, strongMarker);
+    if (closing > contentStart) {
+      const content = text.slice(contentStart, closing);
+      if (!isPreviewWhitespaceOnly(content)) {
+        return { tag: 'strong', content, nextIndex: closing + 2 };
+      }
+    }
+  }
+
+  const emMarker = text[index] === '*' || text[index] === '_' ? text[index] : null;
+  if (!emMarker) return null;
+  if (text[index + 1] === emMarker) return null;
+
+  const contentStart = index + 1;
+  const closing = findClosingInlineMarker(text, contentStart, emMarker);
+  if (closing <= contentStart) return null;
+  const content = text.slice(contentStart, closing);
+  if (isPreviewWhitespaceOnly(content)) return null;
+  return { tag: 'em', content, nextIndex: closing + 1 };
+}
+
+function appendInlinePreviewNodes(parent, text) {
+  let buffer = '';
+  const flushBuffer = () => {
+    if (!buffer) return;
+    parent.appendChild(document.createTextNode(buffer));
+    buffer = '';
+  };
+
+  for (let i = 0; i < text.length;) {
+    const ch = text[i];
+
+    if (ch === '\\' && i + 1 < text.length) {
+      const next = text[i + 1];
+      if (next === '\\' || next === '*' || next === '_') {
+        buffer += next;
+        i += 2;
+        continue;
+      }
+    }
+
+    if (ch !== '*' && ch !== '_') {
+      buffer += ch;
+      i += 1;
+      continue;
+    }
+
+    const span = parseInlinePreviewSpan(text, i);
+    if (!span) {
+      buffer += ch;
+      i += 1;
+      continue;
+    }
+
+    flushBuffer();
+    const el = document.createElement(span.tag);
+    appendInlinePreviewNodes(el, span.content);
+    parent.appendChild(el);
+    i = span.nextIndex;
+  }
+
+  flushBuffer();
+}
+
+function renderTableCellInlinePreview(previewEl, value) {
+  previewEl.replaceChildren();
+  appendInlinePreviewNodes(previewEl, value);
+}
+
 function normalizeRow(cells, colCount) {
   const result = cells.slice(0, colCount);
   while (result.length < colCount) result.push('');
@@ -275,6 +372,7 @@ class HtmlTableWidget extends WidgetType {
   focusCellInput(cell, { updateSelection = false } = {}) {
     const input = cell.querySelector('textarea');
     if (!(input instanceof HTMLTextAreaElement)) return false;
+    this.setCellEditingState(input, true);
     input.focus({ preventScroll: true });
     const caret = input.value.length;
     input.setSelectionRange(caret, caret);
@@ -303,12 +401,25 @@ class HtmlTableWidget extends WidgetType {
   applySelection(range) {
     if (!this.domRefs) return;
     this.selectionRange = range;
+    const showSelectionStyle = Boolean(
+      range && (range.fromRow !== range.toRow || range.fromCol !== range.toCol)
+    );
     const { cellGrid } = this.domRefs;
     for (let row = 0; row < cellGrid.length; row++) {
       const cells = cellGrid[row];
       for (let col = 0; col < cells.length; col++) {
+        const cell = cells[col];
         const selected = this.isCellSelected(row, col, range);
-        cells[col].classList.toggle('meo-md-html-table-cell-selected', selected);
+        const styledSelected = selected && showSelectionStyle;
+        const isTopEdge = styledSelected && row === range.fromRow;
+        const isRightEdge = styledSelected && col === range.toCol;
+        const isBottomEdge = styledSelected && row === range.toRow;
+        const isLeftEdge = styledSelected && col === range.fromCol;
+        cell.classList.toggle('meo-md-html-table-cell-selected', styledSelected);
+        cell.classList.toggle('meo-md-html-table-cell-selected-top', isTopEdge);
+        cell.classList.toggle('meo-md-html-table-cell-selected-right', isRightEdge);
+        cell.classList.toggle('meo-md-html-table-cell-selected-bottom', isBottomEdge);
+        cell.classList.toggle('meo-md-html-table-cell-selected-left', isLeftEdge);
       }
     }
   }
@@ -400,6 +511,11 @@ class HtmlTableWidget extends WidgetType {
       if (!cell) return;
       const current = this.coordsFromCell(cell);
       if (!current) return;
+      if (event.target instanceof HTMLTextAreaElement) {
+        this.selectionAnchor = current;
+        this.applySelection(this.normalizeSelectionRange(current, current));
+        return;
+      }
       const anchor = current;
       this.selectionAnchor = anchor;
       this.applySelection(this.normalizeSelectionRange(anchor, current));
@@ -408,6 +524,7 @@ class HtmlTableWidget extends WidgetType {
       table.setPointerCapture?.(event.pointerId);
 
       if (!(event.target instanceof HTMLTextAreaElement)) {
+        event.preventDefault();
         this.focusCellInput(cell);
       }
     };
@@ -453,6 +570,7 @@ class HtmlTableWidget extends WidgetType {
           const input = this.domRefs.allRowInputs[row][col];
           if (input.value !== '') {
             input.value = '';
+            this.refreshCellPreviewFromInput(input);
             this.hasPendingCellEdits = true;
           }
         }
@@ -485,6 +603,7 @@ class HtmlTableWidget extends WidgetType {
       if (targetCell) {
         const targetInput = targetCell.querySelector('textarea');
         if (targetInput !== active) {
+          event.preventDefault();
           this.focusCellInput(targetCell, { updateSelection: true });
         }
         return;
@@ -625,17 +744,25 @@ class HtmlTableWidget extends WidgetType {
     this.commitMatrix(matrix, dom);
   }
 
-  wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex) {
+  wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview) {
+    const refreshPreview = () => {
+      this.renderCellPreview(preview, input.value);
+    };
+
     input.addEventListener('input', () => {
       this.hasPendingCellEdits = true;
+      refreshPreview();
       this.resizeRow(rowEl, rowInputs);
       this.scheduleLayout();
     });
     input.addEventListener('focus', () => {
+      this.setCellEditingState(input, true);
       this.setTableInteractionActive(container, true);
       this.setSingleCellSelection({ row: rowIndex, col: colIndex });
     });
     input.addEventListener('blur', (event) => {
+      refreshPreview();
+      this.setCellEditingState(input, false);
       const nextTarget = event.relatedTarget;
       if (nextTarget instanceof Node && container.contains(nextTarget)) return;
       this.commit(container);
@@ -729,14 +856,48 @@ class HtmlTableWidget extends WidgetType {
     });
   }
 
-  createCellInput(value, rowEl, rowInputs, container, rowIndex, colIndex) {
+  renderCellPreview(preview, value) {
+    if (!(preview instanceof HTMLElement)) return;
+    renderTableCellInlinePreview(preview, value ?? '');
+  }
+
+  refreshCellPreviewFromInput(input) {
+    if (!(input instanceof HTMLTextAreaElement)) return;
+    const preview = input.parentElement?.querySelector('.meo-md-html-table-cell-preview');
+    this.renderCellPreview(preview, input.value);
+  }
+
+  setCellEditingState(input, isEditing) {
+    const content = input?.parentElement;
+    if (!(content instanceof HTMLElement)) return;
+    content.classList.toggle('is-editing', isEditing);
+  }
+
+  createCellPreview(value) {
+    const preview = document.createElement('div');
+    preview.className = 'meo-md-html-table-cell-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    this.renderCellPreview(preview, value);
+    return preview;
+  }
+
+  createCellInput(value, rowIndex, colIndex) {
     const input = document.createElement('textarea');
     input.rows = 1;
     input.value = value;
     input.dataset.tableRow = String(rowIndex);
     input.dataset.tableCol = String(colIndex);
-    this.wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex);
     return input;
+  }
+
+  createCellEditor(value, rowEl, rowInputs, container, rowIndex, colIndex) {
+    const content = document.createElement('div');
+    content.className = 'meo-md-html-table-cell-content';
+    const preview = this.createCellPreview(value);
+    const input = this.createCellInput(value, rowIndex, colIndex);
+    this.wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview);
+    content.append(preview, input);
+    return { content, input };
   }
 
   toDOM() {
@@ -766,10 +927,10 @@ class HtmlTableWidget extends WidgetType {
       const th = document.createElement('th');
       th.dataset.tableRow = '0';
       th.dataset.tableCol = String(col);
-      const input = this.createCellInput(this.tableData.headerCells[col] ?? '', headerRow, headerInputs, wrap, 0, col);
+      const { content, input } = this.createCellEditor(this.tableData.headerCells[col] ?? '', headerRow, headerInputs, wrap, 0, col);
       headerInputs.push(input);
       headerCells.push(th);
-      th.appendChild(input);
+      th.appendChild(content);
 
       if (col === 0) {
         const leftInsertControls = document.createElement('div');
@@ -834,10 +995,10 @@ class HtmlTableWidget extends WidgetType {
         const td = document.createElement('td');
         td.dataset.tableRow = String(tableRowIndex);
         td.dataset.tableCol = String(col);
-        const input = this.createCellInput(this.tableData.rows[rowIdx][col] ?? '', tr, inputs, wrap, tableRowIndex, col);
+        const { content, input } = this.createCellEditor(this.tableData.rows[rowIdx][col] ?? '', tr, inputs, wrap, tableRowIndex, col);
         inputs.push(input);
         bodyCells.push(td);
-        td.appendChild(input);
+        td.appendChild(content);
 
         if (col === 0) {
           if (rowIdx === 0) {

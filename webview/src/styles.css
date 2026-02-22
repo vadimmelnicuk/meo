@@ -242,9 +242,9 @@ body {
 .export-dropdown-wrapper {
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: calc(50% + 1px);
   transform: translateX(-50%);
-  padding: 5px 0 0;
+  padding: 5px 25px;
   z-index: 100;
   opacity: 0;
   pointer-events: none;
@@ -265,7 +265,7 @@ body {
 .export-dropdown-option {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   width: 100%;
   min-height: 24px;
   padding: 0 8px;
@@ -1299,12 +1299,68 @@ body {
 
 .cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
 .cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected {
-  background: color-mix(in srgb, var(--vscode-editor-selectionBackground) 35%, transparent);
+  background: color-mix(in srgb, var(--meo-color-base05) 14%, transparent);
+  --meo-table-sel-top: transparent;
+  --meo-table-sel-right: transparent;
+  --meo-table-sel-bottom: transparent;
+  --meo-table-sel-left: transparent;
+  box-shadow:
+    inset 0 1px 0 var(--meo-table-sel-top),
+    inset -1px 0 0 var(--meo-table-sel-right),
+    inset 0 -1px 0 var(--meo-table-sel-bottom),
+    inset 1px 0 0 var(--meo-table-sel-left);
+}
+
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected-top,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected-top {
+  --meo-table-sel-top: var(--meo-color-base05);
+}
+
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected-right,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected-right {
+  --meo-table-sel-right: var(--meo-color-base05);
+}
+
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected-bottom,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected-bottom {
+  --meo-table-sel-bottom: var(--meo-color-base05);
+}
+
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected-left,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected-left {
+  --meo-table-sel-left: var(--meo-color-base05);
 }
 
 .cm-editor .meo-md-html-table th {
   position: relative;
   background-color: var(--vscode-sideBar-background);
+  font-weight: inherit;
+  text-align: inherit;
+}
+
+.cm-editor .meo-md-html-table-cell-content {
+  display: grid;
+}
+
+.cm-editor .meo-md-html-table-cell-content > * {
+  grid-area: 1 / 1;
+}
+
+.cm-editor .meo-md-html-table-cell-preview {
+  display: block;
+  box-sizing: border-box;
+  min-height: 1lh;
+  padding: 0.25em 0.5em;
+  color: var(--vscode-editor-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  cursor: text;
+}
+
+.cm-editor .meo-md-html-table-cell-content.is-editing .meo-md-html-table-cell-preview {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .cm-editor .meo-md-html-table textarea {
@@ -1319,9 +1375,19 @@ body {
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  line-height: inherit;
   padding: 0.25em 0.5em;
   resize: none;
   overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cm-editor .meo-md-html-table-cell-content.is-editing textarea {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .cm-editor .meo-md-html-table textarea:focus {
