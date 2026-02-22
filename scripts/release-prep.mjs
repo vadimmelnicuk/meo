@@ -68,7 +68,14 @@ function ensureCleanTree() {
 }
 
 function getStatusLines() {
-  return tryGit(["status", "--porcelain"])
+  let status = "";
+  try {
+    status = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" });
+  } catch {
+    status = "";
+  }
+
+  return status
     .split("\n")
     .map((line) => line.trimEnd())
     .filter(Boolean);
