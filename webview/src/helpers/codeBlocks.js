@@ -28,6 +28,118 @@ const shellLanguage = StreamLanguage.define({
   }
 });
 
+const powerQueryKeywords = /^(let|in|each|if|then|else|try|otherwise|error|and|or|not|as|is|type|meta|section|shared)\b/i;
+const powerQueryHashKeywords = /^#(date|time|datetime|datetimezone|duration|table|binary|sections|shared)\b/i;
+
+function consumePowerQueryQuotedTail(stream) {
+  while (!stream.eol()) {
+    if (!stream.skipTo('"')) {
+      stream.skipToEnd();
+      break;
+    }
+    stream.next();
+    if (stream.peek() === '"') {
+      stream.next();
+      continue;
+    }
+    break;
+  }
+}
+
+function consumePowerQueryQuoted(stream) {
+  if (stream.next() !== '"') {
+    return false;
+  }
+
+  consumePowerQueryQuotedTail(stream);
+  return true;
+}
+
+function consumePowerQueryBlockComment(stream, state) {
+  state.inBlockComment = true;
+  while (!stream.eol()) {
+    if (stream.match('*/')) {
+      state.inBlockComment = false;
+      break;
+    }
+    stream.next();
+  }
+}
+
+const powerQueryLanguage = StreamLanguage.define({
+  name: 'powerquery',
+  startState: () => ({ inBlockComment: false }),
+  token: (stream, state) => {
+    if (stream.eatSpace()) {
+      return null;
+    }
+
+    if (state.inBlockComment) {
+      consumePowerQueryBlockComment(stream, state);
+      return 'comment';
+    }
+
+    if (stream.match('//')) {
+      stream.skipToEnd();
+      return 'comment';
+    }
+
+    if (stream.match('/*')) {
+      consumePowerQueryBlockComment(stream, state);
+      return 'comment';
+    }
+
+    if (stream.match(/^\[[^\]\r\n]+\]/)) {
+      return 'propertyName';
+    }
+
+    if (stream.match(/^@[a-z_][a-z0-9_]*/i)) {
+      return 'variableName';
+    }
+
+    if (stream.match(powerQueryHashKeywords)) {
+      return 'keyword';
+    }
+
+    if (stream.match(/^#"/)) {
+      consumePowerQueryQuotedTail(stream);
+      return 'string';
+    }
+
+    if (stream.peek() === '"') {
+      consumePowerQueryQuoted(stream);
+      return 'string';
+    }
+
+    if (stream.match(/^(true|false)\b/i)) {
+      return 'bool';
+    }
+
+    if (stream.match(/^null\b/i)) {
+      return 'atom';
+    }
+
+    if (stream.match(powerQueryKeywords)) {
+      return 'keyword';
+    }
+
+    if (stream.match(/^\d+(?:\.\d+)?(?:e[+-]?\d+)?/i)) {
+      return 'number';
+    }
+
+    if (stream.match(/^[a-z_][a-z0-9_.]*/i)) {
+      return 'variableName';
+    }
+
+    if (stream.match(/^(?:=>|<=|>=|<>|=|<|>|\+|-|\*|\/|&|\?|!|,|;|:|\(|\)|\{|\}|\[|\])+/)) {
+      return 'operator';
+    }
+
+    stream.next();
+    return null;
+  }
+});
+
 const jsLanguage = javascript().language;
 const jsxLanguage = javascript({ jsx: true }).language;
 const tsLanguage = javascript({ typescript: true }).language;
@@ -55,7 +167,10 @@ const languageMap = {
   shell: shellLanguage,
   bash: shellLanguage,
   sh: shellLanguage,
-  zsh: shellLanguage
+  zsh: shellLanguage,
+  m: powerQueryLanguage,
+  powerquery: powerQueryLanguage,
+  pq: powerQueryLanguage
 };
 
 export function resolveCodeLanguage(info) {

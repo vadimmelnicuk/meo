@@ -90,6 +90,17 @@
           "order": 1,
           "description": "Use Markdown Editor Optimized as the default editor for Markdown files"
         },
+        "markdownEditorOptimized.outline.position": {
+          "type": "string",
+          "enum": ["left", "right"],
+          "enumDescriptions": [
+            "Show the document outline on the left side of the editor.",
+            "Show the document outline on the right side of the editor."
+          ],
+          "default": "right",
+          "order": 2,
+          "description": "Position of the document outline sidebar."
+        },
         "markdownEditorOptimized.theme.base02": {
           "type": "string",
           "format": "color-hex",

@@ -40,6 +40,10 @@ body {
   min-height: 0;
 }
 
+.editor-wrapper[data-outline-position='left'] {
+  flex-direction: row-reverse;
+}
+
 .editor-host {
   min-height: 0;
   min-width: 0;
@@ -997,7 +1001,7 @@ body {
   flex-shrink: 0;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--vscode-sideBar-background);
+  background-color: var(--vscode-textCodeBlock-background);
 }
 
 .editor-root.outline-visible .outline-sidebar {

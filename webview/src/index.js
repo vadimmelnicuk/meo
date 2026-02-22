@@ -252,6 +252,10 @@ const updateOutlineUI = () => {
   root.classList.toggle('outline-visible', outlineVisible);
 };
 
+const setOutlinePosition = (position) => {
+  editorWrapper.dataset.outlinePosition = position === 'left' ? 'left' : 'right';
+};
+
 const updateLineNumbersUI = () => {
   lineNumbersBtn.classList.toggle('is-active', lineNumbersVisible);
   lineNumbersBtn.setAttribute('aria-pressed', lineNumbersVisible ? 'true' : 'false');
@@ -983,6 +987,7 @@ const handleInit = (message) => {
   if (typeof message.lineNumbers === 'boolean') {
     setLineNumbersVisible(message.lineNumbers, { post: false });
   }
+  setOutlinePosition(message.outlinePosition);
   if (editor && outlineVisible) {
     updateOutline();
   }
@@ -1118,6 +1123,11 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'outlinePositionChanged') {
+    setOutlinePosition(message.position);
+    return;
+  }
+
   if (message.type === 'resolvedImageSrc') {
     settleImageSrcRequest(message.requestId, message.resolvedUrl);
     return;
@@ -1168,6 +1178,7 @@ if (state && (state.mode === 'live' || state.mode === 'source')) {
 } else {
   updateModeUI();
 }
+setOutlinePosition('right');
 updateLineNumbersUI();
 
 liveButton.addEventListener('click', () => {

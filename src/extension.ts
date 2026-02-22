@@ -13,6 +13,7 @@ const AUTO_SAVE_KEY = 'autoSaveEnabled';
 const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 const WIKI_LINK_SCHEME = 'meo-wiki:';
 type EditorMode = 'live' | 'source';
+type OutlinePosition = 'left' | 'right';
 
 type AutoSaveChangedMessage = {
   type: 'autoSaveChanged';
@@ -31,6 +32,7 @@ type InitMessage = {
   mode: EditorMode;
   autoSave: boolean;
   lineNumbers: boolean;
+  outlinePosition: OutlinePosition;
   theme: ThemeSettings;
 };
 
@@ -102,6 +104,11 @@ type ResolvedWikiLinksMessage = {
 type ThemeChangedMessage = {
   type: 'themeChanged';
   theme: ThemeSettings;
+};
+
+type OutlinePositionChangedMessage = {
+  type: 'outlinePositionChanged';
+  position: OutlinePosition;
 };
 
 type WebviewMessage =
@@ -203,7 +210,18 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
   }
 
+  private broadcastOutlinePositionChanged(position: OutlinePosition): void {
+    const message: OutlinePositionChangedMessage = { type: 'outlinePositionChanged', position };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (event.affectsConfiguration('markdownEditorOptimized.outline.position')) {
+      this.broadcastOutlinePositionChanged(getOutlinePosition());
+    }
+
     if (
       event.affectsConfiguration('markdownEditorOptimized.theme') ||
       event.affectsConfiguration('markdownEditorOptimized.fonts')
@@ -258,6 +276,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         mode,
         autoSave,
         lineNumbers,
+        outlinePosition: getOutlinePosition(),
         theme: getThemeSettings()
       };
       return panel.webview.postMessage(message);
@@ -824,6 +843,11 @@ function getThemeSettings(): ThemeSettings {
       source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source)
     }
   };
+}
+
+function getOutlinePosition(): OutlinePosition {
+  const value = vscode.workspace.getConfiguration('markdownEditorOptimized').get<string>('outline.position', 'right');
+  return value === 'left' ? 'left' : 'right';
 }
 
 function readThemeColor(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
