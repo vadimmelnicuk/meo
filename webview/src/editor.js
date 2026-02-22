@@ -5,6 +5,7 @@ import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-mar
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
 import { highlightStyle } from './theme';
 import { liveModeExtensions } from './liveMode';
+import { headingCollapseSharedExtensions } from './helpers/headingCollapse';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
@@ -497,6 +498,7 @@ export function createEditor({
           return false;
         }
       }),
+      ...headingCollapseSharedExtensions(),
       modeCompartment.of(startMode === 'live' ? liveModeExtensions() : sourceMode()),
       searchQueryField,
       searchMatchField,

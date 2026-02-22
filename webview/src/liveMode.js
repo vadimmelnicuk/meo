@@ -16,6 +16,10 @@ import { ImageWidget, getImageData, isImageUrl } from './helpers/images';
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
+import {
+  getCollapsedHeadingSections,
+  headingCollapseLiveExtensions
+} from './helpers/headingCollapse';
 import { addListMarkerDecoration, listMarkerData, detectListIndentStylesByLine } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 import { parseFrontmatter, isThematicBreakLine } from './helpers/frontmatter';
@@ -33,6 +37,11 @@ const activeStrikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active me
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
 const hrMarkerDeco = Decoration.mark({ class: 'meo-md-hr-marker' });
 const hiddenLinkUrlDeco = Decoration.mark({ class: 'meo-md-link-url-hidden' });
+const collapsedHeadingBodyDeco = Decoration.replace({
+  inclusiveStart: false,
+  inclusiveEnd: false
+});
+const collapsedHeadingLineDeco = Decoration.line({ class: 'meo-md-heading-collapsed' });
 const tableDelimiterGutterLineClassMarker = new class extends GutterMarker {
   get elementClass() {
     return 'meo-md-hide-line-number';
@@ -502,6 +511,7 @@ function buildDecorations(state) {
   const activeLines = collectActiveLines(state);
   const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
+  const collapsedHeadingSections = getCollapsedHeadingSections(state);
   const strikeRanges = collectStrikethroughRanges(tree);
   const parsedTableRanges = [];
   let tableDepth = 0;
@@ -683,6 +693,10 @@ function buildDecorations(state) {
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
   addListLineDecorations(ranges, state, indentSelectedLines);
+  for (const section of collapsedHeadingSections) {
+    addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
+    addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);
+  }
 
   const result = Decoration.set(ranges, true);
   return result;
@@ -793,7 +807,8 @@ export function liveModeExtensions() {
     }),
     syntaxHighlighting(highlightStyle),
     liveDecorationField,
-    liveLineNumberMarkerField
+    liveLineNumberMarkerField,
+    ...headingCollapseLiveExtensions()
   ];
 }
 

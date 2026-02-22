@@ -36,3 +36,45 @@ export function extractHeadings(state) {
 
   return headings;
 }
+
+export function extractHeadingSections(state) {
+  const headings = [];
+  const tree = resolvedSyntaxTree(state);
+
+  tree.iterate({
+    enter(node) {
+      const headingLevel = headingLevelFromName(node.name);
+      if (headingLevel === null) {
+        return;
+      }
+
+      const line = state.doc.lineAt(node.from);
+      headings.push({
+        level: headingLevel,
+        line: line.number,
+        headingFrom: node.from,
+        headingTo: node.to,
+        lineFrom: line.from,
+        lineTo: line.to,
+        // Start folding at the heading line end so the trailing newline is hidden too.
+        collapseFrom: line.to,
+        collapseTo: state.doc.length
+      });
+    }
+  });
+
+  for (let index = 0; index < headings.length; index += 1) {
+    const heading = headings[index];
+    for (let nextIndex = index + 1; nextIndex < headings.length; nextIndex += 1) {
+      const nextHeading = headings[nextIndex];
+      if (nextHeading.level <= heading.level) {
+        // Stop before the next heading line start so its gutter/line decorations remain visible.
+        const previousLineNo = Math.max(heading.line, nextHeading.line - 1);
+        heading.collapseTo = state.doc.line(previousLineNo).to;
+        break;
+      }
+    }
+  }
+
+  return headings;
+}
