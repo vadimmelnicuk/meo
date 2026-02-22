@@ -2,7 +2,7 @@
   "name": "meo",
   "displayName": "Markdown Editor Optimized",
   "description": "An optimized markdown editor with live editing mode for VS Code.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "vadimmelnicuk",
   "private": true,
   "icon": "logo.png",

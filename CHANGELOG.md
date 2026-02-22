@@ -1,5 +1,9 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.7
+- Fixed `Reset Theme to Defaults` so theme/font overrides are cleared correctly at global, workspace, and workspace-folder scopes.
+- Improved live-mode thematic break decorations so active-line state and frontmatter boundary rendering stay consistent.
+
 ## 0.1.6
 - Added settings for theme overrides and per-mode fonts.
 - Added a `Markdown Editor Optimized: Reset Theme to Defaults` command to reset all theme colors/fonts to defaults.
