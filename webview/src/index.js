@@ -1199,6 +1199,16 @@ findInput.addEventListener('input', () => {
   updateFindStatusSummary();
 });
 
+findPanel.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !findPanelVisible) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  closeFindPanel();
+});
+
 findInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
