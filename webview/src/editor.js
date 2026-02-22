@@ -21,7 +21,7 @@ import {
   outdentListByTwoSpaces
 } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
-import { sourceFrontmatterField } from './helpers/frontmatter';
+import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
 
 const setSearchQueryEffect = StateEffect.define();
 const refreshDecorationsEffect = StateEffect.define();
@@ -134,6 +134,45 @@ export function createEditor({
     event.preventDefault();
     event.stopPropagation();
     onOpenLink?.(href);
+    return true;
+  };
+  const isLiveMode = (editorView) => editorView.dom.classList.contains('meo-mode-live');
+  const isPlainPrimaryPointerEvent = (event) => (
+    event.button === 0 && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
+  );
+  const frontmatterBoundaryCursorEnd = (state, pos) => {
+    const frontmatter = parseFrontmatter(state);
+    if (!frontmatter) {
+      return null;
+    }
+    const line = state.doc.lineAt(pos);
+    const openingLineNo = state.doc.lineAt(frontmatter.openingFrom).number;
+    const closingLineNo = state.doc.lineAt(frontmatter.closingFrom).number;
+    if (line.number !== openingLineNo && line.number !== closingLineNo) {
+      return null;
+    }
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const markerStart = lineText.indexOf('---');
+    return markerStart >= 0 ? line.from + markerStart + 3 : null;
+  };
+  const placeCursorAtFrontmatterBoundaryEnd = (event, editorView) => {
+    if (!isLiveMode(editorView) || !isPlainPrimaryPointerEvent(event)) {
+      return false;
+    }
+    const clickedPos = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (clickedPos === null) {
+      return false;
+    }
+    const cursorEnd = frontmatterBoundaryCursorEnd(editorView.state, clickedPos);
+    if (cursorEnd === null) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    editorView.dispatch({ selection: { anchor: cursorEnd } });
+    editorView.focus();
+    inlineCodeClick = null;
+    checkboxClick = null;
     return true;
   };
 
@@ -362,6 +401,10 @@ export function createEditor({
             return false;
           }
 
+          if (placeCursorAtFrontmatterBoundaryEnd(event, view)) {
+            return true;
+          }
+
           if (targetElement && targetElement.closest('.meo-mermaid-zoom-controls')) {
             event.preventDefault();
             event.stopPropagation();
@@ -410,7 +453,7 @@ export function createEditor({
           if (
             inlineCodeClick?.pointerId === event.pointerId &&
             inlineCodeClick.inInlineCode &&
-            currentMode === 'live'
+            isLiveMode(view)
           ) {
             const { head, empty } = view.state.selection.main;
             if (empty) {
@@ -421,7 +464,7 @@ export function createEditor({
             }
           }
 
-          if (currentMode === 'live') {
+          if (isLiveMode(view)) {
             const { head, empty } = view.state.selection.main;
             if (empty) {
               const node = resolvedSyntaxTree(view.state).resolveInner(head, -1);

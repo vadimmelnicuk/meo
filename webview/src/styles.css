@@ -656,13 +656,18 @@ body {
   pointer-events: none;
 }
 
+.cm-editor.meo-mode-live .meo-md-hr.meo-md-hr-active::after,
 .cm-editor.meo-mode-live .meo-md-hr.cm-activeLine::after {
   display: none;
 }
 
-.cm-editor.meo-mode-live .meo-md-hr-marker {
-  color: transparent;
-  opacity: 1;
+.cm-editor.meo-mode-live .meo-md-frontmatter-boundary::after {
+  display: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-hr .meo-md-hr-marker {
+  color: transparent !important;
+  opacity: 0;
 }
 
 .cm-editor .meo-md-inline-code {

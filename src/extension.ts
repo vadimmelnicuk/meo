@@ -850,17 +850,41 @@ async function resetThemeSettingsToDefaults(): Promise<void> {
 
   await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Global);
   await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Workspace);
+  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
 async function clearThemeKeysForTarget(
   config: vscode.WorkspaceConfiguration,
   keys: string[],
-  target: vscode.ConfigurationTarget,
-  clearValue: unknown = undefined
+  target: vscode.ConfigurationTarget
 ): Promise<void> {
   for (const key of keys) {
-    await config.update(key, clearValue, target);
+    if (!hasThemeKeyValueAtTarget(config, key, target)) {
+      continue;
+    }
+    await config.update(key, undefined, target);
   }
+}
+
+function hasThemeKeyValueAtTarget(
+  config: vscode.WorkspaceConfiguration,
+  key: string,
+  target: vscode.ConfigurationTarget
+): boolean {
+  const inspected = config.inspect(key);
+  if (!inspected) {
+    return false;
+  }
+  if (target === vscode.ConfigurationTarget.Global) {
+    return inspected.globalValue !== undefined;
+  }
+  if (target === vscode.ConfigurationTarget.Workspace) {
+    return inspected.workspaceValue !== undefined;
+  }
+  if (target === vscode.ConfigurationTarget.WorkspaceFolder) {
+    return inspected.workspaceFolderValue !== undefined;
+  }
+  return false;
 }
 
 export function deactivate(): void {}

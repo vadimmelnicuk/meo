@@ -50,6 +50,7 @@ const lineStyleDecos = {
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
   frontmatterContent: Decoration.line({ class: 'meo-md-frontmatter-content' }),
   frontmatterBoundary: Decoration.line({ class: 'meo-md-hr meo-md-frontmatter-boundary' }),
+  hrActive: Decoration.line({ class: 'meo-md-hr-active' }),
   hr: Decoration.line({ class: 'meo-md-hr' })
 };
 
@@ -126,9 +127,10 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
     addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.frontmatterBoundary);
     const lineNo = state.doc.lineAt(boundary.from).number;
     if (activeLines.has(lineNo)) {
+      addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.hrActive);
       addRange(builder, boundary.from, boundary.to, activeLineMarkerDeco);
     } else {
-      addRange(builder, boundary.from, boundary.to, hrMarkerDeco);
+      addRange(builder, boundary.from, boundary.to, markerDeco);
     }
   }
 }
@@ -137,18 +139,24 @@ function isInsideFrontmatter(frontmatter, pos) {
   return Boolean(frontmatter && pos >= frontmatter.from && pos < frontmatter.to);
 }
 
+function addThematicBreakDecorations(builder, state, from, to, activeLines) {
+  addLineClass(builder, state, from, to, lineStyleDecos.hr);
+  const lineNo = state.doc.lineAt(from).number;
+  if (activeLines.has(lineNo)) {
+    addLineClass(builder, state, from, to, lineStyleDecos.hrActive);
+    addRange(builder, from, to, activeLineMarkerDeco);
+  } else {
+    addRange(builder, from, to, hrMarkerDeco);
+  }
+}
+
 function addForcedThematicBreakDecorations(builder, state, activeLines, frontmatter) {
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
     if (!isThematicBreakLine(line.text) || isInsideFrontmatter(frontmatter, line.from)) {
       continue;
     }
-    addLineClass(builder, state, line.from, line.to, lineStyleDecos.hr);
-    if (activeLines.has(lineNo)) {
-      addRange(builder, line.from, line.to, activeLineMarkerDeco);
-    } else {
-      addRange(builder, line.from, line.to, hrMarkerDeco);
-    }
+    addThematicBreakDecorations(builder, state, line.from, line.to, activeLines);
   }
 }
 
@@ -504,17 +512,7 @@ function buildDecorations(state) {
         }
       }
 
-      if (node.name === 'HorizontalRule') {
-        if (isInsideFrontmatter(frontmatter, node.from)) {
-          return;
-        }
-        addLineClass(ranges, state, node.from, node.to, lineStyleDecos.hr);
-        if (activeLines.has(state.doc.lineAt(node.from).number)) {
-          addRange(ranges, node.from, node.to, activeLineMarkerDeco);
-        } else {
-          addRange(ranges, node.from, node.to, hrMarkerDeco);
-        }
-      } else if (node.name === 'Blockquote') {
+      if (node.name === 'Blockquote') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);
       } else if (node.name === 'Table') {
         const tableInfo = parseTableInfo(state, node);
