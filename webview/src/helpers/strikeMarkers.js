@@ -124,13 +124,21 @@ function computeSourceStrikeMarkers(state) {
 
 export const sourceStrikeMarkerField = StateField.define({
   create(state) {
-    return computeSourceStrikeMarkers(state);
+    try {
+      return computeSourceStrikeMarkers(state);
+    } catch {
+      return Decoration.none;
+    }
   },
   update(markers, transaction) {
     if (!transaction.docChanged) {
       return markers;
     }
-    return computeSourceStrikeMarkers(transaction.state);
+    try {
+      return computeSourceStrikeMarkers(transaction.state);
+    } catch {
+      return markers;
+    }
   },
   provide: (field) => EditorView.decorations.from(field)
 });

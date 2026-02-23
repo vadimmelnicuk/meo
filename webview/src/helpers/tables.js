@@ -1656,10 +1656,23 @@ function isPositionInsideCodeBlock(tree, pos) {
 }
 
 export const sourceTableHeaderLineField = StateField.define({
-  create: buildSourceTableHeaderDecorations,
-  update: (decorations, transaction) => (
-    transaction.docChanged ? buildSourceTableHeaderDecorations(transaction.state) : decorations
-  ),
+  create(state) {
+    try {
+      return buildSourceTableHeaderDecorations(state);
+    } catch {
+      return Decoration.none;
+    }
+  },
+  update(decorations, transaction) {
+    if (!transaction.docChanged) {
+      return decorations;
+    }
+    try {
+      return buildSourceTableHeaderDecorations(transaction.state);
+    } catch {
+      return decorations;
+    }
+  },
   provide: (field) => EditorView.decorations.from(field)
 });
 

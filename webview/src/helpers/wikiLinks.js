@@ -200,13 +200,21 @@ function computeSourceWikiMarkers(state) {
 
 export const sourceWikiMarkerField = StateField.define({
   create(state) {
-    return computeSourceWikiMarkers(state);
+    try {
+      return computeSourceWikiMarkers(state);
+    } catch {
+      return Decoration.none;
+    }
   },
   update(markers, transaction) {
     if (!transaction.docChanged) {
       return markers;
     }
-    return computeSourceWikiMarkers(transaction.state);
+    try {
+      return computeSourceWikiMarkers(transaction.state);
+    } catch {
+      return markers;
+    }
   },
   provide: (field) => EditorView.decorations.from(field)
 });

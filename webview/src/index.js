@@ -15,13 +15,6 @@ let latestWikiLinkRequestId = '';
 let pendingWikiStatusRefresh = null;
 const wikiStatusDebounceMs = 1000;
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
-const largeDocThresholds = Object.freeze({
-  charCount: 300_000,
-  lineCount: 6_000,
-  maxLineLength: 12_000
-});
-const largeDocGuardNoticeMessage = 'Large document opened in Source mode for stability. You can switch to Live mode manually.';
-const largeDocLiveRetryNoticeMessage = 'Large document is in Live mode (manual retry). Rendering may be slow or fail.';
 const liveModeFailureNoticeMessage = 'Live mode failed to render this document. Switched to Source mode.';
 const editorUpdateFailureNoticeMessage = 'Editor failed to update this document. Try reopening the file.';
 
@@ -30,55 +23,6 @@ const normalizeThemeLineHeight = (value, fallback) => {
     return fallback;
   }
   return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
-};
-
-const getDocumentComplexity = (text) => {
-  const value = typeof text === 'string' ? text : String(text ?? '');
-  const charCount = value.length;
-  if (charCount === 0) {
-    return {
-      charCount: 0,
-      lineCount: 0,
-      maxLineLength: 0,
-      isLarge: false
-    };
-  }
-
-  let lineCount = 1;
-  let currentLineLength = 0;
-  let maxLineLength = 0;
-
-  for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i);
-    if (code === 13) {
-      maxLineLength = Math.max(maxLineLength, currentLineLength);
-      currentLineLength = 0;
-      lineCount += 1;
-      if (value.charCodeAt(i + 1) === 10) {
-        i += 1;
-      }
-      continue;
-    }
-    if (code === 10) {
-      maxLineLength = Math.max(maxLineLength, currentLineLength);
-      currentLineLength = 0;
-      lineCount += 1;
-      continue;
-    }
-    currentLineLength += 1;
-  }
-
-  maxLineLength = Math.max(maxLineLength, currentLineLength);
-
-  return {
-    charCount,
-    lineCount,
-    maxLineLength,
-    isLarge:
-      charCount >= largeDocThresholds.charCount ||
-      lineCount >= largeDocThresholds.lineCount ||
-      maxLineLength >= largeDocThresholds.maxLineLength
-  };
 };
 
 const applyThemeSettings = (theme) => {
@@ -674,9 +618,6 @@ let findPanelVisible = false;
 let pendingInitialText = null;
 let initialEditorMountQueued = false;
 let initialMountRecoveryAttempted = false;
-let largeDocGuardActive = false;
-let largeDocManualLiveOverride = false;
-let lastDocumentComplexity = null;
 let editorFailureNoticeMessage = '';
 let editorFailureNoticeKind = 'error';
 let modeToggleShouldRestoreEditorFocus = false;
@@ -692,16 +633,6 @@ const clearEditorNotice = () => {};
 const updateEditorNotice = () => {
   if (editorFailureNoticeMessage) {
     setEditorNotice(editorFailureNoticeMessage, editorFailureNoticeKind);
-    return;
-  }
-
-  if (largeDocGuardActive && !largeDocManualLiveOverride && currentMode === 'source') {
-    setEditorNotice(largeDocGuardNoticeMessage, 'warning');
-    return;
-  }
-
-  if (largeDocGuardActive && largeDocManualLiveOverride && currentMode === 'live') {
-    setEditorNotice(largeDocLiveRetryNoticeMessage, 'warning');
     return;
   }
 
@@ -723,26 +654,10 @@ const clearFailureNotice = () => {
   updateEditorNotice();
 };
 
-const updateDocumentComplexityState = (text) => {
-  lastDocumentComplexity = getDocumentComplexity(text);
-  largeDocGuardActive = lastDocumentComplexity.isLarge;
-  if (!largeDocGuardActive) {
-    largeDocManualLiveOverride = false;
-  }
-  updateEditorNotice();
-  return lastDocumentComplexity;
-};
-
 const logWebviewRenderError = (context, error, extra = {}) => {
-  const metrics = lastDocumentComplexity ?? getDocumentComplexity(getCurrentExportText());
   console.error('[MEO webview] render error', {
     context,
     mode: currentMode,
-    largeDocGuardActive,
-    largeDocManualLiveOverride,
-    charCount: metrics.charCount,
-    lineCount: metrics.lineCount,
-    maxLineLength: metrics.maxLineLength,
     ...extra,
     error
   });
@@ -909,12 +824,6 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
     return false;
   }
 
-  if (reason === 'large-doc-guard') {
-    largeDocManualLiveOverride = false;
-  } else if (userTriggered && largeDocGuardActive) {
-    largeDocManualLiveOverride = mode === 'live';
-  }
-
   const previousMode = currentMode;
   const shouldRestoreEditorFocus = modeToggleShouldRestoreEditorFocus;
   modeToggleShouldRestoreEditorFocus = false;
@@ -938,9 +847,6 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
 
       if (mode === 'live') {
         setFailureNotice(liveModeFailureNoticeMessage, 'warning');
-        if (largeDocGuardActive) {
-          largeDocManualLiveOverride = false;
-        }
 
         try {
           editor.setMode('source');
@@ -979,16 +885,6 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
   return true;
 };
 
-const enforceLargeDocGuardMode = ({ post = true } = {}) => {
-  if (!largeDocGuardActive || largeDocManualLiveOverride || currentMode === 'source') {
-    updateEditorNotice();
-    return false;
-  }
-  applyMode('source', { post, persist: false, reason: 'large-doc-guard' });
-  updateEditorNotice();
-  return true;
-};
-
 const setEditorTextSafely = (text, context) => {
   if (!editor) {
     return false;
@@ -1002,9 +898,6 @@ const setEditorTextSafely = (text, context) => {
 
     if (currentMode === 'live') {
       setFailureNotice(liveModeFailureNoticeMessage, 'warning');
-      if (largeDocGuardActive) {
-        largeDocManualLiveOverride = false;
-      }
       applyMode('source', { post: true, persist: false, reason: 'render-failure' });
       if (!editor) {
         return false;
@@ -1325,9 +1218,6 @@ const mountInitialEditor = () => {
     if (currentMode === 'live' && !initialMountRecoveryAttempted) {
       initialMountRecoveryAttempted = true;
       setFailureNotice(liveModeFailureNoticeMessage, 'warning');
-      if (largeDocGuardActive) {
-        largeDocManualLiveOverride = false;
-      }
       applyMode('source', { post: true, persist: false, reason: 'render-failure' });
       scheduleInitialEditorMount();
       return;
@@ -1387,9 +1277,7 @@ window.addEventListener('message', (event) => {
     applyThemeSettings(message.theme);
     initialMountRecoveryAttempted = false;
     clearFailureNotice();
-    updateDocumentComplexityState(message.text);
     const nextMode = hasLocalModePreference ? currentMode : message.mode;
-    const guardedMode = largeDocGuardActive && !largeDocManualLiveOverride ? 'source' : nextMode;
     documentVersion = message.version;
     syncedText = message.text;
     pendingText = null;
@@ -1399,16 +1287,16 @@ window.addEventListener('message', (event) => {
 
     handleInit(message);
     if (hasLocalModePreference) {
-      applyMode(guardedMode, {
+      applyMode(nextMode, {
         post: true,
-        persist: guardedMode === nextMode,
-        reason: guardedMode === 'source' && guardedMode !== nextMode ? 'large-doc-guard' : 'init'
+        persist: true,
+        reason: 'init'
       });
     } else {
-      applyMode(guardedMode, {
-        post: guardedMode !== nextMode,
+      applyMode(nextMode, {
+        post: false,
         persist: false,
-        reason: guardedMode === 'source' && guardedMode !== nextMode ? 'large-doc-guard' : 'init'
+        reason: 'init'
       });
     }
     updateEditorNotice();
@@ -1421,17 +1309,13 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'docChanged' && !editor && pendingInitialText !== null) {
-    updateDocumentComplexityState(message.text);
     documentVersion = message.version;
     syncedText = message.text;
     pendingInitialText = message.text;
-    enforceLargeDocGuardMode({ post: true });
     return;
   }
 
   if (message.type === 'docChanged' && editor) {
-    updateDocumentComplexityState(message.text);
-    enforceLargeDocGuardMode({ post: true });
     const incomingText = normalizeEol(message.text);
     const currentText = normalizeEol(editor.getText());
     const pendingNormalized = pendingText === null ? null : normalizeEol(pendingText);
@@ -1603,8 +1487,9 @@ const preserveEditorFocusOnModePointerToggle = (event) => {
     return;
   }
   modeToggleShouldRestoreEditorFocus = true;
-  // Keep the editor focused so active-line styling remains visible after mode switches.
-  event.preventDefault();
+  // Do not preventDefault here: in the webview's embedded Chromium this can suppress
+  // the button click, which makes mode changes feel like they require two clicks.
+  // `applyMode()` restores editor focus after the toggle when this flag is set.
 };
 
 modeGroup.addEventListener('pointerdown', preserveEditorFocusOnModePointerToggle);

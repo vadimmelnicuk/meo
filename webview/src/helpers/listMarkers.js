@@ -621,26 +621,42 @@ function computeSourceListMarkers(state) {
 
 export const sourceListBorderField = StateField.define({
   create(state) {
-    return computeSourceListBorders(state);
+    try {
+      return computeSourceListBorders(state);
+    } catch {
+      return Decoration.none;
+    }
   },
   update(borders, transaction) {
     if (!transaction.docChanged) {
       return borders;
     }
-    return computeSourceListBorders(transaction.state);
+    try {
+      return computeSourceListBorders(transaction.state);
+    } catch {
+      return borders;
+    }
   },
   provide: (field) => EditorView.decorations.from(field)
 });
 
 export const sourceListMarkerField = StateField.define({
   create(state) {
-    return computeSourceListMarkers(state);
+    try {
+      return computeSourceListMarkers(state);
+    } catch {
+      return Decoration.none;
+    }
   },
   update(markers, transaction) {
     if (!transaction.docChanged) {
       return markers;
     }
-    return computeSourceListMarkers(transaction.state);
+    try {
+      return computeSourceListMarkers(transaction.state);
+    } catch {
+      return markers;
+    }
   },
   provide: (field) => EditorView.decorations.from(field)
 });

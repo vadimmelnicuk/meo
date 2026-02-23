@@ -187,7 +187,8 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
   for (const boundary of boundaries) {
     addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.frontmatterBoundary);
     const lineNo = state.doc.lineAt(boundary.from).number;
-    if (activeLines.has(lineNo)) {
+    const boundarySelected = overlapsSelection(state, boundary.from, boundary.to);
+    if (activeLines.has(lineNo) || boundarySelected) {
       addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.hrActive);
       addRange(builder, boundary.from, boundary.to, activeLineMarkerDeco);
     } else {

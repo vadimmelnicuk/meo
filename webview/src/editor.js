@@ -104,6 +104,7 @@ export function createEditor({
   let capturedPointerId = null;
   let inlineCodeClick = null;
   let checkboxClick = null;
+  let frontmatterBoundaryClick = null;
   let view = null;
   let currentMode = startMode;
   let applyingRenumber = false;
@@ -160,25 +161,23 @@ export function createEditor({
     const markerStart = lineText.indexOf('---');
     return markerStart >= 0 ? line.from + markerStart + 3 : null;
   };
-  const placeCursorAtFrontmatterBoundaryEnd = (event, editorView) => {
+  const trackFrontmatterBoundaryClick = (event, editorView) => {
+    frontmatterBoundaryClick = null;
     if (!isLiveMode(editorView) || !isPlainPrimaryPointerEvent(event)) {
-      return false;
+      return;
     }
     const clickedPos = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
     if (clickedPos === null) {
-      return false;
+      return;
     }
     const cursorEnd = frontmatterBoundaryCursorEnd(editorView.state, clickedPos);
     if (cursorEnd === null) {
-      return false;
+      return;
     }
-    event.preventDefault();
-    event.stopPropagation();
-    editorView.dispatch({ selection: { anchor: cursorEnd } });
-    editorView.focus();
-    inlineCodeClick = null;
-    checkboxClick = null;
-    return true;
+    frontmatterBoundaryClick = {
+      pointerId: event.pointerId,
+      cursorEnd
+    };
   };
 
   const setTableInteractionActive = (active) => {
@@ -394,9 +393,11 @@ export function createEditor({
       EditorView.domEventHandlers({
         pointerdown(event, view) {
           if (event.button !== 0) {
+            frontmatterBoundaryClick = null;
             return false;
           }
           if (openLinkIfModifierClick(event)) {
+            frontmatterBoundaryClick = null;
             return true;
           }
 
@@ -406,9 +407,7 @@ export function createEditor({
             return false;
           }
 
-          if (placeCursorAtFrontmatterBoundaryEnd(event, view)) {
-            return true;
-          }
+          trackFrontmatterBoundaryClick(event, view);
 
           if (targetElement && targetElement.closest('.meo-mermaid-zoom-controls')) {
             event.preventDefault();
@@ -444,11 +443,15 @@ export function createEditor({
         },
         pointerup(event, view) {
           if (checkboxClick?.pointerId === event.pointerId) {
+            frontmatterBoundaryClick = null;
             checkboxClick = null;
             return false;
           }
 
           if (capturedPointerId !== event.pointerId) {
+            if (frontmatterBoundaryClick?.pointerId === event.pointerId) {
+              frontmatterBoundaryClick = null;
+            }
             return false;
           }
 
@@ -467,6 +470,16 @@ export function createEditor({
                 view.dispatch({ selection: { anchor: clamped } });
               }
             }
+          }
+
+          if (frontmatterBoundaryClick?.pointerId === event.pointerId) {
+            if (isLiveMode(view)) {
+              const selection = view.state.selection.main;
+              if (selection.empty && selection.head !== frontmatterBoundaryClick.cursorEnd) {
+                view.dispatch({ selection: { anchor: frontmatterBoundaryClick.cursorEnd } });
+              }
+            }
+            frontmatterBoundaryClick = null;
           }
 
           if (isLiveMode(view)) {
@@ -492,11 +505,15 @@ export function createEditor({
         },
         pointercancel(event, view) {
           if (capturedPointerId !== event.pointerId) {
+            if (frontmatterBoundaryClick?.pointerId === event.pointerId) {
+              frontmatterBoundaryClick = null;
+            }
             return false;
           }
 
           releasePointerCaptureIfHeld(event.pointerId);
           capturedPointerId = null;
+          frontmatterBoundaryClick = null;
           inlineCodeClick = null;
           checkboxClick = null;
           return false;
@@ -705,11 +722,18 @@ export function createEditor({
       const lineBlock = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 1);
       const lineNumber = view.state.doc.lineAt(lineBlock.from).number;
 
+      const previousMode = currentMode;
       currentMode = nextMode;
-      view.dispatch({
-        effects: modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode())
-      });
-      forceParsing(view, view.state.doc.length, 500);
+      try {
+        view.dispatch({
+          effects: modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode())
+        });
+        forceParsing(view, view.state.doc.length, 500);
+      } catch (error) {
+        currentMode = previousMode;
+        syncModeClasses();
+        throw error;
+      }
       syncModeClasses();
 
       let attempts = 0;

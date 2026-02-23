@@ -250,13 +250,21 @@ function computeSourceCodeBlockLines(state) {
 
 export const sourceCodeBlockField = StateField.define({
   create(state) {
-    return computeSourceCodeBlockLines(state);
+    try {
+      return computeSourceCodeBlockLines(state);
+    } catch {
+      return Decoration.none;
+    }
   },
   update(lines, transaction) {
     if (!transaction.docChanged) {
       return lines;
     }
-    return computeSourceCodeBlockLines(transaction.state);
+    try {
+      return computeSourceCodeBlockLines(transaction.state);
+    } catch {
+      return lines;
+    }
   },
   provide: (field) => EditorView.decorations.from(field)
 });
