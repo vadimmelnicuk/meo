@@ -15,12 +15,70 @@ let latestWikiLinkRequestId = '';
 let pendingWikiStatusRefresh = null;
 const wikiStatusDebounceMs = 1000;
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
+const largeDocThresholds = Object.freeze({
+  charCount: 300_000,
+  lineCount: 6_000,
+  maxLineLength: 12_000
+});
+const largeDocGuardNoticeMessage = 'Large document opened in Source mode for stability. You can switch to Live mode manually.';
+const largeDocLiveRetryNoticeMessage = 'Large document is in Live mode (manual retry). Rendering may be slow or fail.';
+const liveModeFailureNoticeMessage = 'Live mode failed to render this document. Switched to Source mode.';
+const editorUpdateFailureNoticeMessage = 'Editor failed to update this document. Try reopening the file.';
 
 const normalizeThemeLineHeight = (value, fallback) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
   }
   return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
+};
+
+const getDocumentComplexity = (text) => {
+  const value = typeof text === 'string' ? text : String(text ?? '');
+  const charCount = value.length;
+  if (charCount === 0) {
+    return {
+      charCount: 0,
+      lineCount: 0,
+      maxLineLength: 0,
+      isLarge: false
+    };
+  }
+
+  let lineCount = 1;
+  let currentLineLength = 0;
+  let maxLineLength = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 13) {
+      maxLineLength = Math.max(maxLineLength, currentLineLength);
+      currentLineLength = 0;
+      lineCount += 1;
+      if (value.charCodeAt(i + 1) === 10) {
+        i += 1;
+      }
+      continue;
+    }
+    if (code === 10) {
+      maxLineLength = Math.max(maxLineLength, currentLineLength);
+      currentLineLength = 0;
+      lineCount += 1;
+      continue;
+    }
+    currentLineLength += 1;
+  }
+
+  maxLineLength = Math.max(maxLineLength, currentLineLength);
+
+  return {
+    charCount,
+    lineCount,
+    maxLineLength,
+    isLarge:
+      charCount >= largeDocThresholds.charCount ||
+      lineCount >= largeDocThresholds.lineCount ||
+      maxLineLength >= largeDocThresholds.maxLineLength
+  };
 };
 
 const applyThemeSettings = (theme) => {
@@ -615,9 +673,78 @@ let hasLocalModePreference = false;
 let findPanelVisible = false;
 let pendingInitialText = null;
 let initialEditorMountQueued = false;
+let initialMountRecoveryAttempted = false;
+let largeDocGuardActive = false;
+let largeDocManualLiveOverride = false;
+let lastDocumentComplexity = null;
+let editorFailureNoticeMessage = '';
+let editorFailureNoticeKind = 'error';
 
 const hideSelectionMenu = () => {
   selectionMenu.classList.remove('is-visible');
+};
+
+const setEditorNotice = (_message, _kind = 'info') => {};
+
+const clearEditorNotice = () => {};
+
+const updateEditorNotice = () => {
+  if (editorFailureNoticeMessage) {
+    setEditorNotice(editorFailureNoticeMessage, editorFailureNoticeKind);
+    return;
+  }
+
+  if (largeDocGuardActive && !largeDocManualLiveOverride && currentMode === 'source') {
+    setEditorNotice(largeDocGuardNoticeMessage, 'warning');
+    return;
+  }
+
+  if (largeDocGuardActive && largeDocManualLiveOverride && currentMode === 'live') {
+    setEditorNotice(largeDocLiveRetryNoticeMessage, 'warning');
+    return;
+  }
+
+  clearEditorNotice();
+};
+
+const setFailureNotice = (message, kind = 'error') => {
+  editorFailureNoticeMessage = message;
+  editorFailureNoticeKind = kind;
+  updateEditorNotice();
+};
+
+const clearFailureNotice = () => {
+  if (!editorFailureNoticeMessage) {
+    return;
+  }
+  editorFailureNoticeMessage = '';
+  editorFailureNoticeKind = 'error';
+  updateEditorNotice();
+};
+
+const updateDocumentComplexityState = (text) => {
+  lastDocumentComplexity = getDocumentComplexity(text);
+  largeDocGuardActive = lastDocumentComplexity.isLarge;
+  if (!largeDocGuardActive) {
+    largeDocManualLiveOverride = false;
+  }
+  updateEditorNotice();
+  return lastDocumentComplexity;
+};
+
+const logWebviewRenderError = (context, error, extra = {}) => {
+  const metrics = lastDocumentComplexity ?? getDocumentComplexity(getCurrentExportText());
+  console.error('[MEO webview] render error', {
+    context,
+    mode: currentMode,
+    largeDocGuardActive,
+    largeDocManualLiveOverride,
+    charCount: metrics.charCount,
+    lineCount: metrics.lineCount,
+    maxLineLength: metrics.maxLineLength,
+    ...extra,
+    error
+  });
 };
 
 const setFindStatus = (text, isError = false) => {
@@ -776,11 +903,18 @@ const updateModeUI = () => {
   }
 };
 
-const applyMode = (mode, { post = true, persist = true, userTriggered = false } = {}) => {
+const applyMode = (mode, { post = true, persist = true, userTriggered = false, reason = 'user' } = {}) => {
   if (mode !== 'live' && mode !== 'source') {
-    return;
+    return false;
   }
 
+  if (reason === 'large-doc-guard') {
+    largeDocManualLiveOverride = false;
+  } else if (userTriggered && largeDocGuardActive) {
+    largeDocManualLiveOverride = mode === 'live';
+  }
+
+  const previousMode = currentMode;
   currentMode = mode;
   if (userTriggered) {
     hasLocalModePreference = true;
@@ -788,7 +922,40 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false } 
   updateModeUI();
 
   if (editor) {
-    editor.setMode(mode);
+    try {
+      editor.setMode(mode);
+      if (mode === 'live') {
+        clearFailureNotice();
+      }
+    } catch (error) {
+      logWebviewRenderError('applyMode', error, { requestedMode: mode, reason });
+
+      if (mode === 'live') {
+        setFailureNotice(liveModeFailureNoticeMessage, 'warning');
+        if (largeDocGuardActive) {
+          largeDocManualLiveOverride = false;
+        }
+
+        try {
+          editor.setMode('source');
+          currentMode = 'source';
+          updateModeUI();
+          updateEditorNotice();
+          if (post) {
+            vscode.postMessage({ type: 'setMode', mode: 'source' });
+          }
+          return false;
+        } catch (fallbackError) {
+          logWebviewRenderError('applyMode.fallbackSource', fallbackError, { requestedMode: mode, reason });
+          setFailureNotice(editorUpdateFailureNoticeMessage, 'error');
+        }
+      }
+
+      currentMode = previousMode;
+      updateModeUI();
+      updateEditorNotice();
+      return false;
+    }
   }
 
   if (persist) {
@@ -797,6 +964,54 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false } 
 
   if (post) {
     vscode.postMessage({ type: 'setMode', mode });
+  }
+
+  updateEditorNotice();
+  return true;
+};
+
+const enforceLargeDocGuardMode = ({ post = true } = {}) => {
+  if (!largeDocGuardActive || largeDocManualLiveOverride || currentMode === 'source') {
+    updateEditorNotice();
+    return false;
+  }
+  applyMode('source', { post, persist: false, reason: 'large-doc-guard' });
+  updateEditorNotice();
+  return true;
+};
+
+const setEditorTextSafely = (text, context) => {
+  if (!editor) {
+    return false;
+  }
+
+  try {
+    editor.setText(text);
+    return true;
+  } catch (error) {
+    logWebviewRenderError('setText', error, { context });
+
+    if (currentMode === 'live') {
+      setFailureNotice(liveModeFailureNoticeMessage, 'warning');
+      if (largeDocGuardActive) {
+        largeDocManualLiveOverride = false;
+      }
+      applyMode('source', { post: true, persist: false, reason: 'render-failure' });
+      if (!editor) {
+        return false;
+      }
+      try {
+        editor.setText(text);
+        return true;
+      } catch (retryError) {
+        logWebviewRenderError('setText.retryInSource', retryError, { context });
+        setFailureNotice(editorUpdateFailureNoticeMessage, 'error');
+        return false;
+      }
+    }
+
+    setFailureNotice(editorUpdateFailureNoticeMessage, 'error');
+    return false;
   }
 };
 
@@ -1054,19 +1269,41 @@ const mountInitialEditor = () => {
     return;
   }
   const initialText = pendingInitialText;
-  pendingInitialText = null;
-  editor = createEditor({
-    parent: editorHost,
-    text: initialText,
-    initialMode: currentMode,
-    initialLineNumbers: lineNumbersVisible,
-    onApplyChanges: queueChanges,
-    onOpenLink: (href) => {
-      vscode.postMessage({ type: 'openLink', href });
-    },
-    onSelectionChange: updateSelectionMenu
-  });
-  requestWikiLinkStatuses(initialText);
+  try {
+    editor = createEditor({
+      parent: editorHost,
+      text: initialText,
+      initialMode: currentMode,
+      initialLineNumbers: lineNumbersVisible,
+      onApplyChanges: queueChanges,
+      onOpenLink: (href) => {
+        vscode.postMessage({ type: 'openLink', href });
+      },
+      onSelectionChange: updateSelectionMenu
+    });
+    pendingInitialText = null;
+    initialMountRecoveryAttempted = false;
+    if (currentMode === 'live') {
+      clearFailureNotice();
+    }
+    requestWikiLinkStatuses(initialText);
+    updateEditorNotice();
+  } catch (error) {
+    logWebviewRenderError('mountInitialEditor', error);
+
+    if (currentMode === 'live' && !initialMountRecoveryAttempted) {
+      initialMountRecoveryAttempted = true;
+      setFailureNotice(liveModeFailureNoticeMessage, 'warning');
+      if (largeDocGuardActive) {
+        largeDocManualLiveOverride = false;
+      }
+      applyMode('source', { post: true, persist: false, reason: 'render-failure' });
+      scheduleInitialEditorMount();
+      return;
+    }
+
+    setFailureNotice(editorUpdateFailureNoticeMessage, 'error');
+  }
 };
 
 const scheduleInitialEditorMount = () => {
@@ -1091,7 +1328,7 @@ const handleInit = (message) => {
     pendingInitialText = message.text;
     scheduleInitialEditorMount();
   } else {
-    editor.setText(message.text);
+    setEditorTextSafely(message.text, 'init');
   }
   if (typeof message.autoSave === 'boolean') {
     autoSaveEnabled = message.autoSave;
@@ -1117,7 +1354,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'init') {
     applyThemeSettings(message.theme);
+    initialMountRecoveryAttempted = false;
+    clearFailureNotice();
+    updateDocumentComplexityState(message.text);
     const nextMode = hasLocalModePreference ? currentMode : message.mode;
+    const guardedMode = largeDocGuardActive && !largeDocManualLiveOverride ? 'source' : nextMode;
     documentVersion = message.version;
     syncedText = message.text;
     pendingText = null;
@@ -1127,10 +1368,19 @@ window.addEventListener('message', (event) => {
 
     handleInit(message);
     if (hasLocalModePreference) {
-      applyMode(nextMode, { post: true, persist: true });
+      applyMode(guardedMode, {
+        post: true,
+        persist: guardedMode === nextMode,
+        reason: guardedMode === 'source' && guardedMode !== nextMode ? 'large-doc-guard' : 'init'
+      });
     } else {
-      applyMode(nextMode, { post: false, persist: false });
+      applyMode(guardedMode, {
+        post: guardedMode !== nextMode,
+        persist: false,
+        reason: guardedMode === 'source' && guardedMode !== nextMode ? 'large-doc-guard' : 'init'
+      });
     }
+    updateEditorNotice();
     return;
   }
 
@@ -1140,13 +1390,17 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'docChanged' && !editor && pendingInitialText !== null) {
+    updateDocumentComplexityState(message.text);
     documentVersion = message.version;
     syncedText = message.text;
     pendingInitialText = message.text;
+    enforceLargeDocGuardMode({ post: true });
     return;
   }
 
   if (message.type === 'docChanged' && editor) {
+    updateDocumentComplexityState(message.text);
+    enforceLargeDocGuardMode({ post: true });
     const incomingText = normalizeEol(message.text);
     const currentText = normalizeEol(editor.getText());
     const pendingNormalized = pendingText === null ? null : normalizeEol(pendingText);
@@ -1204,7 +1458,9 @@ window.addEventListener('message', (event) => {
       pendingDebounce = null;
     }
 
-    editor.setText(message.text);
+    if (!setEditorTextSafely(message.text, 'docChanged')) {
+      return;
+    }
     scheduleWikiLinkStatusRefresh(message.text);
     updateFindStatusSummary();
     return;

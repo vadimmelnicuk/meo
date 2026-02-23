@@ -1,6 +1,7 @@
 import { StateField, RangeSetBuilder } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { base02 } from '../theme';
+import { parseFrontmatter, isInsideFrontmatterContent } from './frontmatter';
 
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
@@ -59,6 +60,10 @@ function forEachSelectionLine(state, callback) {
       callback(state.doc.line(lineNumber));
     }
   }
+}
+
+function lineIsInFrontmatterContent(frontmatter, line) {
+  return isInsideFrontmatterContent(frontmatter, line.from);
 }
 
 function isListLine(lineText) {
@@ -561,9 +566,13 @@ export function collectOrderedListRenumberChanges(state) {
 
 function computeSourceListBorders(state) {
   const stylesByLine = detectListIndentStylesByLine(state);
+  const frontmatter = parseFrontmatter(state);
   const ranges = new RangeSetBuilder();
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
+    if (lineIsInFrontmatterContent(frontmatter, line)) {
+      continue;
+    }
     const lineText = state.doc.sliceString(line.from, line.to);
     const style = lineIndentStyle(lineNo, stylesByLine);
     const marker = listMarkerData(lineText, null, style);

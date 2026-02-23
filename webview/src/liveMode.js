@@ -22,7 +22,13 @@ import {
 } from './helpers/headingCollapse';
 import { addListMarkerDecoration, listMarkerData, detectListIndentStylesByLine } from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
-import { parseFrontmatter, isThematicBreakLine } from './helpers/frontmatter';
+import {
+  forEachYamlFrontmatterField,
+  parseFrontmatter,
+  isInsideFrontmatter,
+  isInsideFrontmatterContent,
+  isThematicBreakLine
+} from './helpers/frontmatter';
 import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
@@ -63,6 +69,8 @@ const lineStyleDecos = {
   hrActive: Decoration.line({ class: 'meo-md-hr-active' }),
   hr: Decoration.line({ class: 'meo-md-hr' })
 };
+const frontmatterKeyDeco = Decoration.mark({ class: 'meo-md-frontmatter-key' });
+const frontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value' });
 
 const listLineDecoCache = new Map();
 const listIndentWidgetCache = new Map();
@@ -142,6 +150,12 @@ const inlineStyleDecos = {
 function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLines) {
   if (frontmatter.contentTo > frontmatter.contentFrom) {
     addLineClass(builder, state, frontmatter.contentFrom, frontmatter.contentTo, lineStyleDecos.frontmatterContent);
+    forEachYamlFrontmatterField(state, frontmatter, ({ keyFrom, keyTo, valueFrom, valueTo }) => {
+      addRange(builder, keyFrom, keyTo, frontmatterKeyDeco);
+      if (valueFrom !== null && valueFrom < valueTo) {
+        addRange(builder, valueFrom, valueTo, frontmatterValueDeco);
+      }
+    });
   }
 
   const boundaries = [
@@ -159,10 +173,6 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
       addRange(builder, boundary.from, boundary.to, markerDeco);
     }
   }
-}
-
-function isInsideFrontmatter(frontmatter, pos) {
-  return Boolean(frontmatter && pos >= frontmatter.from && pos < frontmatter.to);
 }
 
 function addThematicBreakDecorations(builder, state, from, to, activeLines) {
@@ -458,7 +468,7 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   addRange(builder, line.from, prefixTo, markerDeco);
 }
 
-function addListLineDecorations(builder, state, indentSelectedLines) {
+function addListLineDecorations(builder, state, indentSelectedLines, frontmatter = null) {
   const stylesByLine = detectListIndentStylesByLine(state);
   const orderedCountsByLevel = [];
 
@@ -481,6 +491,14 @@ function addListLineDecorations(builder, state, indentSelectedLines) {
       orderedCountsByLevel[level] = orderedDisplayIndex;
     } else {
       orderedCountsByLevel[level] = 0;
+    }
+
+    const inFrontmatterContent = isInsideFrontmatterContent(frontmatter, line.from);
+    if (inFrontmatterContent) {
+      // Preserve visible list markers inside YAML front matter, but avoid list-line
+      // layout widgets/styles that reinterpret YAML indentation as Markdown layout.
+      addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style);
+      continue;
     }
 
     if (marker.fromOffset > 0 && (marker.indentColumns ?? 0) > 0) {
@@ -692,7 +710,7 @@ function buildDecorations(state) {
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
-  addListLineDecorations(ranges, state, indentSelectedLines);
+  addListLineDecorations(ranges, state, indentSelectedLines, frontmatter);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
     addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);
@@ -702,14 +720,31 @@ function buildDecorations(state) {
   return result;
 }
 
+function safeBuildDecorations(state, fallback, context, extra = {}) {
+  try {
+    return buildDecorations(state);
+  } catch (error) {
+    console.error('[MEO liveMode] decoration build failed', {
+      context,
+      docLength: state.doc.length,
+      ...extra,
+      error
+    });
+    return fallback;
+  }
+}
+
 const liveDecorationField = StateField.define({
   create(state) {
-    return buildDecorations(state);
+    return safeBuildDecorations(state, Decoration.none, 'create');
   },
   update(decorations, transaction) {
     // Recompute on every transaction so live mode stays in sync with parser updates
     // that may arrive without direct doc/selection changes.
-    const next = buildDecorations(transaction.state);
+    const next = safeBuildDecorations(transaction.state, decorations, 'update', {
+      docChanged: transaction.docChanged,
+      selection: transaction.selection
+    });
 
     // Guard against transient empty parse results on selection-only transactions.
     if (!transaction.docChanged && isEmptyDecorationSet(next) && !isEmptyDecorationSet(decorations)) {

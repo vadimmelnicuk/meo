@@ -1,6 +1,6 @@
 import { EditorState, Compartment, Transaction, StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd, Decoration } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab, indentLess, undo, redo } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
 import { highlightStyle } from './theme';
@@ -366,7 +366,7 @@ export function createEditor({
       EditorState.tabSize.of(4),
       indentUnit.of('  '),
       keymap.of([
-        { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentWithTab(view) },
+        { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentMore(view) },
         { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
         { key: 'Backspace', run: deleteBackwardSmart },
         {

@@ -1555,3 +1555,25 @@ body {
 .cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content {
   color: var(--meo-color-base07) !important;
 }
+
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content *,
+.cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content * {
+  color: inherit !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-list-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-list-marker,
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-list-prefix,
+.cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-list-prefix {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-key,
+.cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-key {
+  color: var(--meo-color-base07) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-value,
+.cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-value {
+  color: var(--vscode-editor-foreground) !important;
+}
