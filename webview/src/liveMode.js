@@ -9,6 +9,7 @@ import {
   getFencedCodeInfo,
   addFenceOpeningLineMarker,
   addCodeLanguageLabel,
+  addTopLinePillLabel,
   addMermaidDiagram,
   addCopyCodeButton
 } from './helpers/codeBlocks';
@@ -161,7 +162,7 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
   }
 
   const boundaries = [
-    { from: frontmatter.openingFrom, to: frontmatter.openingTo },
+    { from: frontmatter.openingFrom, to: frontmatter.openingTo, isOpening: true },
     { from: frontmatter.closingFrom, to: frontmatter.closingTo }
   ];
 
@@ -172,6 +173,10 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
       addLineClass(builder, state, boundary.from, boundary.to, lineStyleDecos.hrActive);
       addRange(builder, boundary.from, boundary.to, activeLineMarkerDeco);
     } else {
+      if (boundary.isOpening) {
+        const line = state.doc.lineAt(boundary.from);
+        addTopLinePillLabel(builder, line.to, 'frontmatter');
+      }
       addRange(builder, boundary.from, boundary.to, markerDeco);
     }
   }
@@ -188,10 +193,14 @@ function addThematicBreakDecorations(builder, state, from, to, activeLines) {
   }
 }
 
-function addForcedThematicBreakDecorations(builder, state, activeLines, frontmatter) {
+function addForcedThematicBreakDecorations(builder, state, activeLines, frontmatter, codeBlockLines = null) {
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
-    if (!isThematicBreakLine(line.text) || isInsideFrontmatter(frontmatter, line.from)) {
+    if (
+      !isThematicBreakLine(line.text) ||
+      isInsideFrontmatter(frontmatter, line.from) ||
+      codeBlockLines?.has(lineNo)
+    ) {
       continue;
     }
     addThematicBreakDecorations(builder, state, line.from, line.to, activeLines);
@@ -409,9 +418,12 @@ function addLineAwareRange(builder, activeLines, lineNo, from, to, inactiveDeco,
   addRange(builder, from, to, activeLines.has(lineNo) ? activeDeco : inactiveDeco);
 }
 
-function addSingleTildeStrikeDecorations(builder, state, activeLines, existingStrikeRanges) {
+function addSingleTildeStrikeDecorations(builder, state, activeLines, existingStrikeRanges, codeBlockLines = null) {
   const pairs = collectSingleTildeStrikePairs(state, existingStrikeRanges);
   for (const pair of pairs) {
+    if (codeBlockLines?.has(pair.lineNo)) {
+      continue;
+    }
     addRange(builder, pair.strikeFrom, pair.strikeTo, inlineStyleDecos.strike);
     addLineAwareRange(
       builder,
@@ -489,11 +501,15 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   addRange(builder, line.from, prefixTo, markerDeco);
 }
 
-function addListLineDecorations(builder, state, indentSelectedLines, frontmatter = null) {
+function addListLineDecorations(builder, state, indentSelectedLines, frontmatter = null, codeBlockLines = null) {
   const stylesByLine = detectListIndentStylesByLine(state);
   const orderedCountsByLevel = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    if (codeBlockLines?.has(lineNo)) {
+      orderedCountsByLevel.length = 0;
+      continue;
+    }
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
     const style = stylesByLine.get(lineNo);
@@ -516,9 +532,11 @@ function addListLineDecorations(builder, state, indentSelectedLines, frontmatter
 
     const inFrontmatterContent = isInsideFrontmatterContent(frontmatter, line.from);
     if (inFrontmatterContent) {
-      // Preserve visible list markers inside YAML front matter, but avoid list-line
-      // layout widgets/styles that reinterpret YAML indentation as Markdown layout.
-      addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style);
+      // Keep front matter list-like values rendered literally (source-style),
+      // while still tinting the prefix as a list marker.
+      addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style, {
+        useSourceStyleLiteral: true
+      });
       continue;
     }
 
@@ -552,6 +570,7 @@ function buildDecorations(state) {
   const tree = resolvedSyntaxTree(state);
   const collapsedHeadingSections = getCollapsedHeadingSections(state);
   const strikeRanges = collectStrikethroughRanges(tree);
+  const codeBlockLines = collectCodeBlockLines(state, tree);
   const parsedTableRanges = [];
   let tableDepth = 0;
 
@@ -564,10 +583,16 @@ function buildDecorations(state) {
   } catch {
     frontmatter = null;
   }
-  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter);
+  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, codeBlockLines);
 
   tree.iterate({
     enter: (node) => {
+      if (hasCodeBlockAncestor(node)) {
+        if (!node.name.endsWith('Mark') || !isFenceMarker(state, node.from, node.to)) {
+          return;
+        }
+      }
+
       if (node.name === 'Table') {
         tableDepth += 1;
       }
@@ -675,6 +700,9 @@ function buildDecorations(state) {
       }
 
       const line = state.doc.lineAt(node.from);
+      if (isInsideFrontmatterContent(frontmatter, node.from)) {
+        return;
+      }
       if (tableDepth > 0 && node.name === 'HeaderMark') {
         return;
       }
@@ -720,8 +748,8 @@ function buildDecorations(state) {
   });
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
-  addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges);
-  addListLineDecorations(ranges, state, indentSelectedLines, frontmatter);
+  addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
+  addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
     addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);
@@ -729,6 +757,17 @@ function buildDecorations(state) {
 
   const result = Decoration.set(ranges, true);
   return result;
+}
+
+function hasCodeBlockAncestor(node) {
+  let parent = node.node.parent;
+  while (parent) {
+    if (parent.name === 'FencedCode' || parent.name === 'CodeBlock') {
+      return true;
+    }
+    parent = parent.parent;
+  }
+  return false;
 }
 
 function safeBuildDecorations(state, fallback, context, extra = {}) {
@@ -743,6 +782,25 @@ function safeBuildDecorations(state, fallback, context, extra = {}) {
     });
     return fallback;
   }
+}
+
+function collectCodeBlockLines(state, tree) {
+  const lines = new Set();
+  tree.iterate({
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
+        return;
+      }
+
+      const startLineNo = state.doc.lineAt(node.from).number;
+      const endLineNo = state.doc.lineAt(Math.max(node.to - 1, node.from)).number;
+      for (let lineNo = startLineNo; lineNo <= endLineNo; lineNo += 1) {
+        lines.add(lineNo);
+      }
+      return false;
+    }
+  });
+  return lines;
 }
 
 const liveDecorationField = StateField.define({

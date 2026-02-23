@@ -7,6 +7,7 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { json } from '@codemirror/lang-json';
 import { cpp } from '@codemirror/lang-cpp';
+import { markdownLanguage } from '@codemirror/lang-markdown';
 import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
 
 const shellLanguage = StreamLanguage.define({
@@ -149,6 +150,7 @@ const cssLanguage = css().language;
 const htmlLanguage = html().language;
 const jsonLanguage = json().language;
 const swiftLanguage = cpp().language;
+const markdownCodeLanguage = markdownLanguage;
 
 const languageMap = {
   javascript: jsLanguage,
@@ -163,6 +165,8 @@ const languageMap = {
   html: htmlLanguage,
   htm: htmlLanguage,
   json: jsonLanguage,
+  markdown: markdownCodeLanguage,
+  md: markdownCodeLanguage,
   swift: swiftLanguage,
   shell: shellLanguage,
   bash: shellLanguage,
@@ -179,6 +183,19 @@ export function resolveCodeLanguage(info) {
   }
 
   const normalized = info.toLowerCase().trim();
+
+  return languageMap[normalized] ?? null;
+}
+
+export function resolveLiveCodeLanguage(info) {
+  if (!info) {
+    return null;
+  }
+
+  const normalized = info.toLowerCase().trim();
+  if (normalized === 'markdown' || normalized === 'md') {
+    return null;
+  }
 
   return languageMap[normalized] ?? null;
 }
@@ -342,6 +359,13 @@ function addTopLineWidget(builder, lineEnd, widget) {
   );
 }
 
+export function addTopLinePillLabel(builder, lineEnd, labelText) {
+  if (!labelText) {
+    return;
+  }
+  addTopLineWidget(builder, lineEnd, new CodeLanguageLabelWidget(labelText));
+}
+
 export function addFenceOpeningLineMarker(builder, state, from, activeLines, addRange, activeLineMarkerDeco, fenceMarkerDeco) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -371,7 +395,7 @@ export function addCodeLanguageLabel(builder, state, node, activeLines) {
     return;
   }
 
-  addTopLineWidget(builder, startLine.to, new CodeLanguageLabelWidget(labelText));
+  addTopLinePillLabel(builder, startLine.to, labelText);
 }
 
 export function addMermaidDiagram(builder, state, node) {

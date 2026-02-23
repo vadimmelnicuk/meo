@@ -334,7 +334,8 @@ export function addListMarkerDecoration(
   state,
   from,
   orderedDisplayIndex = null,
-  style = defaultListIndentStyle
+  style = defaultListIndentStyle,
+  options = null
 ) {
   const line = state.doc.lineAt(from);
   const lineText = state.doc.sliceString(line.from, line.to);
@@ -345,10 +346,18 @@ export function addListMarkerDecoration(
 
   const indentEnd = line.from + marker.fromOffset;
   const markerEnd = line.from + marker.markerEndOffset;
+  const markerTo = line.from + marker.toOffset;
+
+  if (options?.useSourceStyleLiteral) {
+    if (markerTo > indentEnd) {
+      builder.push(sourceListMarkerDeco.range(indentEnd, markerTo));
+    }
+    return;
+  }
 
   if (marker.taskBracketStart !== undefined) {
     const bracketStart = line.from + marker.taskBracketStart;
-    const fullEnd = line.from + marker.toOffset - 1;
+    const fullEnd = markerTo - 1;
     builder.push(
       Decoration.replace({
         widget: new CheckboxWidget(marker.taskState, bracketStart),
