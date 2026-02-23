@@ -1,5 +1,15 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.11
+- Added inline markdown rendering in table cells
+- Added support for markdown code block rendering
+- Added frontmatter styling for simple arrays
+- Improved mode switching behaviour
+- Enhanced table image rendering
+- Enhanced inline code styling
+- Fixed editor focus during mode toggling
+- Fixed initial cursor position in editor and focus on mount
+
 ## 0.1.10
 - Added HTML and PDF export functionality
 - Improved handling of pending changes and flush logic in editor
