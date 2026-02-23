@@ -731,7 +731,7 @@ const applyFindResult = (result) => {
   return true;
 };
 
-const runFind = (backward = false) => {
+const runFind = (backward = false, options) => {
   if (!editor) {
     return false;
   }
@@ -742,7 +742,7 @@ const runFind = (backward = false) => {
     return false;
   }
 
-  const result = backward ? editor.findPrevious(query) : editor.findNext(query);
+  const result = backward ? editor.findPrevious(query, options) : editor.findNext(query, options);
   return applyFindResult(result);
 };
 
@@ -1487,9 +1487,7 @@ const preserveEditorFocusOnModePointerToggle = (event) => {
     return;
   }
   modeToggleShouldRestoreEditorFocus = true;
-  // Do not preventDefault here: in the webview's embedded Chromium this can suppress
-  // the button click, which makes mode changes feel like they require two clicks.
-  // `applyMode()` restores editor focus after the toggle when this flag is set.
+  event.preventDefault();
 };
 
 modeGroup.addEventListener('pointerdown', preserveEditorFocusOnModePointerToggle);
@@ -1517,7 +1515,7 @@ findPanel.addEventListener('keydown', (event) => {
 findInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    runFind(event.shiftKey);
+    runFind(event.shiftKey, { focusEditor: false });
     return;
   }
 });

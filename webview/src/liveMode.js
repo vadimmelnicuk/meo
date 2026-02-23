@@ -35,6 +35,7 @@ import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
+const frontmatterBoundaryMarkerDeco = Decoration.mark({ class: 'meo-md-frontmatter-boundary-marker' });
 const linkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker' });
 const activeLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active' });
 const wikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker' });
@@ -195,8 +196,8 @@ function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLi
       if (boundary.isOpening) {
         const line = state.doc.lineAt(boundary.from);
         addTopLinePillLabel(builder, line.to, 'frontmatter');
+        addRange(builder, boundary.from, boundary.to, frontmatterBoundaryMarkerDeco);
       }
-      addRange(builder, boundary.from, boundary.to, markerDeco);
     }
   }
 }

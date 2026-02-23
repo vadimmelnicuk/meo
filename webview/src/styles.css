@@ -823,6 +823,14 @@ body {
   opacity: 0;
 }
 
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-boundary .meo-md-frontmatter-boundary-marker,
+.cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-boundary .meo-md-frontmatter-boundary-marker-active {
+  display: inline !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  opacity: 0 !important;
+}
+
 .cm-editor .meo-md-inline-code {
   background: var(--vscode-textCodeBlock-background);
   border-radius: 0.35em;

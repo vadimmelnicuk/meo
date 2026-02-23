@@ -720,32 +720,38 @@ class HtmlTableWidget extends WidgetType {
     return (
       other instanceof HtmlTableWidget &&
       other.tableData.signature === this.tableData.signature &&
-      other.tableData.from === this.tableData.from &&
-      other.tableData.to === this.tableData.to
+      other.tableData.indent === this.tableData.indent
     );
   }
 
   resolveCurrentTableRange(view, dom) {
+    let pos = 0;
+    try {
+      pos = view.posAtDOM(dom, 0);
+    } catch {
+      pos = -1;
+    }
+
+    if (pos >= 0) {
+      let node = syntaxTree(view.state).resolveInner(pos, 1);
+      while (node) {
+        if (node.name === 'Table') {
+          if (this.tableData) {
+            this.tableData.from = node.from;
+            this.tableData.to = node.to;
+          }
+          return { from: node.from, to: node.to };
+        }
+        node = node.parent;
+      }
+    }
+
     const tableFrom = this.tableData?.from;
     const tableTo = this.tableData?.to;
     if (isValidTableRange(tableFrom, tableTo, view.state.doc.length)) {
       return { from: tableFrom, to: tableTo };
     }
 
-    let pos = 0;
-    try {
-      pos = view.posAtDOM(dom, 0);
-    } catch {
-      return null;
-    }
-
-    let node = syntaxTree(view.state).resolveInner(pos, 1);
-    while (node) {
-      if (node.name === 'Table') {
-        return { from: node.from, to: node.to };
-      }
-      node = node.parent;
-    }
     return null;
   }
 
@@ -777,18 +783,57 @@ class HtmlTableWidget extends WidgetType {
     return this.parseCellCoords(cell.dataset.tableRow, cell.dataset.tableCol);
   }
 
-  focusCellInput(cell, { updateSelection = false } = {}) {
-    const input = cell.querySelector('textarea');
+  focusTableInput(input, caret = null) {
     if (!(input instanceof HTMLTextAreaElement)) return false;
     this.setCellEditingState(input, true);
     input.focus({ preventScroll: true });
-    const caret = input.value.length;
-    input.setSelectionRange(caret, caret);
+    const nextCaret = Math.min(Math.max(caret ?? input.value.length, 0), input.value.length);
+    input.setSelectionRange(nextCaret, nextCaret);
+    input.closest(tableCellSelector)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    return true;
+  }
+
+  focusCellInput(cell, { updateSelection = false } = {}) {
+    const input = cell.querySelector('textarea');
+    if (!this.focusTableInput(input)) return false;
     if (!updateSelection) return true;
     const coords = this.coordsFromCell(cell);
     if (coords) {
       this.setSingleCellSelection(coords);
     }
+    return true;
+  }
+
+  focusCellInputAt(row, col, caret = null) {
+    const input = this.domRefs?.allRowInputs?.[row]?.[col];
+    return this.focusTableInput(input, caret);
+  }
+
+  moveVerticalOutOfTable(container, direction, preferredColumn = 0) {
+    const view = EditorView.findFromDOM(container);
+    if (!view) return false;
+
+    const range = this.resolveCurrentTableRange(view, container);
+    if (!range) return false;
+
+    const firstLine = view.state.doc.lineAt(range.from);
+    const lastLine = view.state.doc.lineAt(Math.max(range.to - 1, range.from));
+    const lineStep = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
+    if (!lineStep) return false;
+    const anchorLineNo = lineStep < 0 ? firstLine.number : lastLine.number;
+    const targetLineNo = anchorLineNo + lineStep;
+    if (targetLineNo < 1 || targetLineNo > view.state.doc.lines) return false;
+
+    const targetLine = view.state.doc.line(targetLineNo);
+    const targetPos = Math.min(targetLine.from + Math.max(preferredColumn, 0), targetLine.to);
+
+    this.commit(container);
+    this.exitTableInteraction(container);
+    view.dispatch({
+      selection: { anchor: targetPos },
+      effects: EditorView.scrollIntoView(targetPos, { y: 'nearest' })
+    });
+    view.focus();
     return true;
   }
 
@@ -1168,12 +1213,54 @@ class HtmlTableWidget extends WidgetType {
     const refreshPreview = () => {
       this.renderCellPreview(preview, input.value);
     };
+    const getCollapsedCaretLineInfo = () => {
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? start;
+      if (start !== end) return null;
+      const value = input.value ?? '';
+      const prevNl = value.lastIndexOf('\n', Math.max(0, start - 1));
+      const nextNl = value.indexOf('\n', start);
+      const lineStart = prevNl + 1;
+      return {
+        column: start - lineStart,
+        isFirstLine: lineStart === 0,
+        isLastLine: nextNl < 0
+      };
+    };
+    const onArrowVertical = (event, direction) => {
+      if (event.defaultPrevented) return false;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+      if (direction !== 'up' && direction !== 'down') return false;
+
+      const caretInfo = getCollapsedCaretLineInfo();
+      if (!caretInfo) return false;
+
+      const atBoundary = direction === 'up' ? caretInfo.isFirstLine : caretInfo.isLastLine;
+      if (!atBoundary) return false;
+
+      const nextRow = direction === 'up' ? rowIndex - 1 : rowIndex + 1;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nextInput = this.domRefs?.allRowInputs?.[nextRow]?.[colIndex];
+      if (nextInput instanceof HTMLTextAreaElement) {
+        const nextCaret = Math.min(caretInfo.column, nextInput.value.length);
+        return this.focusTableInput(nextInput, nextCaret);
+      }
+
+      return this.moveVerticalOutOfTable(container, direction, caretInfo.column);
+    };
 
     input.addEventListener('input', () => {
       this.hasPendingCellEdits = true;
-      refreshPreview();
+      // The preview layer is hidden while editing. Rebuilding it on each keystroke
+      // recreates inline image DOM and resets image load opacity, which causes flicker.
       this.resizeRow(rowEl, rowInputs);
       this.scheduleLayout();
+    });
+    input.addEventListener('keydown', (event) => {
+      const direction = event.key === 'ArrowUp' ? 'up' : event.key === 'ArrowDown' ? 'down' : null;
+      if (direction) onArrowVertical(event, direction);
     });
     input.addEventListener('focus', () => {
       this.setCellEditingState(input, true);

@@ -187,6 +187,90 @@ export function createEditor({
     tableInteractionActive = active;
     view.dom.classList.toggle('meo-table-interaction-active', active);
   };
+  const tableEntryCellSelector = 'th[data-table-row][data-table-col], td[data-table-row][data-table-col]';
+  const tableEntryProbeOffsetsY = [1, 4, 8, 12, 18];
+  const focusTableEntryInput = (input) => {
+    if (!(input instanceof HTMLTextAreaElement)) {
+      return false;
+    }
+    input.focus({ preventScroll: true });
+    const caret = input.value.length;
+    input.setSelectionRange(caret, caret);
+    input.closest(tableEntryCellSelector)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    return true;
+  };
+  const findTableEntryInput = (wrap, hit, direction) => {
+    const cell = hit.closest(tableEntryCellSelector);
+    if (cell instanceof HTMLElement && wrap.contains(cell)) {
+      const cellInput = cell.querySelector('textarea');
+      if (cellInput instanceof HTMLTextAreaElement) {
+        return cellInput;
+      }
+    }
+
+    if (direction === 'down') {
+      const first = wrap.querySelector('textarea');
+      return first instanceof HTMLTextAreaElement ? first : null;
+    }
+
+    const inputs = wrap.querySelectorAll('textarea');
+    const last = inputs.length ? inputs[inputs.length - 1] : null;
+    return last instanceof HTMLTextAreaElement ? last : null;
+  };
+
+  const tryEnterAdjacentTable = (editorView, direction) => {
+    if ((direction !== 'down' && direction !== 'up') || currentMode !== 'live' || tableInteractionActive) {
+      return false;
+    }
+
+    const selection = editorView.state.selection.main;
+    if (!selection.empty) {
+      return false;
+    }
+
+    const caretRect = editorView.coordsAtPos(selection.head);
+    if (!caretRect) {
+      return false;
+    }
+
+    const contentRect = editorView.contentDOM.getBoundingClientRect();
+    if (!contentRect || contentRect.width <= 0 || contentRect.height <= 0) {
+      return false;
+    }
+
+    const clampX = (x) => Math.min(Math.max(x, contentRect.left + 1), contentRect.right - 1);
+    const probeXs = [
+      clampX(caretRect.left + 1),
+      clampX(contentRect.left + Math.min(24, Math.max(8, contentRect.width * 0.05)))
+    ];
+
+    for (const offsetY of tableEntryProbeOffsetsY) {
+      const y = direction === 'down'
+        ? caretRect.bottom + offsetY
+        : caretRect.top - offsetY;
+      if (y < 0 || y >= window.innerHeight) {
+        if (direction === 'down' && y >= window.innerHeight) break;
+        continue;
+      }
+      for (const x of probeXs) {
+        const hit = document.elementFromPoint(x, y);
+        if (!(hit instanceof Element)) {
+          continue;
+        }
+        const wrap = hit.closest('.meo-md-html-table-wrap');
+        if (!(wrap instanceof HTMLElement) || !editorView.dom.contains(wrap)) {
+          continue;
+        }
+        const input = findTableEntryInput(wrap, hit, direction);
+        if (!focusTableEntryInput(input)) {
+          continue;
+        }
+        return true;
+      }
+    }
+
+    return false;
+  };
 
   const syncModeClasses = () => {
     if (!view) {
@@ -284,15 +368,17 @@ export function createEditor({
     return null;
   };
 
-  const selectSearchMatch = (from, to) => {
+  const selectSearchMatch = (from, to, { focusEditor = true } = {}) => {
     view.dispatch({
       selection: { anchor: from, head: to },
       effects: EditorView.scrollIntoView(from, { y: 'center' })
     });
-    view.focus();
+    if (focusEditor) {
+      view.focus();
+    }
   };
 
-  const findMatch = (query, backward = false) => {
+  const findMatch = (query, backward = false, { focusEditor = true } = {}) => {
     if (!query) {
       return { found: false, current: 0, total: 0 };
     }
@@ -327,7 +413,7 @@ export function createEditor({
       return { found: false, current: 0, total };
     }
 
-    selectSearchMatch(index, index + query.length);
+    selectSearchMatch(index, index + query.length, { focusEditor });
     return {
       found: true,
       current: matchNumberAt(text, query, index),
@@ -380,6 +466,8 @@ export function createEditor({
             handleEnterBeforeNestedList(view)
         },
         { key: 'Shift-Enter', run: insertTableCellLineBreak },
+        { key: 'ArrowUp', run: (view) => tryEnterAdjacentTable(view, 'up') },
+        { key: 'ArrowDown', run: (view) => tryEnterAdjacentTable(view, 'down') },
         ...markdownKeymap,
         ...defaultKeymap,
         ...historyKeymap
@@ -624,11 +712,11 @@ export function createEditor({
     redo() {
       return redo(view);
     },
-    findNext(query) {
-      return findMatch(query, false);
+    findNext(query, options) {
+      return findMatch(query, false, options);
     },
-    findPrevious(query) {
-      return findMatch(query, true);
+    findPrevious(query, options) {
+      return findMatch(query, true, options);
     },
     replaceCurrent(query, replacement) {
       return replaceCurrentMatch(query, replacement);
