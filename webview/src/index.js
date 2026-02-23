@@ -1261,7 +1261,14 @@ const handleEditorShortcut = (event) => {
     key === 'Control' ||
     key === 'Shift' ||
     key === 'Alt';
-  if (!isBareModifier && pendingText !== null && pendingText !== syncedText) {
+  const isClipboardShortcut =
+    !event.altKey &&
+    (isShortcutKey(event, 'c', 'KeyC') ||
+      isShortcutKey(event, 'x', 'KeyX') ||
+      isShortcutKey(event, 'v', 'KeyV'));
+  if (!isBareModifier && !isClipboardShortcut && pendingText !== null && pendingText !== syncedText) {
+    // Let native clipboard copy/cut/paste complete first. Flushing on Cmd/Ctrl+V can race
+    // CodeMirror/browser paste handling in the webview, especially in source mode.
     // Keep the host editor/extension shortcut working, but flush our debounce first.
     flushPendingChangesNow();
   }

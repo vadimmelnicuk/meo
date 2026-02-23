@@ -2,6 +2,8 @@ import { StateField } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
+import { ImageWidget } from './images';
+import { wikiLinkScheme } from './wikiLinks';
 
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
@@ -15,9 +17,32 @@ function isTableControlTarget(target) {
   return target instanceof Element && target.closest(tableControlSelector);
 }
 
+function targetElementFrom(target) {
+  return target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+}
+
 function isPrimaryModifier(event) {
   if (event.altKey) return false;
   return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
+}
+
+function isPrimaryModifierPointerClick(event) {
+  if (event.altKey || event.shiftKey) return false;
+  return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
+}
+
+function isModifierLinkActivationEvent(event) {
+  return Boolean(getModifierLinkActivationHref(event));
+}
+
+function getModifierLinkActivationHref(event) {
+  if (!isPrimaryModifierPointerClick(event)) return '';
+  const target = targetElementFrom(event.target);
+  if (!target) return '';
+  const link = target.closest('[data-meo-link-href]');
+  if (!(link instanceof Element)) return '';
+  const href = link.getAttribute('data-meo-link-href');
+  return href || '';
 }
 
 function isUndoShortcut(event) {
@@ -29,11 +54,17 @@ function isRedoShortcut(event) {
   return (key === 'z' && event.shiftKey) || key === 'y';
 }
 
-function isPreviewWhitespaceOnly(text) {
+// Table widget inline preview + pipe-aware row parsing are table-specific and
+// live here to keep all HTML-table behavior in one helper module.
+const tableInlineSchemeRe = /^[a-z][a-z0-9+.-]*:/i;
+const tableInlineRawUrlRe = /^(?:[a-z][a-z0-9+.-]*:\/\/|mailto:|file:|www\.)[^\s<]+/i;
+const tableInlineEscapableChars = new Set(['\\', '*', '_', '~', '`', '[', ']', '(', ')', '!', '|', '<', '>']);
+
+function isTableInlineWhitespaceOnly(text) {
   return /^\s+$/.test(text);
 }
 
-function isPreviewEscapedChar(text, index) {
+function isTableInlineEscaped(text, index) {
   let slashCount = 0;
   for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) {
     slashCount += 1;
@@ -41,44 +72,312 @@ function isPreviewEscapedChar(text, index) {
   return (slashCount % 2) === 1;
 }
 
-function findClosingInlineMarker(text, startIndex, marker) {
+function isTableInlineUrlLike(text) {
+  return tableInlineRawUrlRe.test(text) || tableInlineSchemeRe.test(text);
+}
+
+function tableInlineHrefFromRawUrl(text) {
+  if (!text) return '';
+  if (text.startsWith('www.')) return `https://${text}`;
+  return text;
+}
+
+function tableInlineHrefFromWikiTarget(target) {
+  const trimmed = (target ?? '').trim();
+  if (!trimmed) return '';
+  if (tableInlineSchemeRe.test(trimmed)) return trimmed;
+  return `${wikiLinkScheme}${encodeURIComponent(trimmed)}`;
+}
+
+function decodeTableInlineEscapes(text) {
+  let result = '';
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === '\\' && i + 1 < text.length && tableInlineEscapableChars.has(text[i + 1])) {
+      result += text[i + 1];
+      i += 1;
+      continue;
+    }
+    result += text[i];
+  }
+  return result;
+}
+
+function findTableInlineMatchingBackticks(text, index, tickCount) {
+  const marker = '`'.repeat(tickCount);
+  for (let i = index; i <= text.length - tickCount; i += 1) {
+    if (text.startsWith(marker, i)) return i;
+  }
+  return -1;
+}
+
+function parseTableInlineCodeSpan(text, index) {
+  if (text[index] !== '`') return null;
+  let tickCount = 1;
+  while (text[index + tickCount] === '`') tickCount += 1;
+  const close = findTableInlineMatchingBackticks(text, index + tickCount, tickCount);
+  if (close < 0) return null;
+  return {
+    content: text.slice(index + tickCount, close),
+    nextIndex: close + tickCount
+  };
+}
+
+function consumeTableInlineAngleSection(text, index) {
+  if (text[index] !== '<' || isTableInlineEscaped(text, index)) return null;
+  const close = text.indexOf('>', index + 1);
+  if (close < 0) return null;
+  return {
+    content: text.slice(index + 1, close),
+    nextIndex: close + 1
+  };
+}
+
+function consumeTableInlineBracketContent(text, index) {
+  if (text[index] !== '[' || isTableInlineEscaped(text, index)) return null;
+  let depth = 1;
+  for (let i = index + 1; i < text.length;) {
+    if (text[i] === '\\' && i + 1 < text.length) {
+      i += 2;
+      continue;
+    }
+    const code = parseTableInlineCodeSpan(text, i);
+    if (code) {
+      i = code.nextIndex;
+      continue;
+    }
+    if (text[i] === '[' && !isTableInlineEscaped(text, i)) {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (text[i] === ']' && !isTableInlineEscaped(text, i)) {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          content: text.slice(index + 1, i),
+          nextIndex: i + 1
+        };
+      }
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return null;
+}
+
+function consumeTableInlineParenContent(text, index) {
+  if (text[index] !== '(' || isTableInlineEscaped(text, index)) return null;
+  let depth = 1;
+  for (let i = index + 1; i < text.length;) {
+    if (text[i] === '\\' && i + 1 < text.length) {
+      i += 2;
+      continue;
+    }
+    const code = parseTableInlineCodeSpan(text, i);
+    if (code) {
+      i = code.nextIndex;
+      continue;
+    }
+    const angle = consumeTableInlineAngleSection(text, i);
+    if (angle) {
+      i = angle.nextIndex;
+      continue;
+    }
+    if (text[i] === '(' && !isTableInlineEscaped(text, i)) {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (text[i] === ')' && !isTableInlineEscaped(text, i)) {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          content: text.slice(index + 1, i),
+          nextIndex: i + 1
+        };
+      }
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return null;
+}
+
+function parseTableInlineMarkdownLink(text, index, { image = false } = {}) {
+  const start = image ? index + 1 : index;
+  if (image) {
+    if (!(text[index] === '!' && text[index + 1] === '[') || isTableInlineEscaped(text, index)) return null;
+  } else if (text[index] !== '[' || isTableInlineEscaped(text, index)) {
+    return null;
+  }
+  if (!image && text.startsWith('[[', index)) return null;
+
+  const label = consumeTableInlineBracketContent(text, start);
+  if (!label || text[label.nextIndex] !== '(') return null;
+  const destination = consumeTableInlineParenContent(text, label.nextIndex);
+  if (!destination) return null;
+
+  let url = destination.content.trim();
+  if (url.startsWith('<') && url.endsWith('>') && url.length >= 2) {
+    url = url.slice(1, -1).trim();
+  }
+
+  return {
+    label: label.content,
+    url,
+    nextIndex: destination.nextIndex
+  };
+}
+
+function parseTableInlineWikiLink(text, index) {
+  if (!text.startsWith('[[', index) || isTableInlineEscaped(text, index)) return null;
+  for (let i = index + 2; i < text.length - 1; i += 1) {
+    if (text[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (text[i] === ']' && text[i + 1] === ']' && !isTableInlineEscaped(text, i)) {
+      const content = text.slice(index + 2, i);
+      const pipeIndex = content.indexOf('|');
+      const rawTarget = pipeIndex >= 0 ? content.slice(0, pipeIndex).trim() : content.trim();
+      const rawAlias = pipeIndex >= 0 ? content.slice(pipeIndex + 1).trim() : '';
+      return {
+        target: rawTarget,
+        visibleText: rawAlias || rawTarget,
+        nextIndex: i + 2
+      };
+    }
+  }
+  return null;
+}
+
+function findTableInlineClosingMarker(text, startIndex, marker, { singleTilde = false } = {}) {
   const markerLen = marker.length;
   for (let i = startIndex; i <= text.length - markerLen; i += 1) {
     if (!text.startsWith(marker, i)) continue;
-    if (isPreviewEscapedChar(text, i)) continue;
+    if (isTableInlineEscaped(text, i)) continue;
+    if (singleTilde && (text[i - 1] === '~' || text[i + 1] === '~')) continue;
     return i;
   }
   return -1;
 }
 
-function parseInlinePreviewSpan(text, index) {
+function parseTableInlineDelimitedSpan(text, index) {
   const strongMarker = text.startsWith('**', index)
     ? '**'
     : (text.startsWith('__', index) ? '__' : null);
   if (strongMarker) {
-    const contentStart = index + 2;
-    const closing = findClosingInlineMarker(text, contentStart, strongMarker);
-    if (closing > contentStart) {
-      const content = text.slice(contentStart, closing);
-      if (!isPreviewWhitespaceOnly(content)) {
-        return { tag: 'strong', content, nextIndex: closing + 2 };
+    const start = index + 2;
+    const close = findTableInlineClosingMarker(text, start, strongMarker);
+    if (close > start) {
+      const content = text.slice(start, close);
+      if (!isTableInlineWhitespaceOnly(content)) {
+        return { kind: 'strong', content, nextIndex: close + 2 };
       }
     }
   }
 
-  const emMarker = text[index] === '*' || text[index] === '_' ? text[index] : null;
-  if (!emMarker) return null;
-  if (text[index + 1] === emMarker) return null;
+  if (text.startsWith('~~', index)) {
+    const start = index + 2;
+    const close = findTableInlineClosingMarker(text, start, '~~');
+    if (close > start) {
+      const content = text.slice(start, close);
+      if (!isTableInlineWhitespaceOnly(content)) {
+        return { kind: 'strike', content, nextIndex: close + 2 };
+      }
+    }
+  }
 
-  const contentStart = index + 1;
-  const closing = findClosingInlineMarker(text, contentStart, emMarker);
-  if (closing <= contentStart) return null;
-  const content = text.slice(contentStart, closing);
-  if (isPreviewWhitespaceOnly(content)) return null;
-  return { tag: 'em', content, nextIndex: closing + 1 };
+  const emMarker = (text[index] === '*' || text[index] === '_') ? text[index] : null;
+  if (emMarker && text[index + 1] !== emMarker) {
+    const start = index + 1;
+    const close = findTableInlineClosingMarker(text, start, emMarker);
+    if (close > start) {
+      const content = text.slice(start, close);
+      if (!isTableInlineWhitespaceOnly(content)) {
+        return { kind: 'em', content, nextIndex: close + 1 };
+      }
+    }
+  }
+
+  if (text[index] === '~' && text[index + 1] !== '~' && text[index - 1] !== '~') {
+    const start = index + 1;
+    const close = findTableInlineClosingMarker(text, start, '~', { singleTilde: true });
+    if (close > start) {
+      const content = text.slice(start, close);
+      if (!isTableInlineWhitespaceOnly(content)) {
+        return { kind: 'strike', content, nextIndex: close + 1 };
+      }
+    }
+  }
+
+  return null;
 }
 
-function appendInlinePreviewNodes(parent, text) {
+function trimTableInlineRawUrl(raw) {
+  let end = raw.length;
+  while (end > 0 && /[.,!?;:]/.test(raw[end - 1])) end -= 1;
+  while (end > 0 && raw[end - 1] === ')') {
+    const body = raw.slice(0, end);
+    const opens = (body.match(/\(/g) ?? []).length;
+    const closes = (body.match(/\)/g) ?? []).length;
+    if (closes <= opens) break;
+    end -= 1;
+  }
+  return raw.slice(0, end);
+}
+
+function parseTableInlineAutolink(text, index) {
+  const angle = consumeTableInlineAngleSection(text, index);
+  if (!angle) return null;
+  const inner = angle.content.trim();
+  if (!inner || /\s/.test(inner)) return null;
+  const looksLikeEmail = /.+@.+\..+/.test(inner);
+  if (!isTableInlineUrlLike(inner) && !looksLikeEmail) return null;
+  const href = looksLikeEmail && !tableInlineSchemeRe.test(inner)
+    ? `mailto:${inner}`
+    : tableInlineHrefFromRawUrl(inner);
+  return { label: inner, href, nextIndex: angle.nextIndex };
+}
+
+function parseTableInlineRawUrl(text, index) {
+  if (isTableInlineEscaped(text, index)) return null;
+  if (index > 0 && /[A-Za-z0-9]/.test(text[index - 1])) return null;
+  const match = tableInlineRawUrlRe.exec(text.slice(index));
+  if (!match) return null;
+  const trimmed = trimTableInlineRawUrl(match[0]);
+  if (!trimmed) return null;
+  return {
+    label: trimmed,
+    href: tableInlineHrefFromRawUrl(trimmed),
+    nextIndex: index + trimmed.length
+  };
+}
+
+function appendTableInlinePreviewLink(parent, label, href) {
+  const el = document.createElement('span');
+  el.className = 'meo-md-link';
+  if (href) el.setAttribute('data-meo-link-href', href);
+  appendTableInlinePreviewNodes(el, label, { disableLinkParsers: true });
+  parent.appendChild(el);
+}
+
+function appendTableInlinePreviewImage(parent, altText, url) {
+  if (!url) {
+    parent.appendChild(document.createTextNode(`![${altText}]()`));
+    return;
+  }
+  const dom = new ImageWidget(url, decodeTableInlineEscapes(altText), '').toDOM();
+  if (dom instanceof HTMLElement) {
+    dom.setAttribute('data-meo-link-href', url);
+  }
+  parent.appendChild(dom);
+}
+
+function appendTableInlinePreviewNodes(parent, text, options = {}) {
+  const { disableLinkParsers = false } = options;
   let buffer = '';
   const flushBuffer = () => {
     if (!buffer) return;
@@ -87,43 +386,186 @@ function appendInlinePreviewNodes(parent, text) {
   };
 
   for (let i = 0; i < text.length;) {
-    const ch = text[i];
+    if (text[i] === '\\' && i + 1 < text.length && tableInlineEscapableChars.has(text[i + 1])) {
+      buffer += text[i + 1];
+      i += 2;
+      continue;
+    }
 
-    if (ch === '\\' && i + 1 < text.length) {
-      const next = text[i + 1];
-      if (next === '\\' || next === '*' || next === '_') {
-        buffer += next;
-        i += 2;
+    const code = parseTableInlineCodeSpan(text, i);
+    if (code) {
+      flushBuffer();
+      const el = document.createElement('code');
+      el.className = 'meo-md-inline-code';
+      el.textContent = decodeTableInlineEscapes(code.content);
+      parent.appendChild(el);
+      i = code.nextIndex;
+      continue;
+    }
+
+    const image = parseTableInlineMarkdownLink(text, i, { image: true });
+    if (image) {
+      flushBuffer();
+      appendTableInlinePreviewImage(parent, image.label, decodeTableInlineEscapes(image.url));
+      i = image.nextIndex;
+      continue;
+    }
+
+    if (!disableLinkParsers) {
+      const wiki = parseTableInlineWikiLink(text, i);
+      if (wiki) {
+        flushBuffer();
+        appendTableInlinePreviewLink(parent, wiki.visibleText, tableInlineHrefFromWikiTarget(wiki.target));
+        i = wiki.nextIndex;
+        continue;
+      }
+
+      const link = parseTableInlineMarkdownLink(text, i);
+      if (link) {
+        flushBuffer();
+        if (link.url) {
+          appendTableInlinePreviewLink(parent, link.label, decodeTableInlineEscapes(link.url));
+        } else {
+          appendTableInlinePreviewNodes(parent, link.label, options);
+        }
+        i = link.nextIndex;
+        continue;
+      }
+
+      const autolink = parseTableInlineAutolink(text, i);
+      if (autolink) {
+        flushBuffer();
+        appendTableInlinePreviewLink(parent, autolink.label, autolink.href);
+        i = autolink.nextIndex;
         continue;
       }
     }
 
-    if (ch !== '*' && ch !== '_') {
-      buffer += ch;
-      i += 1;
+    const span = parseTableInlineDelimitedSpan(text, i);
+    if (span) {
+      flushBuffer();
+      if (span.kind === 'em') {
+        const el = document.createElement('em');
+        appendTableInlinePreviewNodes(el, span.content);
+        parent.appendChild(el);
+      } else if (span.kind === 'strong') {
+        const el = document.createElement('strong');
+        appendTableInlinePreviewNodes(el, span.content);
+        parent.appendChild(el);
+      } else if (span.kind === 'strike') {
+        const el = document.createElement('span');
+        el.className = 'meo-md-strike';
+        appendTableInlinePreviewNodes(el, span.content);
+        parent.appendChild(el);
+      }
+      i = span.nextIndex;
       continue;
     }
 
-    const span = parseInlinePreviewSpan(text, i);
-    if (!span) {
-      buffer += ch;
-      i += 1;
-      continue;
+    if (!disableLinkParsers) {
+      const rawUrl = parseTableInlineRawUrl(text, i);
+      if (rawUrl) {
+        flushBuffer();
+        appendTableInlinePreviewLink(parent, rawUrl.label, rawUrl.href);
+        i = rawUrl.nextIndex;
+        continue;
+      }
     }
 
-    flushBuffer();
-    const el = document.createElement(span.tag);
-    appendInlinePreviewNodes(el, span.content);
-    parent.appendChild(el);
-    i = span.nextIndex;
+    buffer += text[i];
+    i += 1;
   }
 
   flushBuffer();
 }
 
 function renderTableCellInlinePreview(previewEl, value) {
+  if (!(previewEl instanceof HTMLElement)) return;
   previewEl.replaceChildren();
-  appendInlinePreviewNodes(previewEl, value);
+  appendTableInlinePreviewNodes(previewEl, value ?? '');
+}
+
+function consumeTableInlineProtectedSpan(text, index, endIndex) {
+  const code = parseTableInlineCodeSpan(text, index);
+  if (code && code.nextIndex <= endIndex) return code.nextIndex;
+
+  const wiki = parseTableInlineWikiLink(text, index);
+  if (wiki && wiki.nextIndex <= endIndex) return wiki.nextIndex;
+
+  const image = parseTableInlineMarkdownLink(text, index, { image: true });
+  if (image && image.nextIndex <= endIndex) return image.nextIndex;
+
+  const link = parseTableInlineMarkdownLink(text, index);
+  if (link && link.nextIndex <= endIndex) return link.nextIndex;
+
+  const angle = consumeTableInlineAngleSection(text, index);
+  if (angle && angle.nextIndex <= endIndex) return angle.nextIndex;
+
+  if (text[index] === '\\' && index + 1 < endIndex) return index + 2;
+  return null;
+}
+
+function findTableRowSeparatorPipes(text, startIndex, endIndex) {
+  const pipes = [];
+  for (let i = startIndex; i < endIndex;) {
+    const protectedNext = consumeTableInlineProtectedSpan(text, i, endIndex);
+    if (protectedNext && protectedNext > i) {
+      i = protectedNext;
+      continue;
+    }
+    if (text[i] === '|' && !isTableInlineEscaped(text, i)) {
+      pipes.push(i);
+    }
+    i += 1;
+  }
+  return pipes;
+}
+
+function parseTableRowCells(lineText, lineFrom = 0) {
+  const leadingWhitespaceLen = /^(\s*)/.exec(lineText)?.[1].length ?? 0;
+  let contentStart = leadingWhitespaceLen;
+  let contentEnd = lineText.length;
+  while (contentStart < contentEnd && /\s/.test(lineText[contentStart])) contentStart += 1;
+  while (contentEnd > contentStart && /\s/.test(lineText[contentEnd - 1])) contentEnd -= 1;
+
+  let innerStart = contentStart;
+  let innerEnd = contentEnd;
+  if (innerStart < innerEnd && lineText[innerStart] === '|') innerStart += 1;
+  if (innerEnd > innerStart && lineText[innerEnd - 1] === '|') innerEnd -= 1;
+
+  const allSeparatorPipes = findTableRowSeparatorPipes(lineText, 0, lineText.length);
+  const innerPipes = allSeparatorPipes.filter((index) => index >= innerStart && index < innerEnd);
+
+  const cells = [];
+  if (innerStart < innerEnd || innerPipes.length > 0) {
+    let cursor = innerStart;
+    for (const pipeIndex of innerPipes) {
+      cells.push(lineText.slice(cursor, pipeIndex).trim());
+      cursor = pipeIndex + 1;
+    }
+    cells.push(lineText.slice(cursor, innerEnd).trim());
+  }
+
+  const segments = [];
+  for (let i = 0; i + 1 < allSeparatorPipes.length; i += 1) {
+    const rawFrom = allSeparatorPipes[i] + 1;
+    const rawTo = allSeparatorPipes[i + 1];
+    let from = rawFrom;
+    let to = rawTo;
+    if (from < to && lineText[from] === ' ') from += 1;
+    if (to > from && lineText[to - 1] === ' ') to -= 1;
+    if (to <= from) {
+      segments.push({ from: lineFrom + rawFrom, to: lineFrom + rawTo, cellIndex: i, empty: true });
+      continue;
+    }
+    segments.push({ from: lineFrom + from, to: lineFrom + to, cellIndex: i, empty: false });
+  }
+
+  return {
+    cells: cells.length === 1 && cells[0] === '' ? [] : cells,
+    pipes: allSeparatorPipes,
+    segments
+  };
 }
 
 function normalizeRow(cells, colCount) {
@@ -140,39 +582,6 @@ function isValidTableRange(from, to, docLength) {
     from < to &&
     to <= docLength
   );
-}
-
-function parseLineText(lineText) {
-  const leadingWhitespaceLen = /^(\s*)/.exec(lineText)?.[1].length ?? 0;
-  let content = lineText.slice(leadingWhitespaceLen).trim();
-  if (content.startsWith('|')) content = content.slice(1);
-  if (content.endsWith('|')) content = content.slice(0, -1);
-  const rawCells = content.split('|').map((cell) => cell.trim());
-  return rawCells.length === 1 && rawCells[0] === '' ? [] : rawCells;
-}
-
-function parsePipePositions(lineText, lineFrom) {
-  const pipes = [];
-  for (let i = 0; i < lineText.length; i++) {
-    if (lineText[i] === '|') pipes.push(i);
-  }
-
-  const segments = [];
-  for (let i = 0; i + 1 < pipes.length; i++) {
-    const rawFrom = pipes[i] + 1;
-    const rawTo = pipes[i + 1];
-    let from = rawFrom;
-    let to = rawTo;
-    if (from < to && lineText[from] === ' ') from++;
-    if (to > from && lineText[to - 1] === ' ') to--;
-    if (to <= from) {
-      segments.push({ from: lineFrom + rawFrom, to: lineFrom + rawTo, cellIndex: i, empty: true });
-      continue;
-    }
-    segments.push({ from: lineFrom + from, to: lineFrom + to, cellIndex: i, empty: false });
-  }
-
-  return { pipes, segments };
 }
 
 function parseDelimiterAlignments(lineText) {
@@ -228,8 +637,7 @@ function computePreferredColumnCharWidthsFromInputs(headerInputs, rowInputs, col
 }
 
 function parseTableLine(lineNo, from, to, text) {
-  const cells = parseLineText(text);
-  const { pipes, segments } = parsePipePositions(text, from);
+  const { cells, pipes, segments } = parseTableRowCells(text, from);
   return { lineNo, from, to, text, cells, pipes, segments };
 }
 
@@ -501,11 +909,22 @@ class HtmlTableWidget extends WidgetType {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
       if (!wrap.contains(event.target)) return;
+      if (isModifierLinkActivationEvent(event)) return;
       this.setTableInteractionActive(wrap, true);
     };
 
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
+      const modifierHref = getModifierLinkActivationHref(event);
+      if (modifierHref) {
+        event.preventDefault();
+        event.stopPropagation();
+        table.dispatchEvent(new CustomEvent('meo-open-link', {
+          bubbles: true,
+          detail: { href: modifierHref }
+        }));
+        return;
+      }
       if (isTableControlTarget(event.target)) return;
       const cell = this.findCellElement(event.target);
       if (!cell) return;
@@ -589,6 +1008,7 @@ class HtmlTableWidget extends WidgetType {
     const onDocumentPointerDown = (event) => {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
+      if (wrap.contains(event.target) && isModifierLinkActivationEvent(event)) return;
       if (!wrap.contains(event.target)) {
         this.setTableInteractionActive(wrap, false);
       }

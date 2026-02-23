@@ -112,6 +112,7 @@ export function createEditor({
   let pendingExternalUndoSelectionPreserve = false;
   let tableInteractionActive = false;
   let onTableInteraction = null;
+  let onTableOpenLink = null;
   let onScroll = null;
   const targetElementFrom = (target) => (
     target instanceof Element ? target : target instanceof Node ? target.parentElement : null
@@ -548,6 +549,14 @@ export function createEditor({
     setTableInteractionActive(active);
   };
   view.dom.addEventListener('meo-table-interaction', onTableInteraction);
+  onTableOpenLink = (event) => {
+    const href = event?.detail?.href;
+    if (typeof href !== 'string' || !href) {
+      return;
+    }
+    onOpenLink?.(href);
+  };
+  view.dom.addEventListener('meo-open-link', onTableOpenLink);
   onScroll = () => {
     emitSelectionChange();
   };
@@ -655,6 +664,10 @@ export function createEditor({
       if (onTableInteraction) {
         view.dom.removeEventListener('meo-table-interaction', onTableInteraction);
         onTableInteraction = null;
+      }
+      if (onTableOpenLink) {
+        view.dom.removeEventListener('meo-open-link', onTableOpenLink);
+        onTableOpenLink = null;
       }
       if (capturedPointerId !== null) {
         releasePointerCaptureIfHeld(capturedPointerId);

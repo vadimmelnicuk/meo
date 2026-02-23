@@ -770,7 +770,7 @@ body {
   height: 12px;
   margin-right: 4px;
   line-height: 1;
-  color: var(--vscode-editorWarning-foreground, #d7ba7d);
+  color: var(--meo-color-base04);
   vertical-align: middle;
 }
 
@@ -1372,6 +1372,10 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
   cursor: text;
+}
+
+.cm-editor .meo-md-html-table-cell-preview .meo-md-link {
+  color: var(--meo-color-base05);
 }
 
 .cm-editor .meo-md-html-table-cell-content.is-editing .meo-md-html-table-cell-preview {
