@@ -235,9 +235,9 @@ li code,
 blockquote code,
 td code,
 th code {
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
+  padding: 0.08em 0.6em;
+  border-radius: 0.35em;
+  background: var(--meo-code-bg);
   color: var(--meo-strong);
 }
 
@@ -275,6 +275,9 @@ pre.meo-export-code-block code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 blockquote {

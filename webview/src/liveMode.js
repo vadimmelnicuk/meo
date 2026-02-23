@@ -40,6 +40,8 @@ const activeWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active 
 const emptyWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker meo-md-wiki-empty-marker' });
 const strikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-strike-marker' });
 const activeStrikeMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-strike-marker-active' });
+const codeMarkerDeco = Decoration.mark({ class: 'meo-md-code-marker' });
+const activeCodeMarkerDeco = Decoration.mark({ class: 'meo-md-code-marker-active' });
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
 const hrMarkerDeco = Decoration.mark({ class: 'meo-md-hr-marker' });
 const hiddenLinkUrlDeco = Decoration.mark({ class: 'meo-md-link-url-hidden' });
@@ -403,13 +405,32 @@ function addRange(builder, from, to, deco) {
   builder.push(deco.range(from, to));
 }
 
+function addLineAwareRange(builder, activeLines, lineNo, from, to, inactiveDeco, activeDeco) {
+  addRange(builder, from, to, activeLines.has(lineNo) ? activeDeco : inactiveDeco);
+}
+
 function addSingleTildeStrikeDecorations(builder, state, activeLines, existingStrikeRanges) {
   const pairs = collectSingleTildeStrikePairs(state, existingStrikeRanges);
   for (const pair of pairs) {
     addRange(builder, pair.strikeFrom, pair.strikeTo, inlineStyleDecos.strike);
-    const markerDecoToUse = activeLines.has(pair.lineNo) ? activeStrikeMarkerDeco : strikeMarkerDeco;
-    addRange(builder, pair.openFrom, pair.openTo, markerDecoToUse);
-    addRange(builder, pair.closeFrom, pair.closeTo, markerDecoToUse);
+    addLineAwareRange(
+      builder,
+      activeLines,
+      pair.lineNo,
+      pair.openFrom,
+      pair.openTo,
+      strikeMarkerDeco,
+      activeStrikeMarkerDeco
+    );
+    addLineAwareRange(
+      builder,
+      activeLines,
+      pair.lineNo,
+      pair.closeFrom,
+      pair.closeTo,
+      strikeMarkerDeco,
+      activeStrikeMarkerDeco
+    );
   }
 }
 
@@ -659,17 +680,11 @@ function buildDecorations(state) {
       }
       if (isFenceMarker(state, node.from, node.to)) {
         // Show fence markers on all lines (not just active)
-        if (activeLines.has(line.number)) {
-          addRange(ranges, node.from, node.to, activeLineMarkerDeco);
-        } else {
-          addRange(ranges, node.from, node.to, fenceMarkerDeco);
-        }
+        addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, fenceMarkerDeco, activeLineMarkerDeco);
       } else if (node.name === 'StrikethroughMark') {
-        if (activeLines.has(line.number)) {
-          addRange(ranges, node.from, node.to, activeStrikeMarkerDeco);
-        } else {
-          addRange(ranges, node.from, node.to, strikeMarkerDeco);
-        }
+        addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, strikeMarkerDeco, activeStrikeMarkerDeco);
+      } else if (node.name === 'CodeMark') {
+        addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, codeMarkerDeco, activeCodeMarkerDeco);
       } else if (node.name === 'LinkMark') {
         const parentName = node.node.parent?.name ?? '';
         if (parentName === 'Image') {
@@ -690,11 +705,7 @@ function buildDecorations(state) {
             return;
           }
         }
-        if (activeLines.has(line.number)) {
-          addRange(ranges, node.from, node.to, activeLinkMarkerDeco);
-        } else {
-          addRange(ranges, node.from, node.to, linkMarkerDeco);
-        }
+        addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, linkMarkerDeco, activeLinkMarkerDeco);
       } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, activeLineMarkerDeco);
       } else {

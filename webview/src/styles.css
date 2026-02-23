@@ -824,7 +824,23 @@ body {
 }
 
 .cm-editor .meo-md-inline-code {
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 0.35em;
+}
+
+.cm-editor .meo-md-code-block .meo-md-inline-code,
+.cm-editor .meo-mermaid-block .meo-md-inline-code {
   background: transparent;
+}
+
+.cm-editor.meo-mode-live .meo-md-code-marker,
+.cm-editor.meo-mode-live .meo-md-code-marker * {
+  color: transparent !important;
+}
+
+.cm-editor.meo-mode-live .meo-md-code-marker-active,
+.cm-editor.meo-mode-live .meo-md-code-marker-active * {
+  color: var(--meo-color-base02) !important;
 }
 
 .cm-editor .meo-md-code-block,
