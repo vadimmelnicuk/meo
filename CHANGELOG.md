@@ -1,5 +1,12 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.10
+- Added HTML and PDF export functionality
+- Improved handling of pending changes and flush logic in editor
+- Enhanced frontmatter lists handling and styling for YAML fields
+- Enhanced table cell editing with inline previews and improved selection styles
+- Removed unnecessary multipleOf constraints for line height settings
+
 ## 0.1.9
 - Added outline controller with drag-and-drop functionality for headings
 - Added heading collapse functionality
