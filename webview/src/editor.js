@@ -107,6 +107,9 @@ export function createEditor({
   let view = null;
   let currentMode = startMode;
   let applyingRenumber = false;
+  // External syncs may carry stale selections in their history entries.
+  // Preserve the user's current cursor once on the next undo of such a change.
+  let pendingExternalUndoSelectionPreserve = false;
   let tableInteractionActive = false;
   let onTableInteraction = null;
   let onScroll = null;
@@ -517,6 +520,8 @@ export function createEditor({
           return;
         }
 
+        pendingExternalUndoSelectionPreserve = false;
+
         const renumberChanges = collectOrderedListRenumberChanges(update.state);
         if (renumberChanges.length) {
           applyingRenumber = true;
@@ -566,7 +571,29 @@ export function createEditor({
       return true;
     },
     undo() {
-      return undo(view);
+      const shouldPreserveSelection = pendingExternalUndoSelectionPreserve;
+      const { anchor, head } = view.state.selection.main;
+      const applied = undo(view);
+      if (!applied) {
+        return false;
+      }
+      if (!shouldPreserveSelection) {
+        return true;
+      }
+
+      pendingExternalUndoSelectionPreserve = false;
+      const nextAnchor = Math.min(anchor, view.state.doc.length);
+      const nextHead = Math.min(head, view.state.doc.length);
+      const selection = view.state.selection.main;
+      if (selection.anchor === nextAnchor && selection.head === nextHead) {
+        return true;
+      }
+
+      view.dispatch({
+        selection: { anchor: nextAnchor, head: nextHead },
+        annotations: Transaction.addToHistory.of(false)
+      });
+      return true;
     },
     redo() {
       return redo(view);
@@ -644,15 +671,15 @@ export function createEditor({
 
       const { anchor, head } = view.state.selection.main;
       const newLength = textValue.length;
-      const clampedAnchor = Math.min(anchor, newLength);
-      const clampedHead = Math.min(head, newLength);
+      const mappedAnchor = Math.min(mapPositionThroughChange(anchor, syncChange), newLength);
+      const mappedHead = Math.min(mapPositionThroughChange(head, syncChange), newLength);
       applyingExternal = true;
       view.dispatch({
         changes: syncChange,
-        selection: { anchor: clampedAnchor, head: clampedHead },
-        annotations: Transaction.addToHistory.of(false)
+        selection: { anchor: mappedAnchor, head: mappedHead }
       });
       applyingExternal = false;
+      pendingExternalUndoSelectionPreserve = true;
       syncSelectionClass();
       emitSelectionChange();
     },
@@ -918,6 +945,23 @@ function findSyncChange(previousText, nextText) {
     to: previousTo,
     insert: nextText.slice(from, nextTo)
   };
+}
+
+// Map a position through a single replace change so external syncs keep the cursor nearby.
+function mapPositionThroughChange(position, change) {
+  const insertLength = change.insert.length;
+  const deletedLength = change.to - change.from;
+  const delta = insertLength - deletedLength;
+
+  if (position <= change.from) {
+    return position;
+  }
+
+  if (position >= change.to) {
+    return position + delta;
+  }
+
+  return change.from + insertLength;
 }
 
 function countMatches(text, query) {

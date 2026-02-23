@@ -1040,6 +1040,15 @@ const flushChanges = () => {
   vscode.postMessage(message);
 };
 
+const flushPendingChangesNow = () => {
+  if (pendingDebounce !== null) {
+    window.clearTimeout(pendingDebounce);
+    pendingDebounce = null;
+  }
+
+  flushChanges();
+};
+
 const maybeSaveAfterSync = () => {
   if (!saveAfterSync) {
     return;
@@ -1059,13 +1068,8 @@ const maybeSaveAfterSync = () => {
 };
 
 const requestSave = () => {
-  if (pendingDebounce !== null) {
-    window.clearTimeout(pendingDebounce);
-    pendingDebounce = null;
-  }
-
   saveAfterSync = true;
-  flushChanges();
+  flushPendingChangesNow();
   maybeSaveAfterSync();
 };
 
@@ -1242,6 +1246,17 @@ const handleEditorShortcut = (event) => {
     return true;
   }
 
+  const key = typeof event.key === 'string' ? event.key : '';
+  const isBareModifier =
+    key === 'Meta' ||
+    key === 'Control' ||
+    key === 'Shift' ||
+    key === 'Alt';
+  if (!isBareModifier && pendingText !== null && pendingText !== syncedText) {
+    // Keep the host editor/extension shortcut working, but flush our debounce first.
+    flushPendingChangesNow();
+  }
+
   return false;
 };
 
@@ -1256,7 +1271,7 @@ const queueChanges = (nextText) => {
     pendingDebounce = null;
     flushChanges();
   }, 1000);
-  
+
   if (outlineController.isVisible()) {
     outlineController.refresh();
   }
@@ -1524,11 +1539,7 @@ window.addEventListener('keydown', (event) => {
 }, { capture: true });
 
 window.addEventListener('blur', () => {
-  if (pendingDebounce !== null) {
-    window.clearTimeout(pendingDebounce);
-    pendingDebounce = null;
-  }
-  flushChanges();
+  flushPendingChangesNow();
 });
 
 window.addEventListener('beforeunload', () => {
@@ -1536,7 +1547,7 @@ window.addEventListener('beforeunload', () => {
     window.clearTimeout(pendingWikiStatusRefresh);
     pendingWikiStatusRefresh = null;
   }
-  flushChanges();
+  flushPendingChangesNow();
 });
 
 window.addEventListener('resize', () => {
