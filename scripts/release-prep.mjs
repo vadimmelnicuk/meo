@@ -101,13 +101,110 @@ function commitSubjectsSince(tag) {
   return lines;
 }
 
-function formatChangelogSection(version, subjects) {
-  const bullets = subjects.map((subject) => `- ${subject}`).join("\n");
+function parseConventionalSubject(subject) {
+  const match = /^(?<type>[a-z]+)(?:\((?<scope>[^)]+)\))?(?<breaking>!)?:\s*(?<message>.+)$/i.exec(subject);
+  if (!match?.groups) {
+    return null;
+  }
+
+  return {
+    type: match.groups.type.toLowerCase(),
+    scope: match.groups.scope || "",
+    breaking: Boolean(match.groups.breaking),
+    message: match.groups.message.trim(),
+  };
+}
+
+function capitalizeSentenceStart(text) {
+  if (!text) return text;
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  return trimmed[0].toUpperCase() + trimmed.slice(1);
+}
+
+function removeTrailingPeriod(text) {
+  return text.replace(/\.$/, "");
+}
+
+function normalizeWhitespace(text) {
+  return text.trim();
+}
+
+function canonicalLeadVerb(word) {
+  const normalized = word.toLowerCase();
+  if (["add", "added", "implement", "implemented", "introduce", "introduced"].includes(normalized)) {
+    return "Added";
+  }
+  if (["improve", "improved", "refine", "refined"].includes(normalized)) {
+    return "Improved";
+  }
+  if (["enhance", "enhanced"].includes(normalized)) {
+    return "Enhanced";
+  }
+  if (["fix", "fixed", "correct", "corrected", "resolve", "resolved"].includes(normalized)) {
+    return "Fixed";
+  }
+  if (["remove", "removed"].includes(normalized)) {
+    return "Removed";
+  }
+  if (["update", "updated"].includes(normalized)) {
+    return "Updated";
+  }
+  if (["apply", "applied"].includes(normalized)) {
+    return "Applied";
+  }
+  return "";
+}
+
+function fallbackVerbForType(type) {
+  if (type === "feat") return "Added";
+  if (type === "fix") return "Fixed";
+  if (["perf", "refactor"].includes(type)) return "Improved";
+  if (["docs", "chore", "build", "ci", "style"].includes(type)) return "Updated";
+  return "";
+}
+
+function splitLeadWord(message) {
+  const match = /^([A-Za-z]+)\b(.*)$/.exec(message);
+  if (!match) {
+    return { leadWord: "", rest: message };
+  }
+  return { leadWord: match[1], rest: match[2].trimStart() };
+}
+
+// Release notes should read like user-facing changelog bullets instead of raw git subjects.
+// We normalize common conventional-commit phrasing and fall back to a minimal cleanup when
+// the subject doesn't match expected patterns, so release prep remains robust.
+function paraphraseChangelogItem(subject) {
+  const parsed = parseConventionalSubject(subject);
+  const rawMessage = parsed ? parsed.message : subject;
+  const message = normalizeWhitespace(rawMessage);
+  if (!message) {
+    return "";
+  }
+
+  const { leadWord, rest } = splitLeadWord(message);
+  const semanticVerb = leadWord ? canonicalLeadVerb(leadWord) : "";
+  const typeVerb = parsed ? fallbackVerbForType(parsed.type) : "";
+  const verb = semanticVerb || typeVerb;
+
+  let result = "";
+  if (verb) {
+    result = rest ? `${verb} ${rest}` : verb;
+  } else {
+    result = capitalizeSentenceStart(message);
+  }
+
+  return removeTrailingPeriod(result);
+}
+
+function formatChangelogSection(version, items) {
+  const bullets = items.map((item) => `- ${item}`).join("\n");
   return `## ${version}\n${bullets}\n\n`;
 }
 
-function prependChangelog(version, subjects) {
-  if (subjects.length === 0) {
+function prependChangelog(version, items) {
+  if (items.length === 0) {
     fail("No commits found since the latest tag. Nothing to release.");
   }
 
@@ -120,7 +217,7 @@ function prependChangelog(version, subjects) {
   }
 
   const insertAt = idx + marker.length;
-  const section = formatChangelogSection(version, subjects);
+  const section = formatChangelogSection(version, items);
   const next = `${current.slice(0, insertAt)}${section}${current.slice(insertAt)}`;
   fs.writeFileSync(changelogPath, next);
 }
@@ -179,6 +276,7 @@ function prepareRelease(versionOrBump, write) {
 
   const tag = latestTag();
   const subjects = commitSubjectsSince(tag);
+  const changelogItems = subjects.map(paraphraseChangelogItem).filter(Boolean);
   ensureTagDoesNotExist(nextVersion);
 
   if (!write) {
@@ -186,7 +284,7 @@ function prepareRelease(versionOrBump, write) {
     console.log(`Current version: ${pkg.version}`);
     console.log(`Latest tag: ${tag || "(none)"}`);
     console.log("Changelog entries:");
-    subjects.forEach((subject) => console.log(`  - ${subject}`));
+    changelogItems.forEach((item) => console.log(`  - ${item}`));
     console.log("");
     console.log("Re-run without --dry-run to write package.json and CHANGELOG.md locally for review.");
     process.exit(0);
@@ -194,7 +292,7 @@ function prepareRelease(versionOrBump, write) {
 
   pkg.version = nextVersion;
   writePackageJson(pkg);
-  prependChangelog(nextVersion, subjects);
+  prependChangelog(nextVersion, changelogItems);
 
   console.log(`Release draft prepared locally for ${nextVersion}`);
   console.log("Review/edit CHANGELOG.md, then finalize with:");
