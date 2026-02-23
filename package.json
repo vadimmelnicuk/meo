@@ -196,7 +196,6 @@
           "default": 1.5,
           "minimum": 1,
           "maximum": 3,
-          "multipleOf": 0.1,
           "description": "Line height multiplier for Live mode editor content (for example, 1.4 or 1.6)."
         },
         "markdownEditorOptimized.fonts.sourceLineHeight": {
@@ -204,7 +203,6 @@
           "default": 1.5,
           "minimum": 1,
           "maximum": 3,
-          "multipleOf": 0.1,
           "description": "Line height multiplier for Source mode editor content (for example, 1.4 or 1.6)."
         }
       }
