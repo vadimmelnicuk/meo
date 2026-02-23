@@ -132,6 +132,79 @@ export function yamlFrontmatterFieldOffsets(lineText) {
   };
 }
 
+export function parseSimpleYamlFlowArrayValue(lineText, valueFromOffset) {
+  if (
+    valueFromOffset === null ||
+    valueFromOffset < 0 ||
+    valueFromOffset >= lineText.length ||
+    lineText[valueFromOffset] !== '['
+  ) {
+    return null;
+  }
+
+  let arrayToOffset = lineText.length;
+  while (arrayToOffset > valueFromOffset && (lineText[arrayToOffset - 1] === ' ' || lineText[arrayToOffset - 1] === '\t')) {
+    arrayToOffset -= 1;
+  }
+
+  if (arrayToOffset <= valueFromOffset + 1 || lineText[arrayToOffset - 1] !== ']') {
+    return null;
+  }
+
+  const innerFromOffset = valueFromOffset + 1;
+  const innerToOffset = arrayToOffset - 1;
+  if (innerToOffset <= innerFromOffset) {
+    return null;
+  }
+
+  for (let offset = innerFromOffset; offset < innerToOffset; offset += 1) {
+    const ch = lineText[offset];
+    if (ch === '"' || ch === '\'' || ch === '[' || ch === ']' || ch === '{' || ch === '}') {
+      return null;
+    }
+  }
+
+  const items = [];
+  let partFromOffset = innerFromOffset;
+  for (let offset = innerFromOffset; offset <= innerToOffset; offset += 1) {
+    const atEnd = offset === innerToOffset;
+    if (!atEnd && lineText[offset] !== ',') {
+      continue;
+    }
+
+    let itemFromOffset = partFromOffset;
+    let itemToOffset = offset;
+    while (itemFromOffset < itemToOffset && (lineText[itemFromOffset] === ' ' || lineText[itemFromOffset] === '\t')) {
+      itemFromOffset += 1;
+    }
+    while (itemToOffset > itemFromOffset && (lineText[itemToOffset - 1] === ' ' || lineText[itemToOffset - 1] === '\t')) {
+      itemToOffset -= 1;
+    }
+
+    if (itemFromOffset >= itemToOffset) {
+      return null;
+    }
+
+    items.push({
+      fromOffset: itemFromOffset,
+      toOffset: itemToOffset,
+      text: lineText.slice(itemFromOffset, itemToOffset)
+    });
+
+    partFromOffset = offset + 1;
+  }
+
+  if (!items.length) {
+    return null;
+  }
+
+  return {
+    fromOffset: valueFromOffset,
+    toOffset: arrayToOffset,
+    items
+  };
+}
+
 function frontmatterContentLineRange(state, frontmatter) {
   if (!frontmatter || frontmatter.contentTo <= frontmatter.contentFrom) {
     return null;

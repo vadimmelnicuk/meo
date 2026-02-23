@@ -26,6 +26,7 @@ import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterL
 import {
   forEachYamlFrontmatterField,
   parseFrontmatter,
+  parseSimpleYamlFlowArrayValue,
   isInsideFrontmatter,
   isInsideFrontmatterContent,
   isThematicBreakLine
@@ -77,6 +78,7 @@ const frontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value'
 
 const listLineDecoCache = new Map();
 const listIndentWidgetCache = new Map();
+const frontmatterArrayPillWidgetCache = new Map();
 
 class ListIndentWidget extends WidgetType {
   constructor(indentColumns) {
@@ -153,9 +155,25 @@ const inlineStyleDecos = {
 function addFrontmatterBoundaryDecorations(builder, state, frontmatter, activeLines) {
   if (frontmatter.contentTo > frontmatter.contentFrom) {
     addLineClass(builder, state, frontmatter.contentFrom, frontmatter.contentTo, lineStyleDecos.frontmatterContent);
-    forEachYamlFrontmatterField(state, frontmatter, ({ keyFrom, keyTo, valueFrom, valueTo }) => {
+    forEachYamlFrontmatterField(state, frontmatter, ({ line, keyFrom, keyTo, valueFrom, valueTo }) => {
       addRange(builder, keyFrom, keyTo, frontmatterKeyDeco);
       if (valueFrom !== null && valueFrom < valueTo) {
+        const lineIsActive = activeLines.has(line.number);
+        const selectionOverlapsValue = overlapsSelection(state, valueFrom, valueTo);
+        const parsedArrayValue = !lineIsActive && !selectionOverlapsValue
+          ? parseSimpleYamlFlowArrayValue(line.text, valueFrom - line.from)
+          : null;
+
+        if (parsedArrayValue) {
+          builder.push(
+            Decoration.replace({
+              widget: frontmatterArrayPillsWidget(parsedArrayValue.items.map((item) => item.text)),
+              inclusive: false
+            }).range(line.from + parsedArrayValue.fromOffset, line.from + parsedArrayValue.toOffset)
+          );
+          return;
+        }
+
         addRange(builder, valueFrom, valueTo, frontmatterValueDeco);
       }
     });
@@ -300,6 +318,46 @@ class MissingWikiLinkWidget extends WidgetType {
   ignoreEvent() {
     return true;
   }
+}
+
+class FrontmatterArrayPillsWidget extends WidgetType {
+  constructor(itemLabels, cacheKey) {
+    super();
+    this.itemLabels = itemLabels;
+    this.cacheKey = cacheKey;
+  }
+
+  eq(other) {
+    return other instanceof FrontmatterArrayPillsWidget && other.cacheKey === this.cacheKey;
+  }
+
+  toDOM() {
+    const container = document.createElement('span');
+    container.className = 'meo-md-frontmatter-array-pills';
+    container.setAttribute('aria-hidden', 'true');
+    for (const labelText of this.itemLabels) {
+      const pill = document.createElement('span');
+      pill.className = 'meo-md-frontmatter-pill';
+      pill.textContent = labelText;
+      container.appendChild(pill);
+    }
+    return container;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+function frontmatterArrayPillsWidget(itemLabels) {
+  const cacheKey = JSON.stringify(itemLabels);
+  let widget = frontmatterArrayPillWidgetCache.get(cacheKey);
+  if (widget) {
+    return widget;
+  }
+  widget = new FrontmatterArrayPillsWidget(itemLabels, cacheKey);
+  frontmatterArrayPillWidgetCache.set(cacheKey, widget);
+  return widget;
 }
 
 function addMarkdownLinkDecorations(builder, state, node, activeLines) {
@@ -651,9 +709,7 @@ function buildDecorations(state) {
         if (emptyImageUrl) {
           const line = state.doc.lineAt(node.from);
           if (!activeLines.has(line.number)) {
-            const linkSelection = state.selection.ranges.some(
-              (r) => r.from < node.to && r.to > node.from
-            );
+            const linkSelection = overlapsSelection(state, node.from, node.to);
             if (!linkSelection) {
               ranges.push(
                 Decoration.replace({
@@ -678,9 +734,7 @@ function buildDecorations(state) {
         if (activeLines.has(line.number)) {
           return;
         }
-        const imageSelection = state.selection.ranges.some(
-          (r) => r.from < node.to && r.to > node.from
-        );
+        const imageSelection = overlapsSelection(state, node.from, node.to);
         if (imageSelection) {
           return;
         }
@@ -875,8 +929,16 @@ function addFallbackTableDecorations(builder, state, tree, parsedTableRanges) {
   }
 }
 
+function rangesOverlap(fromA, toA, fromB, toB) {
+  return fromA < toB && toA > fromB;
+}
+
+function overlapsSelection(state, from, to) {
+  return state.selection.ranges.some((range) => rangesOverlap(from, to, range.from, range.to));
+}
+
 function overlapsParsedTableRange(from, to, ranges) {
-  return ranges.some((range) => from < range.to && to > range.from);
+  return ranges.some((range) => rangesOverlap(from, to, range.from, range.to));
 }
 
 function isInsideCodeBlock(tree, pos) {
