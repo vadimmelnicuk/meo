@@ -679,6 +679,7 @@ let largeDocManualLiveOverride = false;
 let lastDocumentComplexity = null;
 let editorFailureNoticeMessage = '';
 let editorFailureNoticeKind = 'error';
+let modeToggleShouldRestoreEditorFocus = false;
 
 const hideSelectionMenu = () => {
   selectionMenu.classList.remove('is-visible');
@@ -915,6 +916,8 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
   }
 
   const previousMode = currentMode;
+  const shouldRestoreEditorFocus = modeToggleShouldRestoreEditorFocus;
+  modeToggleShouldRestoreEditorFocus = false;
   currentMode = mode;
   if (userTriggered) {
     hasLocalModePreference = true;
@@ -924,6 +927,9 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
   if (editor) {
     try {
       editor.setMode(mode);
+      if (shouldRestoreEditorFocus) {
+        editor.focus();
+      }
       if (mode === 'live') {
         clearFailureNotice();
       }
@@ -941,6 +947,9 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
           currentMode = 'source';
           updateModeUI();
           updateEditorNotice();
+          if (shouldRestoreEditorFocus) {
+            editor.focus();
+          }
           if (post) {
             vscode.postMessage({ type: 'setMode', mode: 'source' });
           }
@@ -1576,6 +1585,22 @@ liveButton.addEventListener('click', () => {
 sourceButton.addEventListener('click', () => {
   applyMode('source', { userTriggered: true });
 });
+
+const preserveEditorFocusOnModePointerToggle = (event) => {
+  const target = event.target;
+  if (!(target instanceof Element) || !target.closest('.mode-button')) {
+    return;
+  }
+  if (!editor || !editor.hasFocus()) {
+    modeToggleShouldRestoreEditorFocus = false;
+    return;
+  }
+  modeToggleShouldRestoreEditorFocus = true;
+  // Keep the editor focused so active-line styling remains visible after mode switches.
+  event.preventDefault();
+};
+
+modeGroup.addEventListener('pointerdown', preserveEditorFocusOnModePointerToggle);
 
 const handleFormatAction = (action) => {
   if (!editor) return;
