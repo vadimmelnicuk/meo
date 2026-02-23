@@ -1205,6 +1205,7 @@ const mountInitialEditor = () => {
       },
       onSelectionChange: updateSelectionMenu
     });
+    editor.focus();
     pendingInitialText = null;
     initialMountRecoveryAttempted = false;
     if (currentMode === 'live') {

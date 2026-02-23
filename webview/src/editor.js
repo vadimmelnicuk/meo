@@ -115,6 +115,13 @@ export function createEditor({
   let onTableInteraction = null;
   let onTableOpenLink = null;
   let onScroll = null;
+  const initialCursorPos = (() => {
+    if (!text) {
+      return 0;
+    }
+    const firstLineEnd = text.indexOf('\n');
+    return firstLineEnd === -1 ? text.length : firstLineEnd;
+  })();
   const targetElementFrom = (target) => (
     target instanceof Element ? target : target instanceof Node ? target.parentElement : null
   );
@@ -451,6 +458,7 @@ export function createEditor({
 
   const state = EditorState.create({
     doc: text,
+    selection: { anchor: initialCursorPos },
     extensions: [
       EditorState.tabSize.of(4),
       indentUnit.of('  '),
