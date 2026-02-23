@@ -11,4 +11,6 @@ src/**
 **/*.map
 **/*.ts
 **/.vscode-test.*
+scripts/**
 AGENTS.md
+features.md
