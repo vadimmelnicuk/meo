@@ -5,8 +5,8 @@ import { parseFrontmatter, isInsideFrontmatterContent } from './frontmatter';
 
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
-const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])\s+/;
-const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))\s+(?:\[([ xX])\]\s+)?/;
+const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])(?:\s+|$)/;
+const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))(?:\s+(?:\[([ xX])\]\s+)?|$)/;
 const TWO_SPACE_INDENT = '  ';
 const FOUR_SPACE_INDENT = '    ';
 const TAB_INDENT = '\t';
@@ -167,6 +167,15 @@ function addListIndentBorders(addRange, lineStart, leadingWhitespace, style = de
   }
 }
 
+function listIndentDeleteLength(leadingWhitespace, style = defaultListIndentStyle) {
+  if (!leadingWhitespace) {
+    return 0;
+  }
+  return leadingWhitespace.startsWith('\t')
+    ? 1
+    : Math.min(style.columns, leadingWhitespace.match(/^ +/)?.[0]?.length ?? 0);
+}
+
 export function indentListByTwoSpaces(view) {
   const { state } = view;
   const stylesByLine = detectListIndentStylesByLine(state);
@@ -203,9 +212,7 @@ export function outdentListByTwoSpaces(view) {
 
     const leadingWhitespace = listMatch[1];
     const style = lineIndentStyle(line.number, stylesByLine);
-    const deleteLength = leadingWhitespace.startsWith('\t')
-      ? 1
-      : Math.min(style.columns, leadingWhitespace.match(/^ +/)?.[0]?.length ?? 0);
+    const deleteLength = listIndentDeleteLength(leadingWhitespace, style);
     if (!deleteLength) {
       return;
     }
@@ -219,6 +226,87 @@ export function outdentListByTwoSpaces(view) {
 
   view.dispatch({ changes });
   return true;
+}
+
+function collectNestedListHoistChanges(state, parentLine, parentMarker, stylesByLine) {
+  if (parentLine.number >= state.doc.lines) {
+    return [];
+  }
+
+  const parentIndentColumns = parentMarker.indentColumns ?? 0;
+  const changes = [];
+  let foundNestedDescendants = false;
+
+  for (let lineNo = parentLine.number + 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+
+    if (!lineText.trim()) {
+      continue;
+    }
+
+    const style = lineIndentStyle(lineNo, stylesByLine);
+    const marker = listMarkerData(lineText, null, style);
+    if (!marker) {
+      if (!foundNestedDescendants) {
+        return [];
+      }
+      break;
+    }
+
+    const indentColumns = marker.indentColumns ?? 0;
+    if (indentColumns <= parentIndentColumns) {
+      if (!foundNestedDescendants) {
+        return [];
+      }
+      break;
+    }
+
+    foundNestedDescendants = true;
+    const deleteLength = listIndentDeleteLength(marker.leadingWhitespace, style);
+    if (!deleteLength) {
+      continue;
+    }
+
+    changes.push({ from: line.from, to: line.from + deleteLength, insert: '' });
+  }
+
+  return changes;
+}
+
+function parseListMarkerParts(lineText) {
+  const match = listMarkerRegex.exec(lineText);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    leadingWhitespace: match[1],
+    bullet: match[2],
+    orderedNumber: match[3],
+    orderedSuffix: match[4],
+    hasTask: match[5] !== undefined
+  };
+}
+
+function buildListMarkerText(parts, orderedNumber = parts?.orderedNumber) {
+  if (!parts) {
+    return null;
+  }
+
+  if (parts.bullet) {
+    return parts.hasTask
+      ? `${parts.leadingWhitespace}${parts.bullet} [ ] `
+      : `${parts.leadingWhitespace}${parts.bullet} `;
+  }
+
+  if (!orderedNumber || !parts.orderedSuffix) {
+    return null;
+  }
+
+  return parts.hasTask
+    ? `${parts.leadingWhitespace}${orderedNumber}${parts.orderedSuffix} [ ] `
+    : `${parts.leadingWhitespace}${orderedNumber}${parts.orderedSuffix} `;
 }
 
 export function listMarkerData(lineText, orderedDisplayIndex = null, style = defaultListIndentStyle) {
@@ -383,16 +471,10 @@ export function addListMarkerDecoration(
 }
 
 export function continuedListMarker(lineText) {
-  const match = listMarkerRegex.exec(lineText);
-  if (!match) {
+  const parts = parseListMarkerParts(lineText);
+  if (!parts) {
     return null;
   }
-
-  const leadingWhitespace = match[1];
-  const bullet = match[2];
-  const orderedNumber = match[3];
-  const orderedSuffix = match[4];
-  const hasTask = match[5] !== undefined;
   const marker = listMarkerData(lineText);
   if (!marker) {
     return null;
@@ -403,20 +485,19 @@ export function continuedListMarker(lineText) {
     return null;
   }
 
-  if (bullet && hasTask) {
-    return `${leadingWhitespace}${bullet} [ ] `;
+  if (!parts.orderedNumber) {
+    return buildListMarkerText(parts);
   }
 
-  if (bullet) {
-    return `${leadingWhitespace}${bullet} `;
-  }
-
-  if (!orderedNumber || !orderedSuffix) {
+  const nextNumber = Number.parseInt(parts.orderedNumber, 10) + 1;
+  if (!Number.isFinite(nextNumber)) {
     return null;
   }
+  return buildListMarkerText(parts, String(nextNumber));
+}
 
-  const nextNumber = Number.parseInt(orderedNumber, 10) + 1;
-  return `${leadingWhitespace}${nextNumber}${orderedSuffix} `;
+function sameLevelListMarker(lineText) {
+  return buildListMarkerText(parseListMarkerParts(lineText));
 }
 
 export function handleEnterContinueList(view) {
@@ -455,14 +536,56 @@ export function handleBackspaceAtListContentStart(view) {
 
   const line = state.doc.lineAt(selection.head);
   const lineText = state.doc.sliceString(line.from, line.to);
-  const marker = listMarkerData(lineText);
-  if (!marker || selection.head !== line.from + marker.toOffset) {
+  const stylesByLine = detectListIndentStylesByLine(state);
+  const style = lineIndentStyle(line.number, stylesByLine);
+  const marker = listMarkerData(lineText, null, style);
+  if (!marker) {
     return false;
   }
 
+  const contentStart = line.from + marker.toOffset;
+  const markerVisualEnd = line.from + marker.markerEndOffset;
+  const content = lineText.slice(marker.toOffset);
+  const isAtContentStart = selection.head === contentStart;
+  const isAtEmptyItemMarkerEnd =
+    !content.trim() &&
+    selection.head >= markerVisualEnd &&
+    selection.head <= contentStart;
+
+  if (!isAtContentStart && !isAtEmptyItemMarkerEnd) {
+    return false;
+  }
+
+  const deletingEmptyLine = !content.trim();
+  const nextLine = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+  const hoistChanges = collectNestedListHoistChanges(state, line, marker, stylesByLine);
+
+  const changes = [
+    deletingEmptyLine
+      ? {
+          from: line.from,
+          to: line.number < state.doc.lines ? state.doc.line(line.number + 1).from : line.to,
+          insert: ''
+        }
+      : { from: line.from, to: contentStart, insert: '' },
+    ...hoistChanges
+  ];
+
+  let selectionAnchor = line.from;
+  if (deletingEmptyLine && nextLine) {
+    const nextLineText = state.doc.sliceString(nextLine.from, nextLine.to);
+    const nextStyle = lineIndentStyle(nextLine.number, stylesByLine);
+    const nextMarker = listMarkerData(nextLineText, null, nextStyle);
+    if (nextMarker) {
+      const nextLineHoist = hoistChanges.find((change) => change.from === nextLine.from);
+      const hoistDeleteLength = nextLineHoist ? nextLineHoist.to - nextLineHoist.from : 0;
+      selectionAnchor = line.from + Math.max(0, nextMarker.toOffset - hoistDeleteLength);
+    }
+  }
+
   view.dispatch({
-    changes: { from: line.from, to: line.from + marker.toOffset, insert: '' },
-    selection: { anchor: line.from }
+    changes,
+    selection: { anchor: selectionAnchor }
   });
   return true;
 }
@@ -542,10 +665,15 @@ export function handleEnterAtListContentStart(view) {
     return false;
   }
 
-  const insert = `\n${marker.leadingWhitespace}`;
+  const sameMarker = sameLevelListMarker(lineText);
+  if (!sameMarker) {
+    return false;
+  }
+
+  const insert = `${sameMarker}\n`;
   view.dispatch({
     changes: { from: line.from, insert },
-    selection: { anchor: line.from + insert.length }
+    selection: { anchor: line.from + sameMarker.length }
   });
   return true;
 }
