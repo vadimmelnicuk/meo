@@ -1,5 +1,15 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.12
+- Added Git change visualisations to the left gutter and scroller with toggle functionality
+- Added Git blame feature
+- Added basic support for merge conflict markers
+- Added Vim mode and associated keyboard shortcuts, can be enabled in settings for Source mode
+- Added a customisable shortcut to toggle between Live/Source modes, Option+Shift+M is default
+- Enhanced list marker handling and indentation logic
+- Improved arrow key navigation for list content in live mode
+- Improved error handling for live mode transient render issues
+
 ## 0.1.11
 - Added inline markdown rendering in table cells
 - Added support for markdown code block rendering
