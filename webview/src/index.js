@@ -706,6 +706,35 @@ const clearFailureNotice = () => {
   updateEditorNotice();
 };
 
+const getErrorMessage = (error) => {
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return '';
+};
+
+const isTransientMermaidRuntimeError = (error) => {
+  const message = getErrorMessage(error).toLowerCase();
+  if (!message) {
+    return false;
+  }
+  if (!message.includes('mermaid')) {
+    return false;
+  }
+  return (
+    message.includes('runtime') ||
+    message.includes('failed to load') ||
+    message.includes('missing') ||
+    message.includes('unavailable') ||
+    message.includes('script')
+  );
+};
+
+const shouldAutoFallbackToSourceForLiveError = (error) => !isTransientMermaidRuntimeError(error);
+
 const logWebviewRenderError = (context, error, extra = {}) => {
   console.error('[MEO webview] render error', {
     context,
@@ -899,6 +928,14 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
       logWebviewRenderError('applyMode', error, { requestedMode: mode, reason });
 
       if (mode === 'live') {
+        if (!shouldAutoFallbackToSourceForLiveError(error)) {
+          setFailureNotice('Live mode hit a transient render error. Staying in current mode; try again.', 'warning');
+          currentMode = previousMode;
+          updateModeUI();
+          updateEditorNotice();
+          return false;
+        }
+
         setFailureNotice(liveModeFailureNoticeMessage, 'warning');
 
         try {
@@ -950,6 +987,18 @@ const setEditorTextSafely = (text, context) => {
     logWebviewRenderError('setText', error, { context });
 
     if (currentMode === 'live') {
+      try {
+        editor.setText(text);
+        clearFailureNotice();
+        return true;
+      } catch (retryInLiveError) {
+        logWebviewRenderError('setText.retryInLive', retryInLiveError, { context });
+        if (!shouldAutoFallbackToSourceForLiveError(retryInLiveError)) {
+          setFailureNotice('Live mode hit a transient render error while updating. Try again.', 'warning');
+          return false;
+        }
+      }
+
       setFailureNotice(liveModeFailureNoticeMessage, 'warning');
       applyMode('source', { post: true, persist: false, reason: 'render-failure' });
       if (!editor) {
@@ -1359,12 +1408,25 @@ const mountInitialEditor = () => {
   } catch (error) {
     logWebviewRenderError('mountInitialEditor', error);
 
-    if (currentMode === 'live' && !initialMountRecoveryAttempted) {
-      initialMountRecoveryAttempted = true;
-      setFailureNotice(liveModeFailureNoticeMessage, 'warning');
-      applyMode('source', { post: true, persist: false, reason: 'render-failure' });
-      scheduleInitialEditorMount();
-      return;
+    if (currentMode === 'live') {
+      if (!shouldAutoFallbackToSourceForLiveError(error)) {
+        if (!initialMountRecoveryAttempted) {
+          initialMountRecoveryAttempted = true;
+          setFailureNotice('Live mode hit a transient render error while loading. Retrying...', 'warning');
+          scheduleInitialEditorMount();
+          return;
+        }
+        setFailureNotice('Live mode hit a transient render error while loading. Try reopening or switching modes.', 'warning');
+        return;
+      }
+
+      if (!initialMountRecoveryAttempted) {
+        initialMountRecoveryAttempted = true;
+        setFailureNotice(liveModeFailureNoticeMessage, 'warning');
+        applyMode('source', { post: true, persist: false, reason: 'render-failure' });
+        scheduleInitialEditorMount();
+        return;
+      }
     }
 
     setFailureNotice(editorUpdateFailureNoticeMessage, 'error');
