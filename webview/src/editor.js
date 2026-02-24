@@ -13,6 +13,8 @@ import { resolvedSyntaxTree, extractHeadings, extractHeadingSections } from './h
 import {
   sourceListBorderField,
   sourceListMarkerField,
+  handleArrowLeftAtListContentStart,
+  handleArrowRightAtListLineStart,
   handleBackspaceAtListContentStart,
   handleEnterAtListContentStart,
   handleEnterContinueList,
@@ -466,6 +468,8 @@ export function createEditor({
         { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentMore(view) },
         { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
         { key: 'Backspace', run: deleteBackwardSmart },
+        { key: 'ArrowLeft', run: (view) => isLiveMode(view) && handleArrowLeftAtListContentStart(view) },
+        { key: 'ArrowRight', run: (view) => isLiveMode(view) && handleArrowRightAtListLineStart(view) },
         {
           key: 'Enter',
           run: (view) =>

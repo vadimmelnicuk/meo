@@ -467,6 +467,56 @@ export function handleBackspaceAtListContentStart(view) {
   return true;
 }
 
+function collapsedSingleCursorListContext(state) {
+  if (state.selection.ranges.length !== 1) {
+    return null;
+  }
+
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return null;
+  }
+
+  const line = state.doc.lineAt(selection.head);
+  const frontmatter = parseFrontmatter(state);
+  if (lineIsInFrontmatterContent(frontmatter, line)) {
+    return null;
+  }
+
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const marker = listMarkerData(lineText);
+  if (!marker) {
+    return null;
+  }
+
+  return {
+    selection,
+    line,
+    marker,
+    contentStart: line.from + marker.toOffset
+  };
+}
+
+export function handleArrowLeftAtListContentStart(view) {
+  const context = collapsedSingleCursorListContext(view.state);
+  if (!context || context.selection.head !== context.contentStart) {
+    return false;
+  }
+
+  view.dispatch({ selection: { anchor: context.line.from } });
+  return true;
+}
+
+export function handleArrowRightAtListLineStart(view) {
+  const context = collapsedSingleCursorListContext(view.state);
+  if (!context || context.selection.head !== context.line.from) {
+    return false;
+  }
+
+  view.dispatch({ selection: { anchor: context.contentStart } });
+  return true;
+}
+
 export function handleEnterAtListContentStart(view) {
   const { state } = view;
   const selection = state.selection.main;
