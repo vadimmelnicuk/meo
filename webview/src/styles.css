@@ -121,6 +121,38 @@ body {
   display: flex;
 }
 
+.cm-editor .cm-vim-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  min-height: 28px;
+  box-sizing: border-box;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-sideBar-background);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+}
+
+.cm-editor .cm-vim-panel input {
+  min-width: 0;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+}
+
+.cm-editor .cm-panels.cm-panels-bottom {
+  border-top: none !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-vim-panel span[style*='cursor: pointer'],
+.cm-editor .cm-vim-panel span[style*='cursor:pointer'] {
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+}
+
 .find-row {
   display: flex;
   align-items: center;
@@ -457,6 +489,7 @@ body {
   font-family: var(--meo-active-editor-font);
   font-size: var(--vscode-editor-font-size);
   min-width: 0;
+  position: relative;
 }
 
 .cm-editor.meo-mode-live {
@@ -479,21 +512,74 @@ body {
 
 .cm-editor .cm-scroller {
   scrollbar-gutter: stable;
-  /* padding-right: 14px; */
+  padding-right: 10px;
   box-sizing: border-box;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar-track {
+  -webkit-appearance: none;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-background,
+    color-mix(in srgb, var(--meo-color-base03) 70%, transparent)
+  ) !important;
+  background-clip: border-box !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-hoverBackground,
+    var(--vscode-scrollbarSlider-background, var(--meo-color-base03))
+  ) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb:active {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-activeBackground,
+    var(--vscode-scrollbarSlider-hoverBackground, var(--meo-color-base03))
+  ) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-scroller::-webkit-scrollbar-corner {
+  background: transparent !important;
 }
 
 .cm-editor .cm-gutters {
   width: auto;
-  min-width: 55px;
-  margin-right: 24px;
+  min-width: 79px;
+  max-width: 89px;
   background: var(--vscode-editor-background);
   border-right: 0;
+  overflow: visible;
 }
 
 .cm-editor .cm-gutter.meo-md-fold-gutter {
   width: 18px;
   min-width: 18px;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
 }
 
 .cm-editor .cm-gutter.meo-md-fold-gutter .cm-gutterElement {
@@ -501,11 +587,16 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
+  position: relative;
+  overflow: visible;
 }
 
 .cm-editor .cm-gutter.cm-lineNumbers {
   user-select: none;
   -webkit-user-select: none;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
 }
 
 .cm-lineNumbers {
@@ -519,6 +610,11 @@ body {
   align-items: center;
   justify-content: flex-end;
   text-align: right;
+  box-sizing: border-box;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+  padding: 0 5px 0 4px;
 }
 
 .cm-editor .meo-md-fold-toggle {
@@ -526,6 +622,8 @@ body {
   place-items: center;
   width: 16px;
   height: 16px;
+  position: relative;
+  z-index: 3;
   padding: 0;
   border: 0;
   background: transparent;
@@ -538,7 +636,6 @@ body {
 .cm-editor .meo-md-fold-toggle:hover,
 .cm-editor .meo-md-fold-toggle:focus-visible {
   color: var(--vscode-editor-foreground);
-  background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
   outline: none;
 }
 
@@ -552,7 +649,6 @@ body {
   width: 14px;
   height: 14px;
   transform-origin: center;
-  transition: transform 0.12s ease;
   pointer-events: none;
 }
 
@@ -576,6 +672,27 @@ body {
 .cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement,
 .cm-editor.meo-line-numbers-hidden .cm-gutterElement.cm-activeLineGutter {
   color: transparent !important;
+}
+
+.cm-editor.meo-git-gutter-hidden .cm-gutter.meo-git-gutter {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cm-editor.meo-mode-live .cm-gutter.meo-git-gutter {
+  width: 3px !important;
+  min-width: 3px !important;
+  max-width: 3px !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cm-editor.meo-mode-live .cm-gutter.meo-git-gutter .cm-gutterElement,
+.cm-editor.meo-mode-live .meo-git-gutter-spacer,
+.cm-editor.meo-mode-live .meo-git-gutter-marker {
+  width: 3px !important;
+  min-width: 3px !important;
+  max-width: 3px !important;
 }
 
 .cm-editor.meo-table-interaction-active .cm-gutterElement.cm-activeLineGutter {
@@ -1259,6 +1376,284 @@ body {
   background-color: var(--vscode-list-hoverBackground);
 }
 
+.cm-editor .cm-gutter.meo-git-gutter {
+  width: 3px;
+  min-width: 3px;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement {
+  width: 3px;
+  min-width: 3px;
+  padding: 0;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.cm-editor .meo-git-gutter-spacer {
+  display: block;
+  width: 3px;
+}
+
+.cm-editor .meo-git-gutter-marker {
+  position: relative;
+  display: block;
+  width: 3px;
+  min-height: 1.2em;
+  height: 100%;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.cm-editor .meo-git-gutter-marker::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% + 13px);
+  height: 100%;
+  background: transparent;
+}
+
+.cm-editor .meo-git-gutter-stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  border-radius: 0;
+  background: transparent;
+  transition: left 100ms ease, width 100ms ease;
+}
+
+.cm-editor .meo-git-gutter-marker.is-added .meo-git-gutter-stripe {
+  background: var(--vscode-editorGutter-addedBackground, #2ea043);
+}
+
+.cm-editor .meo-git-gutter-marker.is-modified .meo-git-gutter-stripe {
+  background: var(--vscode-editorGutter-modifiedBackground, #1f6feb);
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty {
+  position: relative;
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--meo-color-base03);
+}
+
+.cm-editor .meo-git-gutter-marker:hover .meo-git-gutter-stripe {
+  left: -2px;
+  width: 5px;
+}
+
+.cm-editor .meo-git-gutter-marker.is-hit-hover .meo-git-gutter-stripe {
+  left: -2px;
+  width: 5px;
+}
+
+.cm-editor.meo-git-hover-band .cm-gutters {
+  cursor: pointer;
+}
+
+.cm-editor .meo-git-overview-ruler {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  bottom: 0;
+  width: 3px;
+  border-left: 1px solid var(--meo-color-base03);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.cm-editor .meo-git-overview-ruler[hidden] {
+  display: none;
+}
+
+.cm-editor .meo-git-overview-ruler-marker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 1px;
+  opacity: 0.95;
+  background: transparent;
+}
+
+.cm-editor .meo-git-overview-ruler-marker.is-added {
+  background: var(
+    --vscode-editorOverviewRuler-addedForeground,
+    var(--vscode-editorGutter-addedBackground, #2ea043)
+  );
+}
+
+.cm-editor .meo-git-overview-ruler-marker.is-modified {
+  background: var(
+    --vscode-editorOverviewRuler-modifiedForeground,
+    var(--vscode-editorGutter-modifiedBackground, #1f6feb)
+  );
+}
+
+.cm-editor .meo-git-overview-ruler-file-end {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 5px;
+  opacity: 0.65;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #ffffff) 55%, transparent);
+}
+
+.meo-git-blame-tooltip {
+  position: fixed;
+  z-index: 30;
+  min-width: 220px;
+  max-width: min(420px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, #1f1f1f));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.meo-git-blame-tooltip:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.meo-git-blame-title {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meo-git-blame-meta {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--vscode-descriptionForeground, var(--vscode-editorLineNumber-foreground));
+}
+
+.meo-git-blame-meta:empty {
+  display: none;
+}
+
+.meo-git-blame-meta:not(:empty) {
+  margin-top: 2px;
+}
+
+.cm-editor .meo-merge-line {
+  /* Avoid line-start overlay artifacts from per-line borders in CodeMirror */
+  border-left: 0;
+}
+
+.cm-editor .meo-merge-current-header {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-current {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-base-header {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-base {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-separator {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-incoming-header {
+  background: transparent;
+}
+
+.cm-editor .meo-merge-incoming {
+  background: transparent;
+}
+
+.cm-editor .cm-line.meo-merge-line * {
+  color: inherit !important;
+  background: transparent !important;
+  font-style: normal !important;
+  text-decoration: none !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .cm-line.meo-merge-current,
+.cm-editor .cm-line.meo-merge-base,
+.cm-editor .cm-line.meo-merge-incoming {
+  color: var(--vscode-editor-foreground);
+}
+
+.cm-editor .cm-line.meo-merge-current-header,
+.cm-editor .cm-line.meo-merge-base-header,
+.cm-editor .cm-line.meo-merge-separator,
+.cm-editor .cm-line.meo-merge-incoming-header {
+  color: var(--meo-color-base02);
+}
+
+.cm-editor .cm-line.meo-merge-current-header *,
+.cm-editor .cm-line.meo-merge-base-header *,
+.cm-editor .cm-line.meo-merge-separator *,
+.cm-editor .cm-line.meo-merge-incoming-header * {
+  color: inherit !important;
+}
+
+.cm-editor .meo-merge-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cm-editor .meo-merge-action-btn {
+  appearance: none;
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  color: var(--vscode-editor-foreground);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cm-editor .meo-merge-action-btn:hover,
+.cm-editor .meo-merge-action-btn:focus-visible {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+  outline: none;
+}
+
+.cm-editor .meo-merge-action-labels {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--meo-color-base02);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .outline-item:active {
   color: var(--vscode-list-activeSelectionForeground);
   background-color: var(--vscode-list-activeSelectionBackground);
@@ -1553,8 +1948,22 @@ body {
   z-index: 4;
 }
 
-.cm-editor.meo-mode-live .cm-cursor {
+.cm-editor .cm-cursor {
   border-left-color: var(--vscode-editorCursor-foreground, #ffffff) !important;
+  background-color: transparent !important;
+}
+
+.cm-editor .cm-fat-cursor {
+  background: var(--vscode-editorCursor-foreground, #ffffff) !important;
+  border: none !important;
+  box-sizing: border-box;
+}
+
+.cm-editor:not(.cm-focused) .cm-fat-cursor {
+  background: none !important;
+  border: solid 1px var(--vscode-editorCursor-foreground, #ffffff) !important;
+  outline: none !important;
+  color: transparent !important;
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell,

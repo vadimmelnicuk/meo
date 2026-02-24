@@ -32,6 +32,7 @@
     "onCommand:markdownEditorOptimized.open",
     "onCommand:markdownEditorOptimized.setDefaultEditor",
     "onCommand:markdownEditorOptimized.resetThemeToDefaults",
+    "onCommand:markdownEditorOptimized.toggleMode",
     "onCommand:markdownEditorOptimized.exportHtml",
     "onCommand:markdownEditorOptimized.exportPdf"
   ],
@@ -53,6 +54,11 @@
         "icon": "$(discard)"
       },
       {
+        "command": "markdownEditorOptimized.toggleMode",
+        "title": "Markdown Editor Optimized: Toggle Live/Source Mode",
+        "icon": "$(sync)"
+      },
+      {
         "command": "markdownEditorOptimized.exportHtml",
         "title": "Markdown Editor Optimized: Export as HTML",
         "icon": "$(export)"
@@ -61,6 +67,13 @@
         "command": "markdownEditorOptimized.exportPdf",
         "title": "Markdown Editor Optimized: Export as PDF",
         "icon": "$(file-pdf)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markdownEditorOptimized.toggleMode",
+        "key": "alt+shift+m",
+        "when": "markdownEditorOptimized.activeEditor"
       }
     ],
     "customEditors": [
@@ -125,12 +138,36 @@
           ],
           "default": "right",
           "order": 2,
-          "description": "Position of the document outline sidebar."
+          "description": "Position of the contents outline sidebar."
+        },
+        "markdownEditorOptimized.lineNumbers.visible": {
+          "type": "boolean",
+          "default": true,
+          "order": 3,
+          "description": "Show line numbers."
+        },
+        "markdownEditorOptimized.gitChanges.visible": {
+          "type": "boolean",
+          "default": true,
+          "order": 4,
+          "description": "Show Git change indicators in the editor."
+        },
+        "markdownEditorOptimized.autoSave.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 5,
+          "description": "Enable the auto-save while editing."
+        },
+        "markdownEditorOptimized.vimMode.enabled": {
+          "type": "boolean",
+          "default": false,
+          "order": 6,
+          "description": "Enable Vim keybindings in Source mode."
         },
         "markdownEditorOptimized.export.pdf.browserPath": {
           "type": "string",
           "default": "",
-          "order": 3,
+          "order": 7,
           "description": "Optional path to a Chrome/Edge executable used for direct PDF export. Leave empty to auto-detect."
         },
         "markdownEditorOptimized.theme.base02": {
@@ -233,6 +270,7 @@
     "@codemirror/language": "6.11.3",
     "@codemirror/state": "6.5.2",
     "@codemirror/view": "6.36.4",
+    "@replit/codemirror-vim": "^6.3.0",
     "@lezer/highlight": "^1.2.3",
     "@types/vscode": "^1.109.0",
     "highlight.js": "^11.11.1",

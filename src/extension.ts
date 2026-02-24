@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { getGitBlameForLine } from './git/blame';
+import { runGit } from './git/cli';
+import { GitDocumentState, hashGitBaselinePayload } from './git/documentState';
+import { createGitApiWatcher } from './git/gitApiWatch';
+import type { GitBaselinePayload, GitBlameLineResult } from './git/types';
+import { buildCurrentToBaselineLineMap as buildCurrentToBaselineLineMapShared } from './shared/gitDiffCore';
 import {
   defaultThemeColors,
   defaultThemeFonts,
@@ -13,8 +20,22 @@ import {
 import type { ExportStyleEnvironment } from './export/runtime';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
+const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
+const ACTIVE_EDITOR_CONTEXT_KEY = 'markdownEditorOptimized.activeEditor';
+const AUTO_SAVE_SETTING_KEY = 'autoSave.enabled';
+const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
+const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
+const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
+const AUTO_SAVE_LEGACY_SETTING_KEY = 'autoSave.visibility';
+const LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY = 'lineNumbers.enabled';
+const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.visibility';
+const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
+const GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY = 'gitChangesGutter.visibility';
+const GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY = 'gitChangesGutter.enabled';
 const AUTO_SAVE_KEY = 'autoSaveEnabled';
 const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
+const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
+const VIM_MODE_KEY = 'vimModeEnabled';
 const WIKI_LINK_SCHEME = 'meo-wiki:';
 type EditorMode = 'live' | 'source';
 type OutlinePosition = 'left' | 'right';
@@ -29,6 +50,16 @@ type LineNumbersChangedMessage = {
   enabled: boolean;
 };
 
+type GitChangesGutterChangedMessage = {
+  type: 'gitChangesGutterChanged';
+  enabled: boolean;
+};
+
+type VimModeChangedMessage = {
+  type: 'vimModeChanged';
+  enabled: boolean;
+};
+
 type InitMessage = {
   type: 'init';
   text: string;
@@ -36,6 +67,8 @@ type InitMessage = {
   mode: EditorMode;
   autoSave: boolean;
   lineNumbers: boolean;
+  gitChangesGutter: boolean;
+  vimMode: boolean;
   outlinePosition: OutlinePosition;
   theme: ThemeSettings;
 };
@@ -111,6 +144,11 @@ type SetLineNumbersMessage = {
   enabled: boolean;
 };
 
+type SetGitChangesGutterMessage = {
+  type: 'setGitChangesGutter';
+  enabled: boolean;
+};
+
 type ResolvedImageSrcMessage = {
   type: 'resolvedImageSrc';
   requestId: string;
@@ -138,11 +176,49 @@ type RequestExportSnapshotMessage = {
   requestId: string;
 };
 
+type RequestGitBlameMessage = {
+  type: 'requestGitBlame';
+  requestId: string;
+  lineNumber: number;
+  text?: string;
+  localEditGeneration: number;
+};
+
+type OpenGitRevisionForLineMessage = {
+  type: 'openGitRevisionForLine';
+  lineNumber: number;
+  text?: string;
+};
+
+type OpenGitWorktreeForLineMessage = {
+  type: 'openGitWorktreeForLine';
+  lineNumber: number;
+};
+
+type GitBaselineChangedMessage = {
+  type: 'gitBaselineChanged';
+  version: number;
+  payload: GitBaselinePayload;
+};
+
+type GitBlameResultMessage = {
+  type: 'gitBlameResult';
+  requestId: string;
+  lineNumber: number;
+  localEditGeneration: number;
+  result: GitBlameLineResult;
+};
+
+type ToggleModeCommandMessage = {
+  type: 'toggleMode';
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | SetModeMessage
   | SetAutoSaveMessage
   | SetLineNumbersMessage
+  | SetGitChangesGutterMessage
   | OpenLinkMessage
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
@@ -150,6 +226,9 @@ type WebviewMessage =
   | ExportDocumentMessage
   | ExportSnapshotMessage
   | ExportSnapshotErrorMessage
+  | RequestGitBlameMessage
+  | OpenGitRevisionForLineMessage
+  | OpenGitWorktreeForLineMessage
   | { type: 'ready' };
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i;
@@ -159,10 +238,13 @@ type PanelSession = {
   panel: vscode.WebviewPanel;
   document: vscode.TextDocument;
   documentUri: vscode.Uri;
+  gitDocumentState: GitDocumentState;
   getMode: () => EditorMode;
   ensureInitDelivered: () => Promise<void>;
   requestExportSnapshot: () => Promise<{ text: string; environment?: ExportStyleEnvironment }>;
   rejectPendingExportSnapshots: (reason: Error) => void;
+  refreshGitBaseline: (force?: boolean) => void;
+  getGitRepoRoot: () => string | null;
 };
 
 type ExportRuntimeModule = {
@@ -201,10 +283,12 @@ type ExportRuntimeModule = {
 let exportRuntimeModulePromise: Promise<ExportRuntimeModule> | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const useAsDefault = vscode.workspace.getConfiguration('markdownEditorOptimized').get<boolean>('useAsDefault', true);
+  void vscode.commands.executeCommand('setContext', ACTIVE_EDITOR_CONTEXT_KEY, false);
+  const useAsDefault = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>('useAsDefault', true);
   void syncEditorAssociations(useAsDefault);
 
   const provider = new MarkdownWebviewProvider(context);
+  void provider.initializeGitWatcher();
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(VIEW_TYPE, provider, {
@@ -225,6 +309,8 @@ export function activate(context: vscode.ExtensionContext): void {
       void provider.handleConfigurationChanged(event);
     })
   );
+
+  void migrateLegacyToggleSettings(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('markdownEditorOptimized.open', async (uri?: vscode.Uri) => {
@@ -259,6 +345,12 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.toggleMode', async () => {
+      await provider.toggleActiveEditorMode();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('markdownEditorOptimized.exportHtml', async () => {
       await provider.exportActiveDocumentAsHtml();
     })
@@ -278,6 +370,20 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private exportSnapshotRequestCounter = 0;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  async initializeGitWatcher(): Promise<void> {
+    const watcher = await createGitApiWatcher((repoRootFsPath) => {
+      for (const session of this.panelSessions.values()) {
+        if (session.getGitRepoRoot() !== repoRootFsPath) {
+          continue;
+        }
+        session.refreshGitBaseline(false);
+      }
+    });
+    if (watcher) {
+      this.context.subscriptions.push(watcher);
+    }
+  }
 
   async exportActiveDocumentAsHtml(): Promise<void> {
     await this.exportActiveDocument('html');
@@ -301,6 +407,20 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
   }
 
+  private broadcastGitChangesGutterChanged(enabled: boolean): void {
+    const message: GitChangesGutterChangedMessage = { type: 'gitChangesGutterChanged', enabled };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
+  private broadcastVimModeChanged(enabled: boolean): void {
+    const message: VimModeChangedMessage = { type: 'vimModeChanged', enabled };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
   private broadcastThemeChanged(theme: ThemeSettings): void {
     const message: ThemeChangedMessage = { type: 'themeChanged', theme };
     for (const panel of this.activePanels) {
@@ -316,6 +436,34 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (
+      event.affectsConfiguration(`markdownEditorOptimized.${AUTO_SAVE_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${AUTO_SAVE_LEGACY_SETTING_KEY}`)
+    ) {
+      this.broadcastAutoSaveChanged(getAutoSaveEnabled(this.context));
+    }
+
+    if (
+      event.affectsConfiguration(`markdownEditorOptimized.${LINE_NUMBERS_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${LINE_NUMBERS_LEGACY_SETTING_KEY}`)
+    ) {
+      this.broadcastLineNumbersChanged(getLineNumbersEnabled(this.context));
+    }
+
+    if (
+      event.affectsConfiguration(`markdownEditorOptimized.${GIT_CHANGES_GUTTER_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY}`) ||
+      event.affectsConfiguration(`markdownEditorOptimized.${GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY}`)
+    ) {
+      this.broadcastGitChangesGutterChanged(getGitChangesGutterEnabled(this.context));
+    }
+
+    if (event.affectsConfiguration(`markdownEditorOptimized.${VIM_MODE_SETTING_KEY}`)) {
+      this.broadcastVimModeChanged(getVimModeEnabled(this.context));
+    }
+
     if (event.affectsConfiguration('markdownEditorOptimized.outline.position')) {
       this.broadcastOutlinePositionChanged(getOutlinePosition());
     }
@@ -330,6 +478,23 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
   notifyThemeChanged(): void {
     this.broadcastThemeChanged(getThemeSettings());
+  }
+
+  private updateActiveEditorContext(): void {
+    const hasActiveMEOEditor = Array.from(this.panelSessions.keys()).some((panel) => panel.active);
+    void vscode.commands.executeCommand('setContext', ACTIVE_EDITOR_CONTEXT_KEY, hasActiveMEOEditor);
+  }
+
+  async toggleActiveEditorMode(): Promise<void> {
+    const session = this.getActiveSessionForExport();
+    if (!session) {
+      return;
+    }
+
+    this.lastActivePanel = session.panel;
+    await session.ensureInitDelivered();
+    const message: ToggleModeCommandMessage = { type: 'toggleMode' };
+    await session.panel.webview.postMessage(message);
   }
 
   private getActiveSessionForExport(): PanelSession | null {
@@ -496,6 +661,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     let applyQueue: Promise<void> = Promise.resolve();
     let initDelivered = false;
     let isApplyingOwnChange = false;
+    let gitRefreshRunning = false;
+    let gitRefreshPending = false;
+    let gitRefreshPendingForcePost = false;
+    const gitDocumentState = new GitDocumentState(documentUri.fsPath);
     const pendingExportSnapshots = new Map<string, {
       resolve: (value: { text: string; environment?: ExportStyleEnvironment }) => void;
       reject: (error: Error) => void;
@@ -508,8 +677,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     };
 
     const sendInit = async (): Promise<boolean> => {
-      const autoSave = this.context.globalState.get<boolean>(AUTO_SAVE_KEY, true);
-      const lineNumbers = this.context.globalState.get<boolean>(LINE_NUMBERS_KEY, true);
+      const autoSave = getAutoSaveEnabled(this.context);
+      const lineNumbers = getLineNumbersEnabled(this.context);
+      const gitChangesGutter = getGitChangesGutterEnabled(this.context);
+      const vimMode = getVimModeEnabled(this.context);
       const message: InitMessage = {
         type: 'init',
         text: document.getText(),
@@ -517,6 +688,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         mode,
         autoSave,
         lineNumbers,
+        gitChangesGutter,
+        vimMode,
         outlinePosition: getOutlinePosition(),
         theme: getThemeSettings()
       };
@@ -538,6 +711,30 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         version
       };
       return panel.webview.postMessage(message);
+    };
+
+    const sendGitBaselineChanged = async (force = false): Promise<boolean> => {
+      if (!initDelivered) {
+        return false;
+      }
+
+      const payload = await gitDocumentState.resolveBaseline({ includeText: true, force: true });
+      gitDocumentState.noteBaselinePayload(payload);
+      const payloadHash = hashGitBaselinePayload(payload);
+      if (!force && payloadHash === gitDocumentState.getLastSentBaselineHash()) {
+        return true;
+      }
+
+      const message: GitBaselineChangedMessage = {
+        type: 'gitBaselineChanged',
+        version: document.version,
+        payload
+      };
+      const posted = await panel.webview.postMessage(message);
+      if (posted) {
+        gitDocumentState.setLastSentBaselineHash(payloadHash);
+      }
+      return posted;
     };
 
     const ensureInitDelivered = async (): Promise<void> => {
@@ -588,35 +785,78 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
     };
 
+    const runPendingGitRefreshes = async (): Promise<void> => {
+      if (gitRefreshRunning) {
+        return;
+      }
+      gitRefreshRunning = true;
+      try {
+        while (gitRefreshPending) {
+          const nextForcePost = gitRefreshPendingForcePost;
+          gitRefreshPending = false;
+          gitRefreshPendingForcePost = false;
+          try {
+            await ensureInitDelivered();
+            await sendGitBaselineChanged(nextForcePost);
+          } catch {
+            // Keep refresh coalescing alive across transient git/webview failures.
+          }
+        }
+      } finally {
+        gitRefreshRunning = false;
+        if (gitRefreshPending) {
+          void runPendingGitRefreshes();
+        }
+      }
+    };
+
+    const refreshGitBaseline = (force = false): void => {
+      gitRefreshPending = true;
+      gitRefreshPendingForcePost = gitRefreshPendingForcePost || force;
+      void runPendingGitRefreshes();
+    };
+
     const session: PanelSession = {
       panel,
       document,
       documentUri,
+      gitDocumentState,
       getMode: () => mode,
       ensureInitDelivered,
       requestExportSnapshot,
-      rejectPendingExportSnapshots
+      rejectPendingExportSnapshots,
+      refreshGitBaseline,
+      getGitRepoRoot: () => gitDocumentState.getRepoRoot()
     };
     this.panelSessions.set(panel, session);
     if (panel.active) {
       this.lastActivePanel = panel;
     }
+    this.updateActiveEditorContext();
 
     const messageSubscription = panel.webview.onDidReceiveMessage(async (raw: WebviewMessage) => {
       switch (raw.type) {
         case 'ready':
           await ensureInitDelivered();
+          refreshGitBaseline(true);
           return;
         case 'setMode':
           mode = raw.mode;
           return;
         case 'setAutoSave':
-          await this.context.globalState.update(AUTO_SAVE_KEY, raw.enabled);
-          this.broadcastAutoSaveChanged(raw.enabled);
+          await vscode.workspace
+            .getConfiguration(EXTENSION_CONFIG_SECTION)
+            .update(AUTO_SAVE_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
           return;
         case 'setLineNumbers':
-          await this.context.globalState.update(LINE_NUMBERS_KEY, raw.enabled);
-          this.broadcastLineNumbersChanged(raw.enabled);
+          await vscode.workspace
+            .getConfiguration(EXTENSION_CONFIG_SECTION)
+            .update(LINE_NUMBERS_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
+          return;
+        case 'setGitChangesGutter':
+          await vscode.workspace
+            .getConfiguration(EXTENSION_CONFIG_SECTION)
+            .update(GIT_CHANGES_GUTTER_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
           return;
         case 'exportDocument':
           await this.exportSessionDocument(session, raw.format);
@@ -667,6 +907,26 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           pending.reject(new Error(raw.message || 'Failed to collect export snapshot.'));
           return;
         }
+        case 'requestGitBlame': {
+          const payload = await getGitBlameResponseForRequest(documentUri, raw, document.getText(), gitDocumentState);
+          const response: GitBlameResultMessage = {
+            type: 'gitBlameResult',
+            requestId: raw.requestId,
+            lineNumber: raw.lineNumber,
+            localEditGeneration: raw.localEditGeneration,
+            result: payload
+          };
+          await panel.webview.postMessage(response);
+          return;
+        }
+        case 'openGitRevisionForLine': {
+          await openGitRevisionForLine(documentUri, raw, document.getText(), gitDocumentState);
+          return;
+        }
+        case 'openGitWorktreeForLine': {
+          await openGitWorktreeForLine(documentUri, raw);
+          return;
+        }
         case 'applyChanges':
           isApplyingOwnChange = true;
           await enqueue(() => applyDocumentChanges(document, raw, sendDocChanged, sendApplied));
@@ -678,6 +938,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
             await document.save();
           });
           isApplyingOwnChange = false;
+          refreshGitBaseline(false);
           return;
       }
     });
@@ -696,12 +957,22 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       });
     });
 
+    const documentSaveSubscription = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
+      if (savedDocument.uri.toString() !== document.uri.toString()) {
+        return;
+      }
+      refreshGitBaseline(false);
+    });
+
     void ensureInitDelivered();
+    refreshGitBaseline(true);
 
     const viewStateSubscription = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) {
         this.lastActivePanel = event.webviewPanel;
+        refreshGitBaseline(false);
       }
+      this.updateActiveEditorContext();
     });
 
     panel.onDidDispose(() => {
@@ -713,7 +984,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       rejectPendingExportSnapshots(new Error('The editor was closed before export completed.'));
       messageSubscription.dispose();
       documentChangeSubscription.dispose();
+      documentSaveSubscription.dispose();
       viewStateSubscription.dispose();
+      this.updateActiveEditorContext();
     });
   }
 
@@ -831,6 +1104,368 @@ async function applyDocumentChanges(
   }
 
   await sendApplied(document.version);
+}
+
+// The shared mapper now scales via anchors/heuristics and only uses exact LCS on
+// bounded chunks, so these are chunk limits rather than global failure caps.
+const MAX_BLAME_LINE_MAP_EXACT_CHUNK_LINES = 6000;
+const MAX_BLAME_LINE_MAP_EXACT_CHUNK_CELLS = 4_000_000;
+const MAX_BLAME_SNAPSHOT_TEXT_CHARS = 500 * 1024;
+const blameLineMapCache = new Map<string, Int32Array | null>();
+
+function hashBlameLineMapKey(baseline: GitBaselinePayload, currentText: string): string {
+  const hash = createHash('sha1');
+  hash.update(baseline.repoRoot ?? '');
+  hash.update('\n');
+  hash.update(baseline.gitPath ?? '');
+  hash.update('\n');
+  hash.update(baseline.headOid ?? '');
+  hash.update('\n');
+  hash.update(currentText);
+  return hash.digest('hex');
+}
+
+function getMappedBaselineLineForRequest(
+  baseline: GitBaselinePayload,
+  currentText: string,
+  currentLineNumber: number
+): number | null {
+  if (typeof baseline.baseText !== 'string' || !currentText) {
+    return null;
+  }
+
+  const normalizedLine = Math.max(1, Math.floor(currentLineNumber));
+  const cacheKey = hashBlameLineMapKey(baseline, currentText);
+  let mapping = blameLineMapCache.get(cacheKey);
+  if (mapping === undefined) {
+    mapping = buildCurrentToBaselineLineMapShared(baseline.baseText, currentText, {
+      maxLines: MAX_BLAME_LINE_MAP_EXACT_CHUNK_LINES,
+      maxCells: MAX_BLAME_LINE_MAP_EXACT_CHUNK_CELLS
+    });
+    blameLineMapCache.set(cacheKey, mapping);
+    if (blameLineMapCache.size > 6) {
+      const oldestKey = blameLineMapCache.keys().next().value;
+      if (typeof oldestKey === 'string') {
+        blameLineMapCache.delete(oldestKey);
+      }
+    }
+  }
+
+  if (!mapping || normalizedLine >= mapping.length) {
+    return null;
+  }
+
+  const mapped = mapping[normalizedLine];
+  return mapped > 0 ? mapped : null;
+}
+
+async function getGitBlameResponseForRequest(
+  documentUri: vscode.Uri,
+  request: RequestGitBlameMessage,
+  currentDocumentText?: string,
+  gitDocumentState?: GitDocumentState
+): Promise<GitBlameLineResult> {
+  const resolved = await resolveGitBlameForRequest(documentUri, request, currentDocumentText, gitDocumentState);
+  return resolved.result;
+}
+
+async function getHeadBlameForLineFallback(
+  baseline: GitBaselinePayload | null | undefined,
+  lineNumber: number
+): Promise<GitBlameLineResult | null> {
+  if (!baseline?.repoRoot || !baseline.gitPath) {
+    return null;
+  }
+
+  const result = await getGitBlameForLine({
+    repoRoot: baseline.repoRoot,
+    gitPath: baseline.gitPath,
+    lineNumber,
+    revision: baseline.headOid || 'HEAD'
+  });
+  return result.kind === 'commit' ? result : null;
+}
+
+type ResolvedGitBlameRequest = {
+  baseline: GitBaselinePayload | null;
+  result: GitBlameLineResult;
+};
+
+function normalizeTrailingEofVisualLineForGitBlame(
+  requestedLineNumber: number,
+  text?: string
+): number {
+  const normalized = Math.max(1, Math.floor(requestedLineNumber));
+  if (typeof text !== 'string' || !text.endsWith('\n')) {
+    return normalized;
+  }
+
+  const lineCount = text.split('\n').length;
+  if (normalized !== lineCount) {
+    return normalized;
+  }
+
+  // CodeMirror exposes a final empty line when the document ends with a newline,
+  // but Git blame addresses the last real line instead.
+  return Math.max(1, normalized - 1);
+}
+
+function isTrailingEofVisualLineRequest(
+  requestedLineNumber: number,
+  text?: string
+): boolean {
+  if (typeof text !== 'string' || !text.endsWith('\n')) {
+    return false;
+  }
+  const normalized = Math.max(1, Math.floor(requestedLineNumber));
+  const lineCount = text.split('\n').length;
+  return normalized === lineCount;
+}
+
+async function resolveGitBlameForRequest(
+  documentUri: vscode.Uri,
+  request: Pick<RequestGitBlameMessage, 'lineNumber' | 'text'>,
+  currentDocumentText?: string,
+  gitDocumentState?: GitDocumentState
+): Promise<ResolvedGitBlameRequest> {
+  if (documentUri.scheme !== 'file') {
+    return {
+      baseline: null,
+      result: { kind: 'unavailable', reason: 'not-repo' }
+    };
+  }
+
+  const state = gitDocumentState ?? new GitDocumentState(documentUri.fsPath);
+  let baseline = await state.resolveBaseline({ includeText: false });
+  if (!baseline.available || !baseline.repoRoot || !baseline.gitPath) {
+    return {
+      baseline,
+      result: {
+        kind: 'unavailable',
+        reason: baseline.reason === 'git-unavailable' ? 'git-unavailable' : 'not-repo'
+      }
+    };
+  }
+
+  if (!baseline.tracked) {
+    return {
+      baseline,
+      result: { kind: 'unavailable', reason: 'untracked' }
+    };
+  }
+
+  const snapshotText = typeof request.text === 'string'
+    ? request.text
+    : typeof currentDocumentText === 'string' && currentDocumentText.length <= MAX_BLAME_SNAPSHOT_TEXT_CHARS
+      ? currentDocumentText
+      : undefined;
+  const lineResolutionText = typeof request.text === 'string' ? request.text : currentDocumentText;
+  const normalizedRequestedLineNumber = Math.max(1, Math.floor(request.lineNumber));
+  const lineNumberForBlame = normalizeTrailingEofVisualLineForGitBlame(
+    request.lineNumber,
+    lineResolutionText
+  );
+
+  const snapshotBlame = await getGitBlameForLine({
+    repoRoot: baseline.repoRoot,
+    gitPath: baseline.gitPath,
+    lineNumber: lineNumberForBlame,
+    contentsText: snapshotText
+  });
+
+  if (snapshotBlame.kind !== 'uncommitted') {
+    return {
+      baseline,
+      result: snapshotBlame
+    };
+  }
+
+  // Prefer showing the last committed author when a snapshot-based blame reports an
+  // uncommitted line. This matches the "last Git history" expectation for gutter hover.
+  const mappingText = typeof request.text === 'string' ? request.text : currentDocumentText;
+  if (typeof mappingText === 'string' && typeof baseline.baseText !== 'string') {
+    baseline = await state.resolveBaseline({ includeText: true });
+  }
+  const lineNumberForHistoricalMapping = isTrailingEofVisualLineRequest(request.lineNumber, lineResolutionText)
+    ? normalizedRequestedLineNumber
+    : lineNumberForBlame;
+  const historicalLineNumber = (
+    typeof mappingText === 'string'
+      ? getMappedBaselineLineForRequest(baseline, mappingText, lineNumberForHistoricalMapping)
+      : null
+  );
+  if (!historicalLineNumber) {
+    // No reliable baseline mapping means this is most likely a newly inserted line
+    // (or a line in a diff shape we couldn't map safely). Preserve "uncommitted".
+    // Best-effort fallback to same-line HEAD blame helps modified lines in ambiguous
+    // regions still show previous commit metadata. Added lines are handled in the
+    // webview gutter hover and kept as uncommitted there.
+    const directHeadBlame = await getHeadBlameForLineFallback(baseline, lineNumberForBlame);
+    if (directHeadBlame) {
+      return {
+        baseline,
+        result: directHeadBlame
+      };
+    }
+    return {
+      baseline,
+      result: snapshotBlame
+    };
+  }
+  const historicalBlame = await getGitBlameForLine({
+    repoRoot: baseline.repoRoot,
+    gitPath: baseline.gitPath,
+    lineNumber: historicalLineNumber,
+    revision: baseline.headOid || 'HEAD'
+  });
+
+  return {
+    baseline,
+    result: historicalBlame.kind === 'commit' ? historicalBlame : snapshotBlame
+  };
+}
+
+async function openGitRevisionForLine(
+  documentUri: vscode.Uri,
+  request: OpenGitRevisionForLineMessage,
+  currentDocumentText?: string,
+  gitDocumentState?: GitDocumentState
+): Promise<void> {
+  const { baseline, result } = await resolveGitBlameForRequest(documentUri, {
+    lineNumber: request.lineNumber,
+    text: request.text
+  }, currentDocumentText, gitDocumentState);
+
+  let blame = result;
+  const lineNumberForOpenFallback = normalizeTrailingEofVisualLineForGitBlame(
+    request.lineNumber,
+    typeof request.text === 'string' ? request.text : currentDocumentText
+  );
+  if (blame.kind !== 'commit') {
+    // For modified lines, snapshot blame can report "uncommitted" and the diff-based
+    // mapper may fail in ambiguous regions. Best-effort fallback to the same line in HEAD
+    // so clicking the gutter can still open the previous version.
+    const directHeadBlame = await getHeadBlameForLineFallback(baseline, lineNumberForOpenFallback);
+    if (directHeadBlame) {
+      blame = directHeadBlame;
+    }
+  }
+
+  if (blame.kind !== 'commit') {
+    return;
+  }
+  const worktreeUri = documentUri.scheme === 'file' ? documentUri : resolveWorktreeUriFromGitUri(documentUri);
+  if (!worktreeUri || worktreeUri.scheme !== 'file') {
+    return;
+  }
+
+  const gitPathAtCommit = blame.gitPathAtCommit || baseline?.gitPath;
+  const repoRoot = baseline?.repoRoot;
+  const commitFileFsPath = gitPathAtCommit && repoRoot ? path.join(repoRoot, ...gitPathAtCommit.split('/')) : worktreeUri.fsPath;
+  const gitUriBase = vscode.Uri.file(commitFileFsPath);
+  const gitRevisionUri = gitUriBase.with({
+    scheme: 'git',
+    query: JSON.stringify({
+      path: commitFileFsPath,
+      ref: blame.commit
+    })
+  });
+
+  const targetLineNumber = blame.originalLineNumber ?? request.lineNumber;
+  const line = Math.max(0, Math.floor(targetLineNumber) - 1);
+  try {
+    const gitDoc = await vscode.workspace.openTextDocument(gitRevisionUri);
+    await vscode.window.showTextDocument(gitDoc, {
+      preview: false,
+      selection: new vscode.Range(line, 0, line, 0)
+    });
+    return;
+  } catch {
+    // Fall back to CLI snapshot content when the built-in git content provider
+    // cannot resolve the commit/path combination (for example, rename history).
+  }
+
+  if (!repoRoot || !gitPathAtCommit) {
+    return;
+  }
+
+  try {
+    const result = await runGit(['show', `${blame.commit}:${gitPathAtCommit}`], {
+      cwd: repoRoot,
+      maxBytes: 2 * 1024 * 1024
+    });
+    const snapshotText = result.stdout.toString('utf8');
+    const tempDoc = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: snapshotText
+    });
+    await vscode.window.showTextDocument(tempDoc, {
+      preview: false,
+      selection: new vscode.Range(line, 0, line, 0)
+    });
+  } catch {
+    void vscode.window.showWarningMessage(`Unable to open commit ${blame.shortCommit} for this line.`);
+  }
+}
+
+async function openGitWorktreeForLine(
+  documentUri: vscode.Uri,
+  request: OpenGitWorktreeForLineMessage
+): Promise<void> {
+  const worktreeUri = documentUri.scheme === 'file' ? documentUri : resolveWorktreeUriFromGitUri(documentUri);
+  if (!worktreeUri || worktreeUri.scheme !== 'file') {
+    return;
+  }
+
+  const gitDocumentState = new GitDocumentState(worktreeUri.fsPath);
+  const baseline = await gitDocumentState.resolveBaseline({ includeText: false });
+  if (!baseline.available || !baseline.repoRoot || !baseline.gitPath || !baseline.tracked) {
+    const line = Math.max(0, Math.floor(request.lineNumber) - 1);
+    const worktreeDoc = await vscode.workspace.openTextDocument(worktreeUri);
+    await vscode.window.showTextDocument(worktreeDoc, {
+      preview: false,
+      selection: new vscode.Range(line, 0, line, 0)
+    });
+    return;
+  }
+
+  const commitBlame = await getHeadBlameForLineFallback(baseline, request.lineNumber);
+  if (!commitBlame) {
+    const line = Math.max(0, Math.floor(request.lineNumber) - 1);
+    const worktreeDoc = await vscode.workspace.openTextDocument(worktreeUri);
+    await vscode.window.showTextDocument(worktreeDoc, {
+      preview: false,
+      selection: new vscode.Range(line, 0, line, 0)
+    });
+    return;
+  }
+
+  const gitPathAtCommit = commitBlame.gitPathAtCommit || baseline.gitPath;
+  const commitFileFsPath = gitPathAtCommit
+    ? path.join(baseline.repoRoot, ...gitPathAtCommit.split('/'))
+    : worktreeUri.fsPath;
+  const leftUriBase = vscode.Uri.file(commitFileFsPath);
+  const leftUri = leftUriBase.with({
+    scheme: 'git',
+    query: JSON.stringify({
+      path: commitFileFsPath,
+      ref: commitBlame.commit
+    })
+  });
+  const rightUri = worktreeUri;
+  const title = `${path.basename(worktreeUri.fsPath)} (${commitBlame.shortCommit} ↔ Working Tree)`;
+  const line = Math.max(0, Math.floor(request.lineNumber) - 1);
+
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    leftUri,
+    rightUri,
+    title,
+    {
+      preview: false,
+      selection: new vscode.Range(line, 0, line, 0)
+    }
+  );
 }
 
 async function openExternalLink(rawHref: string): Promise<void> {
@@ -1196,7 +1831,7 @@ function parseGitUriQuery(query: string): { path?: unknown; ref?: unknown } | un
 }
 
 function getThemeSettings(): ThemeSettings {
-  const config = vscode.workspace.getConfiguration('markdownEditorOptimized');
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
   const colors = {} as ThemeColors;
 
   for (const key of themeColorKeys) {
@@ -1214,13 +1849,55 @@ function getThemeSettings(): ThemeSettings {
   };
 }
 
+function getAutoSaveEnabled(context: vscode.ExtensionContext): boolean {
+  return getToggleSettingValue(context, AUTO_SAVE_SETTING_KEY, AUTO_SAVE_KEY, [AUTO_SAVE_LEGACY_SETTING_KEY]);
+}
+
+function getLineNumbersEnabled(context: vscode.ExtensionContext): boolean {
+  return getToggleSettingValue(context, LINE_NUMBERS_SETTING_KEY, LINE_NUMBERS_KEY, [
+    LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY,
+    LINE_NUMBERS_LEGACY_SETTING_KEY
+  ]);
+}
+
+function getGitChangesGutterEnabled(context: vscode.ExtensionContext): boolean {
+  return getToggleSettingValue(context, GIT_CHANGES_GUTTER_SETTING_KEY, GIT_CHANGES_GUTTER_KEY, [
+    GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY,
+    GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
+    GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY
+  ]);
+}
+
+function getVimModeEnabled(context: vscode.ExtensionContext): boolean {
+  return getToggleSettingValue(context, VIM_MODE_SETTING_KEY, VIM_MODE_KEY, [], false);
+}
+
+function getToggleSettingValue(
+  context: vscode.ExtensionContext,
+  settingKey: string,
+  legacyStateKey: string,
+  legacySettingKeys: readonly string[] = [],
+  fallbackDefault = true
+): boolean {
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  if (hasExplicitConfigurationValue<boolean>(config, settingKey)) {
+    return config.get<boolean>(settingKey, fallbackDefault);
+  }
+  for (const legacySettingKey of legacySettingKeys) {
+    if (hasExplicitConfigurationValue<boolean>(config, legacySettingKey)) {
+      return config.get<boolean>(legacySettingKey, fallbackDefault);
+    }
+  }
+  return context.globalState.get<boolean>(legacyStateKey, fallbackDefault);
+}
+
 function getOutlinePosition(): OutlinePosition {
-  const value = vscode.workspace.getConfiguration('markdownEditorOptimized').get<string>('outline.position', 'right');
+  const value = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<string>('outline.position', 'right');
   return value === 'left' ? 'left' : 'right';
 }
 
 function getExportPdfBrowserPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration('markdownEditorOptimized').get<string>('export.pdf.browserPath', '');
+  const configured = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<string>('export.pdf.browserPath', '');
   const trimmed = `${configured ?? ''}`.trim();
   return trimmed || undefined;
 }
@@ -1238,6 +1915,60 @@ function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFo
 function replaceFileExtension(filePath: string, ext: '.html' | '.pdf'): string {
   const parsed = path.parse(filePath);
   return path.join(parsed.dir, `${parsed.name}${ext}`);
+}
+
+async function migrateLegacyToggleSettings(context: vscode.ExtensionContext): Promise<void> {
+  await migrateLegacyToggleSetting(context, AUTO_SAVE_SETTING_KEY, AUTO_SAVE_KEY);
+  await migrateLegacyToggleSetting(context, LINE_NUMBERS_SETTING_KEY, LINE_NUMBERS_KEY);
+  await migrateLegacyToggleSetting(context, GIT_CHANGES_GUTTER_SETTING_KEY, GIT_CHANGES_GUTTER_KEY);
+}
+
+async function migrateLegacyToggleSetting(
+  context: vscode.ExtensionContext,
+  settingKey: string,
+  legacyStateKey: string
+): Promise<void> {
+  const legacyValue = context.globalState.get<boolean | undefined>(legacyStateKey);
+  if (typeof legacyValue !== 'boolean') {
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  if (hasExplicitConfigurationValue<boolean>(config, settingKey)) {
+    return;
+  }
+
+  if (legacyValue === true) {
+    return;
+  }
+
+  try {
+    await config.update(settingKey, legacyValue, vscode.ConfigurationTarget.Global);
+  } catch {
+    // Ignore configuration write failures to avoid breaking editor startup.
+  }
+}
+
+function hasExplicitConfigurationValue<T>(config: vscode.WorkspaceConfiguration, key: string): boolean {
+  const inspected = config.inspect<T>(key);
+  if (!inspected) {
+    return false;
+  }
+
+  const languageScoped = inspected as typeof inspected & {
+    globalLanguageValue?: T;
+    workspaceLanguageValue?: T;
+    workspaceFolderLanguageValue?: T;
+  };
+
+  return (
+    inspected.globalValue !== undefined ||
+    inspected.workspaceValue !== undefined ||
+    inspected.workspaceFolderValue !== undefined ||
+    languageScoped.globalLanguageValue !== undefined ||
+    languageScoped.workspaceLanguageValue !== undefined ||
+    languageScoped.workspaceFolderLanguageValue !== undefined
+  );
 }
 
 function readThemeColor(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {

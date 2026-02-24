@@ -1,6 +1,7 @@
 import { createEditor } from './editor';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, Share, X } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, ChevronUp, ChevronDown, Replace, ReplaceAll, Share, GitCompare, X } from 'lucide';
 import { setImageSrcResolver } from './helpers/images';
+import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses } from './helpers/wikiLinks';
 import { defaultThemeColors, defaultThemeFonts, maxThemeLineHeight, minThemeLineHeight, themeColorKeys } from '../../src/shared/themeDefaults';
@@ -222,6 +223,7 @@ taskBtn.title = 'Task';
 taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
 
 let autoSaveEnabled = true;
+let vimModeEnabled = false;
 
 const autoSaveBtn = document.createElement('button');
 autoSaveBtn.type = 'button';
@@ -231,6 +233,7 @@ autoSaveBtn.title = 'Auto Save';
 autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
 let lineNumbersVisible = true;
+let gitChangesGutterVisible = true;
 
 const outlineBtn = document.createElement('button');
 outlineBtn.type = 'button';
@@ -246,6 +249,13 @@ lineNumbersBtn.dataset.action = 'lineNumbers';
 lineNumbersBtn.title = 'Hide Line Numbers';
 lineNumbersBtn.appendChild(createElement(Hash, { width: 18, height: 18 }));
 
+const gitChangesGutterBtn = document.createElement('button');
+gitChangesGutterBtn.type = 'button';
+gitChangesGutterBtn.className = 'format-button toggle-button is-active';
+gitChangesGutterBtn.dataset.action = 'gitChangesGutter';
+gitChangesGutterBtn.title = 'Hide Git Changes Gutter';
+gitChangesGutterBtn.appendChild(createElement(GitCompare, { width: 18, height: 18 }));
+
 const updateAutoSaveUI = () => {
   autoSaveBtn.classList.toggle('is-active', autoSaveEnabled);
   autoSaveBtn.title = `Auto Save`;
@@ -257,6 +267,11 @@ const updateLineNumbersUI = () => {
   lineNumbersBtn.title = lineNumbersVisible ? 'Hide Line Numbers' : 'Show Line Numbers';
 };
 
+const updateGitChangesGutterUI = () => {
+  gitChangesGutterBtn.classList.toggle('is-active', gitChangesGutterVisible);
+  gitChangesGutterBtn.setAttribute('aria-pressed', gitChangesGutterVisible ? 'true' : 'false');
+  gitChangesGutterBtn.title = gitChangesGutterVisible ? 'Hide Git Changes' : 'Show Git Changes';
+};
 
 const toggleAutoSave = () => {
   autoSaveEnabled = !autoSaveEnabled;
@@ -281,8 +296,34 @@ const setLineNumbersVisible = (visible, { post = true } = {}) => {
   }
 };
 
+const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
+  const nextVisible = visible !== false;
+  const changed = nextVisible !== gitChangesGutterVisible;
+  if (changed) {
+    gitChangesGutterVisible = nextVisible;
+    editor?.setGitGutterVisible(gitChangesGutterVisible);
+  }
+  updateGitChangesGutterUI();
+  if (post && changed) {
+    vscode.postMessage({ type: 'setGitChangesGutter', enabled: gitChangesGutterVisible });
+  }
+};
+
+const setVimModeEnabled = (enabled) => {
+  const nextEnabled = enabled === true;
+  if (nextEnabled === vimModeEnabled) {
+    return;
+  }
+  vimModeEnabled = nextEnabled;
+  editor?.setVimMode(vimModeEnabled);
+};
+
 const toggleLineNumbers = () => {
   setLineNumbersVisible(!lineNumbersVisible);
+};
+
+const toggleGitChangesGutter = () => {
+  setGitChangesGutterVisible(!gitChangesGutterVisible);
 };
 
 const separator = document.createElement('div');
@@ -462,7 +503,7 @@ const requestExport = (format) => {
   vscode.postMessage({ type: 'exportDocument', format });
 };
 
-rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, autoSaveBtn, exportWrapper);
+rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, autoSaveBtn, exportWrapper);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -475,6 +516,7 @@ liveButton.className = 'mode-button';
 liveButton.dataset.mode = 'live';
 liveButton.textContent = 'Live';
 liveButton.setAttribute('role', 'tab');
+liveButton.title = 'Live';
 
 const sourceButton = document.createElement('button');
 sourceButton.type = 'button';
@@ -482,6 +524,7 @@ sourceButton.className = 'mode-button';
 sourceButton.dataset.mode = 'source';
 sourceButton.textContent = 'Source';
 sourceButton.setAttribute('role', 'tab');
+sourceButton.title = 'Source';
 
 modeGroup.append(liveButton, sourceButton);
 
@@ -621,6 +664,15 @@ let initialMountRecoveryAttempted = false;
 let editorFailureNoticeMessage = '';
 let editorFailureNoticeKind = 'error';
 let modeToggleShouldRestoreEditorFocus = false;
+let gitClient = null;
+
+const clearGitBlameCache = ({ hideTooltip = true } = {}) => {
+  gitClient?.clearBlameCache({ hideTooltip });
+};
+
+const bumpLocalEditGeneration = () => {
+  gitClient?.bumpLocalEditGeneration();
+};
 
 const hideSelectionMenu = () => {
   selectionMenu.classList.remove('is-visible');
@@ -828,6 +880,7 @@ const applyMode = (mode, { post = true, persist = true, userTriggered = false, r
   const shouldRestoreEditorFocus = modeToggleShouldRestoreEditorFocus;
   modeToggleShouldRestoreEditorFocus = false;
   currentMode = mode;
+  clearGitBlameCache();
   if (userTriggered) {
     hasLocalModePreference = true;
   }
@@ -1090,19 +1143,88 @@ const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
 const normalizeEol = (text) => text.replace(/\r\n?/g, '\n');
 
+const getCurrentEditorText = () => {
+  if (editor) {
+    return editor.getText();
+  }
+  if (typeof pendingText === 'string') {
+    return pendingText;
+  }
+  if (typeof pendingInitialText === 'string') {
+    return pendingInitialText;
+  }
+  return syncedText;
+};
+
+gitClient = createGitClient({
+  vscode,
+  getCurrentEditorText: () => getCurrentEditorText(),
+  getSyncedText: () => syncedText,
+  clearTransientUi: () => editor?.clearGitUiTransientState?.()
+});
+
+const requestGitBlameForLine = ({ lineNumber }) => {
+  if (!gitClient) {
+    return Promise.resolve({ kind: 'unavailable', reason: 'error' });
+  }
+  return gitClient.requestBlameForLine({ lineNumber });
+};
+
+const openGitRevisionForLine = ({ lineNumber }) => {
+  gitClient?.openRevisionForLine({ lineNumber });
+};
+
+const openGitWorktreeForLine = ({ lineNumber }) => {
+  gitClient?.openWorktreeForLine({ lineNumber });
+};
+
 const handleEditorShortcut = (event) => {
-  if (!editor || event.isComposing || !isPrimaryModifier(event)) {
+  if (!editor || event.isComposing) {
+    return false;
+  }
+  const hasPrimaryModifier = isPrimaryModifier(event);
+  const editorFocused = editor.hasFocus();
+  const vimSourceFocused = vimModeEnabled && currentMode === 'source' && editorFocused;
+  const vimWinsCtrlConflicts = vimSourceFocused && !isMac;
+  const isPlainAltShiftChord =
+    event.altKey &&
+    event.shiftKey &&
+    !event.metaKey &&
+    !event.ctrlKey;
+  const isModeToggleShortcut = isPlainAltShiftChord && isShortcutKey(event, 'm', 'KeyM');
+
+  if (isModeToggleShortcut) {
+    event.preventDefault();
+    event.stopPropagation();
+    applyMode(currentMode === 'live' ? 'source' : 'live', { userTriggered: true, reason: 'shortcut' });
+    return true;
+  }
+
+  // Let VS Code host keybindings (including user remaps) win over Vim for common non-Ctrl chords.
+  // We can't introspect arbitrary user keybindings from the webview, so preserve these classes of
+  // shortcuts by stopping propagation before CodeMirror/Vim sees them.
+  if (
+    vimSourceFocused &&
+    (
+      isPlainAltShiftChord ||
+      (isMac && event.metaKey && !event.ctrlKey)
+    )
+  ) {
+    event.stopPropagation();
     return false;
   }
 
-  if (isShortcutKey(event, 's', 'KeyS') && !event.altKey) {
+  if (hasPrimaryModifier && isShortcutKey(event, 's', 'KeyS') && !event.altKey) {
     event.preventDefault();
     event.stopPropagation();
     requestSave();
     return true;
   }
 
-  if (isShortcutKey(event, 'f', 'KeyF') && !event.altKey) {
+  if (hasPrimaryModifier && isShortcutKey(event, 'f', 'KeyF') && !event.altKey) {
+    if (vimWinsCtrlConflicts) {
+      return false;
+    }
     event.preventDefault();
     event.stopPropagation();
     openFindPanel('find');
@@ -1110,20 +1232,33 @@ const handleEditorShortcut = (event) => {
   }
 
   if (
-    (isMac && isShortcutKey(event, 'f', 'KeyF') && event.altKey) ||
-    (!isMac && isShortcutKey(event, 'h', 'KeyH') && !event.altKey)
+    hasPrimaryModifier &&
+    (
+      (isMac && isShortcutKey(event, 'f', 'KeyF') && event.altKey) ||
+      (!isMac && isShortcutKey(event, 'h', 'KeyH') && !event.altKey)
+    )
   ) {
+    if (vimWinsCtrlConflicts) {
+      return false;
+    }
     event.preventDefault();
     event.stopPropagation();
     openFindPanel('replace');
     return true;
   }
 
-  if (!editor.hasFocus()) {
+  if (!editorFocused) {
+    return false;
+  }
+
+  if (!hasPrimaryModifier) {
     return false;
   }
 
   if (isShortcutKey(event, 'a', 'KeyA') && !event.altKey) {
+    if (vimWinsCtrlConflicts) {
+      return false;
+    }
     event.preventDefault();
     event.stopPropagation();
     editor.selectAll();
@@ -1137,11 +1272,12 @@ const handleEditorShortcut = (event) => {
     return true;
   }
 
-  if (
-    ((isShortcutKey(event, 'z', 'KeyZ') && event.shiftKey) ||
-      isShortcutKey(event, 'y', 'KeyY')) &&
-    !event.altKey
-  ) {
+  const redoByShiftZ = isShortcutKey(event, 'z', 'KeyZ') && event.shiftKey;
+  const redoByY = isShortcutKey(event, 'y', 'KeyY');
+  if ((redoByShiftZ || redoByY) && !event.altKey) {
+    if (vimWinsCtrlConflicts && redoByY) {
+      return false;
+    }
     event.preventDefault();
     event.stopPropagation();
     editor.redo();
@@ -1170,6 +1306,7 @@ const handleEditorShortcut = (event) => {
 };
 
 const queueChanges = (nextText) => {
+  bumpLocalEditGeneration();
   pendingText = nextText;
 
   if (pendingDebounce !== null) {
@@ -1199,12 +1336,18 @@ const mountInitialEditor = () => {
       text: initialText,
       initialMode: currentMode,
       initialLineNumbers: lineNumbersVisible,
+      initialGitGutter: gitChangesGutterVisible,
+      initialVimMode: vimModeEnabled,
       onApplyChanges: queueChanges,
       onOpenLink: (href) => {
         vscode.postMessage({ type: 'openLink', href });
       },
-      onSelectionChange: updateSelectionMenu
+      onSelectionChange: updateSelectionMenu,
+      onRequestGitBlame: requestGitBlameForLine,
+      onOpenGitRevisionForLine: openGitRevisionForLine,
+      onOpenGitWorktreeForLine: openGitWorktreeForLine
     });
+    gitClient?.applyBaselineToEditor(editor);
     editor.focus();
     pendingInitialText = null;
     initialMountRecoveryAttempted = false;
@@ -1259,6 +1402,12 @@ const handleInit = (message) => {
   if (typeof message.lineNumbers === 'boolean') {
     setLineNumbersVisible(message.lineNumbers, { post: false });
   }
+  if (typeof message.gitChangesGutter === 'boolean') {
+    setGitChangesGutterVisible(message.gitChangesGutter, { post: false });
+  }
+  if (typeof message.vimMode === 'boolean') {
+    setVimModeEnabled(message.vimMode);
+  }
   outlineController.setPosition(message.outlinePosition);
   if (editor && outlineController.isVisible()) {
     outlineController.refresh();
@@ -1278,6 +1427,7 @@ window.addEventListener('message', (event) => {
     applyThemeSettings(message.theme);
     initialMountRecoveryAttempted = false;
     clearFailureNotice();
+    gitClient?.resetForInit({ hideTooltip: false });
     const nextMode = hasLocalModePreference ? currentMode : message.mode;
     documentVersion = message.version;
     syncedText = message.text;
@@ -1309,7 +1459,13 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'toggleMode') {
+    applyMode(currentMode === 'live' ? 'source' : 'live', { userTriggered: true, reason: 'command' });
+    return;
+  }
+
   if (message.type === 'docChanged' && !editor && pendingInitialText !== null) {
+    clearGitBlameCache({ hideTooltip: false });
     documentVersion = message.version;
     syncedText = message.text;
     pendingInitialText = message.text;
@@ -1317,6 +1473,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'docChanged' && editor) {
+    clearGitBlameCache();
     const incomingText = normalizeEol(message.text);
     const currentText = normalizeEol(editor.getText());
     const pendingNormalized = pendingText === null ? null : normalizeEol(pendingText);
@@ -1408,6 +1565,26 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'gitChangesGutterChanged') {
+    setGitChangesGutterVisible(message.enabled, { post: false });
+    return;
+  }
+
+  if (message.type === 'vimModeChanged') {
+    setVimModeEnabled(message.enabled);
+    return;
+  }
+
+  if (message.type === 'gitBaselineChanged') {
+    gitClient?.handleMessage(message, { editor });
+    return;
+  }
+
+  if (message.type === 'gitBlameResult') {
+    gitClient?.handleMessage(message, { editor });
+    return;
+  }
+
   if (message.type === 'outlinePositionChanged') {
     outlineController.setPosition(message.position);
     return;
@@ -1448,6 +1625,7 @@ window.addEventListener('beforeunload', () => {
     window.clearTimeout(pendingWikiStatusRefresh);
     pendingWikiStatusRefresh = null;
   }
+  clearGitBlameCache({ hideTooltip: false });
   flushPendingChangesNow();
 });
 
@@ -1469,6 +1647,8 @@ if (state && (state.mode === 'live' || state.mode === 'source')) {
 }
 outlineController.setPosition('right');
 updateLineNumbersUI();
+updateGitChangesGutterUI();
+updateAutoSaveUI();
 
 liveButton.addEventListener('click', () => {
   applyMode('live', { userTriggered: true });
@@ -1602,6 +1782,7 @@ outlineBtn.addEventListener('click', () => {
   outlineController.toggle();
 });
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
+gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
 
 persistModeState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });

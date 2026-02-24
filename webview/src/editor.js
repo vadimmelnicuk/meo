@@ -3,12 +3,22 @@ import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLi
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
+import { vim } from '@replit/codemirror-vim';
 import { highlightStyle } from './theme';
 import { liveModeExtensions } from './liveMode';
-import { headingCollapseSharedExtensions } from './helpers/headingCollapse';
+import { headingCollapseSharedExtensions, headingCollapseSourceSpacerExtensions } from './helpers/headingCollapse';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
+import {
+  gitDiffGutterBaselineExtensions,
+  gitDiffGutterRenderExtensions,
+  gitDiffGutterPlaceholderExtensions,
+  setGitBaseline as applyGitBaseline
+} from './helpers/gitDiffGutter';
+import { createGitDiffOverviewRulerController } from './helpers/gitDiffOverviewRuler';
+import { createGitBlameHoverController } from './helpers/gitBlameHover';
+import { mergeConflictSourceExtensions } from './helpers/mergeConflicts';
 import { resolvedSyntaxTree, extractHeadings, extractHeadingSections } from './helpers/markdownSyntax';
 import {
   sourceListBorderField,
@@ -92,16 +102,25 @@ export function createEditor({
   onApplyChanges,
   onOpenLink,
   onSelectionChange,
+  onRequestGitBlame,
+  onOpenGitRevisionForLine,
+  onOpenGitWorktreeForLine,
   initialMode = 'source',
-  initialLineNumbers = true
+  initialLineNumbers = true,
+  initialGitGutter = true,
+  initialVimMode = false
 }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
   EditorView.EDIT_CONTEXT = false;
 
   const modeCompartment = new Compartment();
+  const gitGutterCompartment = new Compartment();
+  const vimCompartment = new Compartment();
   const startMode = initialMode === 'live' ? 'live' : 'source';
   let lineNumbersVisible = initialLineNumbers !== false;
+  let gitGutterVisible = initialGitGutter !== false;
+  let vimModeEnabled = initialVimMode === true;
   let applyingExternal = false;
   let capturedPointerId = null;
   let inlineCodeClick = null;
@@ -117,6 +136,9 @@ export function createEditor({
   let onTableInteraction = null;
   let onTableOpenLink = null;
   let onScroll = null;
+  let gitBlameHover = null;
+  let gitDiffOverviewRuler = null;
+  const vimExtensionsForState = () => (vimModeEnabled && currentMode === 'source' ? vim() : []);
   const initialCursorPos = (() => {
     if (!text) {
       return 0;
@@ -296,6 +318,18 @@ export function createEditor({
     view.dom.classList.toggle('meo-line-numbers-hidden', !lineNumbersVisible);
   };
 
+  const syncGitGutterVisibility = () => {
+    if (!view) {
+      return;
+    }
+    const shouldShowGitGutter = gitGutterVisible && currentMode === 'source';
+    view.dom.classList.toggle('meo-git-gutter-hidden', !shouldShowGitGutter);
+    if (!shouldShowGitGutter) {
+      gitBlameHover?.hide();
+    }
+    gitDiffOverviewRuler?.refresh();
+  };
+
   const releasePointerCaptureIfHeld = (pointerId) => {
     if (!view || pointerId === null) {
       return;
@@ -464,6 +498,7 @@ export function createEditor({
     extensions: [
       EditorState.tabSize.of(4),
       indentUnit.of('  '),
+      vimCompartment.of(vimExtensionsForState()),
       keymap.of([
         { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentMore(view) },
         { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
@@ -486,6 +521,8 @@ export function createEditor({
       ]),
       history(),
       lineNumbers(),
+      ...gitDiffGutterBaselineExtensions(),
+      gitGutterCompartment.of(startMode === 'live' ? gitDiffGutterPlaceholderExtensions() : gitDiffGutterRenderExtensions()),
       highlightActiveLineGutter(),
       highlightActiveLine(),
       EditorView.lineWrapping,
@@ -626,6 +663,7 @@ export function createEditor({
       EditorView.updateListener.of((update) => {
         syncModeClasses();
         syncLineNumbersVisibility();
+        syncGitGutterVisibility();
 
         if (update.selectionSet) {
           syncSelectionClass();
@@ -637,6 +675,8 @@ export function createEditor({
         if (!update.docChanged || applyingExternal || applyingRenumber) {
           return;
         }
+
+        gitBlameHover?.hide();
 
         pendingExternalUndoSelectionPreserve = false;
 
@@ -676,10 +716,26 @@ export function createEditor({
   view.dom.addEventListener('meo-open-link', onTableOpenLink);
   onScroll = () => {
     emitSelectionChange();
+    gitBlameHover?.hide();
   };
   view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
+  if (typeof onRequestGitBlame === 'function') {
+    gitBlameHover = createGitBlameHoverController({
+      view,
+      getMode: () => currentMode,
+      requestBlame: onRequestGitBlame,
+      openRevisionForLine: onOpenGitRevisionForLine,
+      openWorktreeForLine: onOpenGitWorktreeForLine
+    });
+  }
+  gitDiffOverviewRuler = createGitDiffOverviewRulerController({
+    view,
+    getMode: () => currentMode,
+    isGitChangesVisible: () => gitGutterVisible
+  });
   syncModeClasses();
   syncLineNumbersVisibility();
+  syncGitGutterVisibility();
   syncSelectionClass();
   emitSelectionChange();
 
@@ -774,6 +830,10 @@ export function createEditor({
       view.focus();
     },
     destroy() {
+      gitBlameHover?.destroy();
+      gitBlameHover = null;
+      gitDiffOverviewRuler?.destroy();
+      gitDiffOverviewRuler = null;
       if (onScroll) {
         view.scrollDOM.removeEventListener('scroll', onScroll);
         onScroll = null;
@@ -793,6 +853,7 @@ export function createEditor({
       view.destroy();
     },
     setText(textValue) {
+      gitBlameHover?.hide();
       const currentText = view.state.doc.toString();
       const syncChange = findSyncChange(currentText, textValue);
       if (!syncChange) {
@@ -814,6 +875,7 @@ export function createEditor({
       emitSelectionChange();
     },
     setMode(mode) {
+      gitBlameHover?.hide();
       const nextMode = mode === 'live' ? 'live' : 'source';
       if (nextMode === currentMode) {
         return;
@@ -826,7 +888,13 @@ export function createEditor({
       currentMode = nextMode;
       try {
         view.dispatch({
-          effects: modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode())
+          effects: [
+            modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode()),
+            gitGutterCompartment.reconfigure(
+              nextMode === 'live' ? gitDiffGutterPlaceholderExtensions() : gitDiffGutterRenderExtensions()
+            ),
+            vimCompartment.reconfigure(vimExtensionsForState())
+          ]
         });
         forceParsing(view, view.state.doc.length, 500);
       } catch (error) {
@@ -835,6 +903,7 @@ export function createEditor({
         throw error;
       }
       syncModeClasses();
+      syncGitGutterVisibility();
 
       let attempts = 0;
       const restoreScroll = () => {
@@ -859,6 +928,24 @@ export function createEditor({
       }
       lineNumbersVisible = nextVisible;
       syncLineNumbersVisibility();
+    },
+    setGitGutterVisible(visible) {
+      const nextVisible = visible !== false;
+      if (nextVisible === gitGutterVisible) {
+        return;
+      }
+      gitGutterVisible = nextVisible;
+      syncGitGutterVisibility();
+    },
+    setVimMode(enabled) {
+      const nextEnabled = enabled === true;
+      if (nextEnabled === vimModeEnabled) {
+        return;
+      }
+      vimModeEnabled = nextEnabled;
+      view.dispatch({
+        effects: vimCompartment.reconfigure(vimExtensionsForState())
+      });
     },
     insertFormat(action, level) {
       const { state } = view;
@@ -991,6 +1078,14 @@ export function createEditor({
     },
     refreshDecorations() {
       view.dispatch({ effects: refreshDecorationsEffect.of(null) });
+    },
+    setGitBaseline(snapshot) {
+      applyGitBaseline(view, snapshot);
+      gitBlameHover?.hide();
+      gitDiffOverviewRuler?.refresh();
+    },
+    clearGitUiTransientState() {
+      gitBlameHover?.hide();
     }
   };
 }
@@ -1313,7 +1408,9 @@ function sourceMode() {
     sourceStrikeMarkerField,
     sourceWikiMarkerField,
     sourceTableHeaderLineField,
-    sourceFrontmatterField
+    sourceFrontmatterField,
+    ...headingCollapseSourceSpacerExtensions(),
+    ...mergeConflictSourceExtensions()
   ];
 }
 

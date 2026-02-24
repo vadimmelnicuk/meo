@@ -32,6 +32,7 @@ import {
   isThematicBreakLine
 } from './helpers/frontmatter';
 import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
+import { mergeConflictSourceExtensions, parseMergeConflicts } from './helpers/mergeConflicts';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -68,6 +69,7 @@ const lineStyleDecos = {
   h5: Decoration.line({ class: 'meo-md-h5' }),
   h6: Decoration.line({ class: 'meo-md-h6' }),
   quote: Decoration.line({ class: 'meo-md-quote' }),
+  mergeIncomingHeader: Decoration.line({ class: 'meo-merge-line meo-merge-incoming-header' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
   frontmatterContent: Decoration.line({ class: 'meo-md-frontmatter-content' }),
   frontmatterBoundary: Decoration.line({ class: 'meo-md-hr meo-md-frontmatter-boundary' }),
@@ -76,10 +78,17 @@ const lineStyleDecos = {
 };
 const frontmatterKeyDeco = Decoration.mark({ class: 'meo-md-frontmatter-key' });
 const frontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value' });
+const mergeConflictMarkerPrefixes = ['<<<<<<<', '|||||||', '=======', '>>>>>>>'];
 
 const listLineDecoCache = new Map();
 const listIndentWidgetCache = new Map();
 const frontmatterArrayPillWidgetCache = new Map();
+
+function isMergeConflictMarkerLine(state, pos) {
+  const line = state.doc.lineAt(pos);
+  const lineText = state.doc.sliceString(line.from, line.to).trimStart();
+  return mergeConflictMarkerPrefixes.some((prefix) => lineText.startsWith(prefix));
+}
 
 class ListIndentWidget extends WidgetType {
   constructor(indentColumns) {
@@ -666,6 +675,12 @@ function buildDecorations(state) {
       }
 
       if (node.name === 'Blockquote') {
+        const line = state.doc.lineAt(node.from);
+        const lineText = state.doc.sliceString(line.from, line.to).trimStart();
+        if (lineText.startsWith('>>>>>>>')) {
+          addLineClass(ranges, state, node.from, node.to, lineStyleDecos.mergeIncomingHeader);
+          return;
+        }
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);
       } else if (node.name === 'Table') {
         const tableInfo = parseTableInfo(state, node);
@@ -759,6 +774,11 @@ function buildDecorations(state) {
       if (isInsideFrontmatterContent(frontmatter, node.from)) {
         return;
       }
+      if (isMergeConflictMarkerLine(state, node.from)) {
+        // Keep merge conflict markers visible in live mode (e.g. ">>>>>>> branch")
+        // even when the Markdown parser tokenizes them as quote markers.
+        return;
+      }
       if (tableDepth > 0 && node.name === 'HeaderMark') {
         return;
       }
@@ -812,7 +832,7 @@ function buildDecorations(state) {
   }
 
   const result = Decoration.set(ranges, true);
-  return result;
+  return filterDecorationsOutsideMergeConflicts(state, result);
 }
 
 function hasCodeBlockAncestor(node) {
@@ -838,6 +858,50 @@ function safeBuildDecorations(state, fallback, context, extra = {}) {
     });
     return fallback;
   }
+}
+
+function mergeConflictRanges(state) {
+  return parseMergeConflicts(state).map((conflict) => ({
+    from: conflict.blockFrom,
+    to: conflict.blockTo
+  }));
+}
+
+function pointInsideRanges(pos, ranges) {
+  for (const range of ranges) {
+    if (pos >= range.from && pos < range.to) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rangeOverlapsRanges(from, to, ranges) {
+  for (const range of ranges) {
+    if (rangesOverlap(from, to, range.from, range.to)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function filterDecorationsOutsideMergeConflicts(state, decorations) {
+  const conflicts = mergeConflictRanges(state);
+  if (!conflicts.length || isEmptyDecorationSet(decorations)) {
+    return decorations;
+  }
+
+  const filtered = [];
+  decorations.between(0, state.doc.length, (from, to, value) => {
+    const overlaps = to > from
+      ? rangeOverlapsRanges(from, to, conflicts)
+      : pointInsideRanges(from, conflicts);
+    if (!overlaps) {
+      filtered.push(value.range(from, to));
+    }
+  });
+
+  return Decoration.set(filtered, true);
 }
 
 function collectCodeBlockLines(state, tree) {
@@ -883,9 +947,18 @@ const liveDecorationField = StateField.define({
 
 function buildLiveLineNumberMarkers(state) {
   const builder = new RangeSetBuilder();
+  const conflictLineNumbers = new Set();
+  for (const conflict of parseMergeConflicts(state)) {
+    for (let lineNo = conflict.startLineNo; lineNo <= conflict.endLineNo; lineNo += 1) {
+      conflictLineNumbers.add(lineNo);
+    }
+  }
   const tableBlocks = detectTableBlocks(state);
   for (const block of tableBlocks) {
     for (let lineNo = block.startLineNo; lineNo <= block.endLineNo; lineNo += 1) {
+      if (conflictLineNumbers.has(lineNo)) {
+        continue;
+      }
       const line = state.doc.line(lineNo);
       builder.add(line.from, line.from, tableDelimiterGutterLineClassMarker);
     }
@@ -976,6 +1049,7 @@ export function liveModeExtensions() {
     syntaxHighlighting(highlightStyle),
     liveDecorationField,
     liveLineNumberMarkerField,
+    ...mergeConflictSourceExtensions(),
     ...headingCollapseLiveExtensions()
   ];
 }

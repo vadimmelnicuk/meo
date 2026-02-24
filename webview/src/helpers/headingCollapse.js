@@ -318,3 +318,19 @@ const headingCollapseLiveExtension = Object.freeze([
 export function headingCollapseLiveExtensions() {
   return headingCollapseLiveExtension;
 }
+
+const emptyFoldGutterMarkers = new RangeSetBuilder().finish();
+
+const sourceHeadingFoldSpacerOnlyExtension = gutter({
+  class: 'meo-md-fold-gutter',
+  initialSpacer() {
+    return headingFoldGutterSpacerMarker;
+  },
+  markers() {
+    return emptyFoldGutterMarkers;
+  }
+});
+
+export function headingCollapseSourceSpacerExtensions() {
+  return [sourceHeadingFoldSpacerOnlyExtension];
+}
