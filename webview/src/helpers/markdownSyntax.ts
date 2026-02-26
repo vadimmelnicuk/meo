@@ -1,10 +1,11 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { EditorState } from '@codemirror/state';
 
-export function resolvedSyntaxTree(state, timeout = 50) {
+export function resolvedSyntaxTree(state: EditorState, timeout: number = 50): any {
   return ensureSyntaxTree(state, state.doc.length, timeout) ?? syntaxTree(state);
 }
 
-export function headingLevelFromName(name) {
+export function headingLevelFromName(name: string): number | null {
   if (!name.startsWith('ATXHeading')) {
     return null;
   }
@@ -13,12 +14,30 @@ export function headingLevelFromName(name) {
   return Number.isInteger(level) && level >= 1 && level <= 6 ? level : null;
 }
 
-export function extractHeadings(state) {
-  const headings = [];
+export interface HeadingInfo {
+  level: number;
+  text: string;
+  line: number;
+  from: number;
+}
+
+export interface HeadingSection extends HeadingInfo {
+  sectionFrom: number;
+  sectionTo: number;
+  headingFrom: number;
+  headingTo: number;
+  lineFrom: number;
+  lineTo: number;
+  collapseFrom: number;
+  collapseTo: number;
+}
+
+export function extractHeadings(state: EditorState): HeadingInfo[] {
+  const headings: HeadingInfo[] = [];
   const tree = resolvedSyntaxTree(state);
 
   tree.iterate({
-    enter(node) {
+    enter(node: any) {
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
         const line = state.doc.lineAt(node.from);
@@ -37,12 +56,12 @@ export function extractHeadings(state) {
   return headings;
 }
 
-export function extractHeadingSections(state) {
-  const headings = [];
+export function extractHeadingSections(state: EditorState): HeadingSection[] {
+  const headings: HeadingSection[] = [];
   const tree = resolvedSyntaxTree(state);
 
   tree.iterate({
-    enter(node) {
+    enter(node: any) {
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel === null) {
         return;
@@ -62,7 +81,6 @@ export function extractHeadingSections(state) {
         headingTo: node.to,
         lineFrom: line.from,
         lineTo: line.to,
-        // Start folding at the heading line end so the trailing newline is hidden too.
         collapseFrom: line.to,
         collapseTo: state.doc.length
       });
@@ -75,7 +93,6 @@ export function extractHeadingSections(state) {
       const nextHeading = headings[nextIndex];
       if (nextHeading.level <= heading.level) {
         heading.sectionTo = nextHeading.headingFrom;
-        // Stop before the next heading line start so its gutter/line decorations remain visible.
         const previousLineNo = Math.max(heading.line, nextHeading.line - 1);
         heading.collapseTo = state.doc.line(previousLineNo).to;
         break;

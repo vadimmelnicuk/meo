@@ -1,8 +1,23 @@
-import { StateField, RangeSetBuilder } from '@codemirror/state';
+import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state';
 import { EditorView, Decoration } from '@codemirror/view';
 import { resolvedSyntaxTree } from './markdownSyntax';
 
-function isEscaped(text, index) {
+interface StrikeRange {
+  from: number;
+  to: number;
+}
+
+interface StrikePair {
+  lineNo: number;
+  openFrom: number;
+  openTo: number;
+  closeFrom: number;
+  closeTo: number;
+  strikeFrom: number;
+  strikeTo: number;
+}
+
+function isEscaped(text: string, index: number): boolean {
   let backslashes = 0;
   for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) {
     backslashes += 1;
@@ -10,10 +25,10 @@ function isEscaped(text, index) {
   return backslashes % 2 === 1;
 }
 
-export function collectStrikethroughRanges(tree) {
-  const ranges = [];
+export function collectStrikethroughRanges(tree: any): StrikeRange[] {
+  const ranges: StrikeRange[] = [];
   tree.iterate({
-    enter(node) {
+    enter(node: any) {
       if (node.name === 'Strikethrough') {
         ranges.push({ from: node.from, to: node.to });
       }
@@ -22,8 +37,8 @@ export function collectStrikethroughRanges(tree) {
   return ranges;
 }
 
-export function collectSingleTildeStrikePairs(state, strikeRanges = []) {
-  const pairs = [];
+export function collectSingleTildeStrikePairs(state: EditorState, strikeRanges: StrikeRange[] = []): StrikePair[] {
+  const pairs: StrikePair[] = [];
   let overlapIndex = 0;
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
@@ -100,12 +115,12 @@ export function collectSingleTildeStrikePairs(state, strikeRanges = []) {
 
 const sourceStrikeMarkerDeco = Decoration.mark({ class: 'meo-md-strike-marker' });
 
-function computeSourceStrikeMarkers(state) {
-  const ranges = new RangeSetBuilder();
+function computeSourceStrikeMarkers(state: EditorState): any {
+  const ranges = new RangeSetBuilder<any>();
   const tree = resolvedSyntaxTree(state);
   const strikeRanges = collectStrikethroughRanges(tree);
   tree.iterate({
-    enter(node) {
+    enter(node: any) {
       if (node.name !== 'StrikethroughMark') {
         return;
       }
@@ -122,15 +137,15 @@ function computeSourceStrikeMarkers(state) {
   return ranges.finish();
 }
 
-export const sourceStrikeMarkerField = StateField.define({
-  create(state) {
+export const sourceStrikeMarkerField = StateField.define<any>({
+  create(state: EditorState) {
     try {
       return computeSourceStrikeMarkers(state);
     } catch {
       return Decoration.none;
     }
   },
-  update(markers, transaction) {
+  update(markers: any, transaction: any) {
     if (!transaction.docChanged) {
       return markers;
     }
@@ -140,5 +155,5 @@ export const sourceStrikeMarkerField = StateField.define({
       return markers;
     }
   },
-  provide: (field) => EditorView.decorations.from(field)
+  provide: (field: any) => EditorView.decorations.from(field)
 });

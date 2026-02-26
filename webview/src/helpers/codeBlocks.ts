@@ -1,4 +1,4 @@
-import { StateField } from '@codemirror/state';
+import { StateField, EditorState } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { syntaxTree, StreamLanguage } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
@@ -13,7 +13,7 @@ import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
 const shellLanguage = StreamLanguage.define({
   name: 'shell',
   startState: () => ({}),
-  token: (stream) => {
+  token: (stream: any) => {
     if (stream.match(/^#.*/)) return 'comment';
     if (stream.match(/^"[^$"]*"/)) return 'string';
     if (stream.match(/^'[^']*'/)) return 'string';
@@ -32,7 +32,7 @@ const shellLanguage = StreamLanguage.define({
 const powerQueryKeywords = /^(let|in|each|if|then|else|try|otherwise|error|and|or|not|as|is|type|meta|section|shared)\b/i;
 const powerQueryHashKeywords = /^#(date|time|datetime|datetimezone|duration|table|binary|sections|shared)\b/i;
 
-function consumePowerQueryQuotedTail(stream) {
+function consumePowerQueryQuotedTail(stream: any): void {
   while (!stream.eol()) {
     if (!stream.skipTo('"')) {
       stream.skipToEnd();
@@ -47,7 +47,7 @@ function consumePowerQueryQuotedTail(stream) {
   }
 }
 
-function consumePowerQueryQuoted(stream) {
+function consumePowerQueryQuoted(stream: any): boolean {
   if (stream.next() !== '"') {
     return false;
   }
@@ -56,7 +56,11 @@ function consumePowerQueryQuoted(stream) {
   return true;
 }
 
-function consumePowerQueryBlockComment(stream, state) {
+interface PowerQueryState {
+  inBlockComment: boolean;
+}
+
+function consumePowerQueryBlockComment(stream: any, state: PowerQueryState): void {
   state.inBlockComment = true;
   while (!stream.eol()) {
     if (stream.match('*/')) {
@@ -70,7 +74,7 @@ function consumePowerQueryBlockComment(stream, state) {
 const powerQueryLanguage = StreamLanguage.define({
   name: 'powerquery',
   startState: () => ({ inBlockComment: false }),
-  token: (stream, state) => {
+  token: (stream: any, state: PowerQueryState) => {
     if (stream.eatSpace()) {
       return null;
     }
@@ -152,7 +156,7 @@ const jsonLanguage = json().language;
 const swiftLanguage = cpp().language;
 const markdownCodeLanguage = markdownLanguage;
 
-const languageMap = {
+const languageMap: Record<string, any> = {
   javascript: jsLanguage,
   js: jsLanguage,
   jsx: jsxLanguage,
@@ -177,7 +181,7 @@ const languageMap = {
   pq: powerQueryLanguage
 };
 
-export function resolveCodeLanguage(info) {
+export function resolveCodeLanguage(info: string | null | undefined): any {
   if (!info) {
     return null;
   }
@@ -187,7 +191,7 @@ export function resolveCodeLanguage(info) {
   return languageMap[normalized] ?? null;
 }
 
-export function resolveLiveCodeLanguage(info) {
+export function resolveLiveCodeLanguage(info: string | null | undefined): any {
   if (!info) {
     return null;
   }
@@ -200,11 +204,11 @@ export function resolveLiveCodeLanguage(info) {
   return languageMap[normalized] ?? null;
 }
 
-export function insertCodeBlock(view, selection) {
+export function insertCodeBlock(view: EditorView, selection: { from: number; to: number; empty?: boolean }): void {
   const { state } = view;
   const line = state.doc.lineAt(selection.from);
   const lineText = state.doc.sliceString(line.from, line.to);
-  const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
+  const leadingWhitespace = /^(\s*)/.exec(lineText)![1];
 
   if (!selection.empty) {
     const selectedText = state.doc.sliceString(selection.from, selection.to);
@@ -226,10 +230,10 @@ export function insertCodeBlock(view, selection) {
 
 const sourceCodeBlockLine = Decoration.line({ class: 'meo-src-code-block' });
 
-function computeSourceCodeBlockLines(state) {
-  const ranges = [];
+function computeSourceCodeBlockLines(state: EditorState): any {
+  const ranges: any[] = [];
   syntaxTree(state).iterate({
-    enter(node) {
+    enter(node: any) {
       if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
         return;
       }
@@ -248,15 +252,15 @@ function computeSourceCodeBlockLines(state) {
   return Decoration.set(ranges, true);
 }
 
-export const sourceCodeBlockField = StateField.define({
-  create(state) {
+export const sourceCodeBlockField = StateField.define<any>({
+  create(state: EditorState) {
     try {
       return computeSourceCodeBlockLines(state);
     } catch {
       return Decoration.none;
     }
   },
-  update(lines, transaction) {
+  update(lines: any, transaction: any) {
     if (!transaction.docChanged) {
       return lines;
     }
@@ -266,16 +270,16 @@ export const sourceCodeBlockField = StateField.define({
       return lines;
     }
   },
-  provide: (field) => EditorView.decorations.from(field)
+  provide: (field: any) => EditorView.decorations.from(field)
 });
 
-export function isFenceMarker(state, from, to) {
+export function isFenceMarker(state: EditorState, from: number, to: number): boolean {
   const text = state.doc.sliceString(from, to);
   return /^`{3,}$/.test(text) || /^~{3,}$/.test(text);
 }
 
-export function getFencedCodeInfo(state, node) {
-  let codeInfo = null;
+export function getFencedCodeInfo(state: EditorState, node: any): string | null {
+  let codeInfo: string | null = null;
   for (let child = node.node.firstChild; child; child = child.nextSibling) {
     if (child.name === 'CodeInfo') {
       codeInfo = state.doc.sliceString(child.from, child.to).trim().toLowerCase();
@@ -286,16 +290,18 @@ export function getFencedCodeInfo(state, node) {
 }
 
 class CopyCodeButtonWidget extends WidgetType {
-  constructor(codeContent) {
+  codeContent: string;
+
+  constructor(codeContent: string) {
     super();
     this.codeContent = codeContent;
   }
 
-  eq(other) {
+  eq(other: WidgetType): boolean {
     return other instanceof CopyCodeButtonWidget && other.codeContent === this.codeContent;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const container = document.createElement('span');
     container.className = 'meo-code-block-pill meo-copy-code-btn';
     container.setAttribute('aria-label', 'Copy code');
@@ -303,12 +309,12 @@ class CopyCodeButtonWidget extends WidgetType {
     container.setAttribute('tabindex', '0');
     container.textContent = 'copy';
 
-    const updateText = (copied) => {
+    const updateText = (copied: boolean) => {
       container.textContent = copied ? 'copied' : 'copy';
       container.classList.toggle('copied', copied);
     };
 
-    const copy = async (e) => {
+    const copy = async (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
       try {
@@ -321,7 +327,7 @@ class CopyCodeButtonWidget extends WidgetType {
     };
 
     container.addEventListener('click', copy);
-    container.addEventListener('keydown', async (e) => {
+    container.addEventListener('keydown', async (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         await copy(e);
       }
@@ -330,22 +336,24 @@ class CopyCodeButtonWidget extends WidgetType {
     return container;
   }
 
-  ignoreEvent(event) {
-    return event !== 'pointerover' && event !== 'pointerout';
+  ignoreEvent(event: Event): boolean {
+    return event.type !== 'pointerover' && event.type !== 'pointerout';
   }
 }
 
 class CodeLanguageLabelWidget extends WidgetType {
-  constructor(labelText) {
+  labelText: string;
+
+  constructor(labelText: string) {
     super();
     this.labelText = labelText;
   }
 
-  eq(other) {
+  eq(other: WidgetType): boolean {
     return other instanceof CodeLanguageLabelWidget && other.labelText === this.labelText;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const label = document.createElement('span');
     label.className = 'meo-code-block-pill meo-code-language-label';
     label.textContent = this.labelText;
@@ -353,12 +361,12 @@ class CodeLanguageLabelWidget extends WidgetType {
     return label;
   }
 
-  ignoreEvent() {
+  ignoreEvent(): boolean {
     return true;
   }
 }
 
-function addTopLineWidget(builder, lineEnd, widget) {
+function addTopLineWidget(builder: any[], lineEnd: number, widget: WidgetType): void {
   builder.push(
     Decoration.widget({
       widget,
@@ -367,14 +375,14 @@ function addTopLineWidget(builder, lineEnd, widget) {
   );
 }
 
-export function addTopLinePillLabel(builder, lineEnd, labelText) {
+export function addTopLinePillLabel(builder: any[], lineEnd: number, labelText: string | null): void {
   if (!labelText) {
     return;
   }
   addTopLineWidget(builder, lineEnd, new CodeLanguageLabelWidget(labelText));
 }
 
-export function addFenceOpeningLineMarker(builder, state, from, activeLines, addRange, activeLineMarkerDeco, fenceMarkerDeco) {
+export function addFenceOpeningLineMarker(builder: any[], state: EditorState, from: number, activeLines: Set<number>, addRange: Function, activeLineMarkerDeco: any, fenceMarkerDeco: any): void {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
   if (!/^[ \t]{0,3}(?:`{3,}|~{3,})/.test(text)) {
@@ -388,7 +396,7 @@ export function addFenceOpeningLineMarker(builder, state, from, activeLines, add
   addRange(builder, line.from, line.to, fenceMarkerDeco);
 }
 
-export function addCodeLanguageLabel(builder, state, node, activeLines) {
+export function addCodeLanguageLabel(builder: any[], state: EditorState, node: any, activeLines: Set<number>): void {
   if (node.name !== 'FencedCode') {
     return;
   }
@@ -406,7 +414,7 @@ export function addCodeLanguageLabel(builder, state, node, activeLines) {
   addTopLinePillLabel(builder, startLine.to, labelText);
 }
 
-export function addMermaidDiagram(builder, state, node) {
+export function addMermaidDiagram(builder: any[], state: EditorState, node: any): void {
   const diagramText = getFencedCodeContent(state, node);
   if (!diagramText.trim()) {
     return;
@@ -439,11 +447,11 @@ export function addMermaidDiagram(builder, state, node) {
   );
 }
 
-export function addCopyCodeButton(builder, state, from, to) {
+export function addCopyCodeButton(builder: any[], state: EditorState, from: number, to: number): void {
   const startLine = state.doc.lineAt(from);
   const endLine = state.doc.lineAt(Math.max(to - 1, from));
 
-  const codeLines = [];
+  const codeLines: string[] = [];
   for (let lineNum = startLine.number + 1; lineNum <= endLine.number; lineNum += 1) {
     const line = state.doc.line(lineNum);
     const lineText = line.text;

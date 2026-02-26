@@ -1,14 +1,52 @@
-import { StateField, RangeSetBuilder } from '@codemirror/state';
+import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state';
 import { Decoration, EditorView } from '@codemirror/view';
 
 const thematicBreakRe = /^[ \t]{0,3}(?:([-*_])(?:[ \t]*\1){2,})[ \t]*$/;
-const frontmatterCache = new WeakMap();
+const frontmatterCache = new WeakMap<object, FrontmatterInfo | null>();
 
-function isFrontmatterDelimiterLine(lineText) {
+interface FrontmatterInfo {
+  openingFrom: number;
+  openingTo: number;
+  contentFrom: number;
+  contentTo: number;
+  closingFrom: number;
+  closingTo: number;
+  from: number;
+  to: number;
+}
+
+interface YamlFieldOffsets {
+  keyFromOffset: number;
+  keyToOffset: number;
+  valueFromOffset: number | null;
+}
+
+interface YamlArrayValue {
+  fromOffset: number;
+  toOffset: number;
+  items: Array<{ fromOffset: number; toOffset: number; text: string }>;
+}
+
+interface LineInfo {
+  from: number;
+  to: number;
+  text: string;
+  number: number;
+}
+
+interface YamlFieldRange {
+  line: LineInfo;
+  keyFrom: number;
+  keyTo: number;
+  valueFrom: number | null;
+  valueTo: number;
+}
+
+function isFrontmatterDelimiterLine(lineText: string): boolean {
   return lineText.trim() === '---';
 }
 
-export function isThematicBreakLine(lineText) {
+export function isThematicBreakLine(lineText: string): boolean {
   const first = lineText.trimStart()[0];
   if (first !== '-' && first !== '*' && first !== '_') {
     return false;
@@ -16,22 +54,22 @@ export function isThematicBreakLine(lineText) {
   return thematicBreakRe.test(lineText);
 }
 
-export function isInsideFrontmatter(frontmatter, pos) {
+export function isInsideFrontmatter(frontmatter: FrontmatterInfo | null, pos: number): boolean {
   return Boolean(frontmatter && pos >= frontmatter.from && pos < frontmatter.to);
 }
 
-export function isInsideFrontmatterContent(frontmatter, pos) {
+export function isInsideFrontmatterContent(frontmatter: FrontmatterInfo | null, pos: number): boolean {
   return Boolean(frontmatter && pos >= frontmatter.contentFrom && pos < frontmatter.contentTo);
 }
 
-export function parseFrontmatter(state) {
+export function parseFrontmatter(state: EditorState): FrontmatterInfo | null {
   const { doc } = state;
   const cached = frontmatterCache.get(doc);
   if (cached !== undefined) {
     return cached;
   }
 
-  let parsed = null;
+  let parsed: FrontmatterInfo | null = null;
   if (doc.lines >= 2) {
     const openingLine = doc.line(1);
     if (isFrontmatterDelimiterLine(openingLine.text)) {
@@ -61,15 +99,15 @@ export function parseFrontmatter(state) {
   return parsed;
 }
 
-export const sourceFrontmatterField = StateField.define({
-  create(state) {
+export const sourceFrontmatterField = StateField.define<any>({
+  create(state: EditorState) {
     try {
       return buildSourceFrontmatterDecorations(state);
     } catch {
       return Decoration.none;
     }
   },
-  update(value, tr) {
+  update(value: any, tr: any) {
     if (!tr.docChanged) {
       return value;
     }
@@ -79,7 +117,7 @@ export const sourceFrontmatterField = StateField.define({
       return value;
     }
   },
-  provide: (field) => EditorView.decorations.from(field)
+  provide: (field: any) => EditorView.decorations.from(field)
 });
 
 const sourceFrontmatterContentLineDeco = Decoration.line({ class: 'meo-md-frontmatter-line meo-md-frontmatter-content' });
@@ -87,7 +125,7 @@ const sourceFrontmatterDelimiterLineDeco = Decoration.line({ class: 'meo-md-fron
 const sourceFrontmatterKeyDeco = Decoration.mark({ class: 'meo-md-frontmatter-key' });
 const sourceFrontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value' });
 
-export function yamlFrontmatterFieldOffsets(lineText) {
+export function yamlFrontmatterFieldOffsets(lineText: string): YamlFieldOffsets | null {
   let offset = 0;
   while (offset < lineText.length && (lineText[offset] === ' ' || lineText[offset] === '\t')) {
     offset += 1;
@@ -132,7 +170,7 @@ export function yamlFrontmatterFieldOffsets(lineText) {
   };
 }
 
-export function parseSimpleYamlFlowArrayValue(lineText, valueFromOffset) {
+export function parseSimpleYamlFlowArrayValue(lineText: string, valueFromOffset: number | null): YamlArrayValue | null {
   if (
     valueFromOffset === null ||
     valueFromOffset < 0 ||
@@ -157,23 +195,23 @@ export function parseSimpleYamlFlowArrayValue(lineText, valueFromOffset) {
     return null;
   }
 
-  for (let offset = innerFromOffset; offset < innerToOffset; offset += 1) {
-    const ch = lineText[offset];
+  for (let i = innerFromOffset; i < innerToOffset; i += 1) {
+    const ch = lineText[i];
     if (ch === '"' || ch === '\'' || ch === '[' || ch === ']' || ch === '{' || ch === '}') {
       return null;
     }
   }
 
-  const items = [];
+  const items: Array<{ fromOffset: number; toOffset: number; text: string }> = [];
   let partFromOffset = innerFromOffset;
-  for (let offset = innerFromOffset; offset <= innerToOffset; offset += 1) {
-    const atEnd = offset === innerToOffset;
-    if (!atEnd && lineText[offset] !== ',') {
+  for (let i = innerFromOffset; i <= innerToOffset; i += 1) {
+    const atEnd = i === innerToOffset;
+    if (!atEnd && lineText[i] !== ',') {
       continue;
     }
 
     let itemFromOffset = partFromOffset;
-    let itemToOffset = offset;
+    let itemToOffset = i;
     while (itemFromOffset < itemToOffset && (lineText[itemFromOffset] === ' ' || lineText[itemFromOffset] === '\t')) {
       itemFromOffset += 1;
     }
@@ -191,7 +229,7 @@ export function parseSimpleYamlFlowArrayValue(lineText, valueFromOffset) {
       text: lineText.slice(itemFromOffset, itemToOffset)
     });
 
-    partFromOffset = offset + 1;
+    partFromOffset = i + 1;
   }
 
   if (!items.length) {
@@ -205,7 +243,7 @@ export function parseSimpleYamlFlowArrayValue(lineText, valueFromOffset) {
   };
 }
 
-function frontmatterContentLineRange(state, frontmatter) {
+function frontmatterContentLineRange(state: EditorState, frontmatter: FrontmatterInfo | null): { startLineNo: number; endLineNo: number } | null {
   if (!frontmatter || frontmatter.contentTo <= frontmatter.contentFrom) {
     return null;
   }
@@ -216,7 +254,7 @@ function frontmatterContentLineRange(state, frontmatter) {
   };
 }
 
-export function forEachFrontmatterContentLine(state, frontmatter, callback) {
+export function forEachFrontmatterContentLine(state: EditorState, frontmatter: FrontmatterInfo | null, callback: (line: LineInfo) => void): void {
   const range = frontmatterContentLineRange(state, frontmatter);
   if (!range) {
     return;
@@ -227,7 +265,7 @@ export function forEachFrontmatterContentLine(state, frontmatter, callback) {
   }
 }
 
-export function forEachYamlFrontmatterField(state, frontmatter, callback) {
+export function forEachYamlFrontmatterField(state: EditorState, frontmatter: FrontmatterInfo | null, callback: (range: YamlFieldRange) => void): void {
   forEachFrontmatterContentLine(state, frontmatter, (line) => {
     const offsets = yamlFrontmatterFieldOffsets(line.text);
     if (!offsets) {
@@ -244,8 +282,8 @@ export function forEachYamlFrontmatterField(state, frontmatter, callback) {
   });
 }
 
-function buildSourceFrontmatterDecorations(state) {
-  const builder = new RangeSetBuilder();
+function buildSourceFrontmatterDecorations(state: EditorState): any {
+  const builder = new RangeSetBuilder<any>();
   const frontmatter = parseFrontmatter(state);
   if (!frontmatter) {
     return builder.finish();

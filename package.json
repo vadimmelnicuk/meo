@@ -170,6 +170,12 @@
           "order": 7,
           "description": "Optional path to a Chrome/Edge executable used for direct PDF export. Leave empty to auto-detect."
         },
+        "markdownEditorOptimized.imageFolder": {
+          "type": "string",
+          "default": "assets",
+          "order": 8,
+          "description": "Folder name to save pasted images (relative to workspace root)."
+        },
         "markdownEditorOptimized.theme.base02": {
           "type": "string",
           "format": "color-hex",
@@ -228,6 +234,15 @@
           "default": "",
           "description": "Font family for Source mode. Leave empty to use VS Code editor font."
         },
+        "markdownEditorOptimized.fonts.fontSize": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 8,
+          "description": "Font size in pixels. Leave unset to use VS Code editor font size."
+        },
         "markdownEditorOptimized.fonts.liveLineHeight": {
           "type": "number",
           "default": 1.5,
@@ -247,6 +262,7 @@
   },
   "scripts": {
     "install:all": "bun install && (cd webview && bun install)",
+    "typecheck:webview": "tsc -p webview/tsconfig.json --noEmit",
     "build": "bun run build:webview && bun run build:extension",
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist && bun build webview/src/index.js --target=browser --format=iife --minify --outfile=webview/dist/index.js && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js",
     "build:extension": "bun run build:extension:main && bun run build:extension:export-runtime && bun run build:extension:puppeteer-runtime",
@@ -279,5 +295,9 @@
     "mermaid": "^11.4.1",
     "puppeteer-core": "^24.1.1",
     "sanitize-html": "^2.17.0"
+  },
+  "devDependencies": {
+    "@types/sanitize-html": "^2.16.0",
+    "typescript": "^5.9.3"
   }
 }

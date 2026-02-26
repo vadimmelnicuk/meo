@@ -1,4 +1,46 @@
-export function createOutlineController({ root, editorWrapper, outlineButton, getEditor }) {
+interface OutlineHeading {
+  text: string;
+  level: number;
+  from: number;
+  line: number;
+}
+
+interface EditorApi {
+  getHeadings(): OutlineHeading[];
+  scrollToLine(line: number, position: string): void;
+  moveHeadingSection(sourceFrom: number, targetFrom: number, placement: 'before' | 'after'): boolean;
+}
+
+interface OutlineControllerOptions {
+  root: HTMLElement;
+  editorWrapper: HTMLElement;
+  outlineButton: HTMLElement;
+  getEditor: () => EditorApi | null;
+}
+
+interface OutlineDragState {
+  sourceFrom: number;
+  sourceIndex: number;
+  draggedElement: Element;
+  dropTargetFrom: number | null;
+  dropPlacement: 'before' | 'after' | null;
+}
+
+interface DropCandidate {
+  targetFrom: number;
+  placement: 'before' | 'after';
+  targetItem: Element;
+}
+
+interface OutlineController {
+  sidebar: HTMLElement;
+  toggle: () => void;
+  refresh: () => void;
+  setPosition: (position: 'left' | 'right') => void;
+  isVisible: () => boolean;
+}
+
+export function createOutlineController({ root, editorWrapper, outlineButton, getEditor }: OutlineControllerOptions): OutlineController {
   const outlineSidebar = document.createElement('div');
   outlineSidebar.className = 'outline-sidebar';
   outlineSidebar.setAttribute('role', 'navigation');
@@ -9,9 +51,9 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
   outlineSidebar.appendChild(outlineContent);
 
   let visible = false;
-  let currentOutlineHeadings = [];
-  let currentOutlineHeadingIndexByFrom = new Map();
-  let outlineDragState = null;
+  let currentOutlineHeadings: OutlineHeading[] = [];
+  let currentOutlineHeadingIndexByFrom = new Map<number, number>();
+  let outlineDragState: OutlineDragState | null = null;
   let suppressNextOutlineClick = false;
 
   const clearOutlineDropIndicators = () => {
@@ -33,7 +75,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
     outlineDragState = null;
   };
 
-  const buildOutlineSubtreeEndIndexes = (headings) => {
+  const buildOutlineSubtreeEndIndexes = (headings: OutlineHeading[]): number[] => {
     const subtreeEnds = new Array(headings.length);
     for (let index = 0; index < headings.length; index += 1) {
       let endIndex = headings.length - 1;
@@ -48,12 +90,12 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
     return subtreeEnds;
   };
 
-  const getOutlineDropCandidate = (targetItem, clientY) => {
+  const getOutlineDropCandidate = (targetItem: Element, clientY: number): DropCandidate | null => {
     if (!outlineDragState || !targetItem) {
       return null;
     }
 
-    const targetFrom = Number.parseInt(targetItem.dataset.headingFrom ?? '', 10);
+    const targetFrom = Number.parseInt((targetItem as HTMLElement).dataset.headingFrom ?? '', 10);
     if (!Number.isFinite(targetFrom)) {
       return null;
     }
@@ -92,7 +134,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
     };
   };
 
-  const applyOutlineDropIndicator = (candidate) => {
+  const applyOutlineDropIndicator = (candidate: DropCandidate | null) => {
     if (!outlineDragState) {
       clearOutlineDropIndicators();
       return;
@@ -171,7 +213,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
     }
   };
 
-  const setPosition = (position) => {
+  const setPosition = (position: 'left' | 'right') => {
     editorWrapper.dataset.outlinePosition = position === 'left' ? 'left' : 'right';
   };
 
@@ -189,7 +231,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
       return;
     }
 
-    const headingFrom = Number.parseInt(item.dataset.headingFrom ?? '', 10);
+    const headingFrom = Number.parseInt((item as HTMLElement).dataset.headingFrom ?? '', 10);
     const headingIndex = currentOutlineHeadingIndexByFrom.get(headingFrom);
     if (typeof headingIndex !== 'number') {
       return;
@@ -209,7 +251,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
       return;
     }
 
-    const sourceFrom = Number.parseInt(item.dataset.headingFrom ?? '', 10);
+    const sourceFrom = Number.parseInt((item as HTMLElement).dataset.headingFrom ?? '', 10);
     const sourceIndex = currentOutlineHeadingIndexByFrom.get(sourceFrom);
     const editor = getEditor();
     if (!editor || typeof sourceIndex !== 'number') {

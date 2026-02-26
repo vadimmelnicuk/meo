@@ -1,12 +1,20 @@
+import { EditorView } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
 import { getGitDiffOverviewSegments } from './gitDiffGutter';
 
 const minMarkerHeightPx = 2;
 
-function clamp(value, min, max) {
+function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getTrackMetrics(view, trackHeight) {
+interface TrackMetrics {
+  drawableHeight: number;
+  fileEndY: number;
+  showFileEndLine: boolean;
+}
+
+function getTrackMetrics(view: EditorView, trackHeight: number): TrackMetrics {
   const scrollEl = view?.scrollDOM;
   if (!scrollEl || trackHeight <= 0) {
     return {
@@ -52,19 +60,37 @@ function getTrackMetrics(view, trackHeight) {
   };
 }
 
+interface PixelSegment {
+  top: number;
+  height: number;
+  added: boolean;
+  modified: boolean;
+}
+
+interface GitDiffOverviewRulerController {
+  refresh(): void;
+  destroy(): void;
+}
+
+interface GitDiffOverviewRulerOptions {
+  view: EditorView;
+  getMode: () => string;
+  isGitChangesVisible: () => boolean;
+}
+
 export function createGitDiffOverviewRulerController({
   view,
   getMode,
   isGitChangesVisible
-}) {
+}: GitDiffOverviewRulerOptions): GitDiffOverviewRulerController {
   let destroyed = false;
-  let host = null;
+  let host: HTMLElement | null = null;
   let lastRenderKey = '';
-  let resizeObserver = null;
+  let resizeObserver: ResizeObserver | null = null;
   let rafId = 0;
-  let onWindowResize = null;
+  let onWindowResize: (() => void) | null = null;
 
-  const ensureHost = () => {
+  const ensureHost = (): HTMLElement => {
     if (host) {
       return host;
     }
@@ -98,12 +124,6 @@ export function createGitDiffOverviewRulerController({
     const mode = typeof getMode === 'function' ? getMode() : 'source';
     const visible = typeof isGitChangesVisible === 'function' ? isGitChangesVisible() : true;
     const root = ensureHost();
-    if (!visible) {
-      lastRenderKey = `hidden:${mode}:visibility-off`;
-      hide();
-      return;
-    }
-
     const trackHeight = Math.floor(root.clientHeight || view.dom.clientHeight || 0);
     if (trackHeight <= 0) {
       lastRenderKey = `hidden:${mode}:no-height`;
@@ -112,15 +132,43 @@ export function createGitDiffOverviewRulerController({
     }
     const trackMetrics = getTrackMetrics(view, trackHeight);
 
-    const totalLines = Math.max(1, view.state.doc.lines);
-    const segments = getGitDiffOverviewSegments(view.state);
-    if (!segments.length) {
-      lastRenderKey = `hidden:${mode}:no-segments:${totalLines}:${trackHeight}:${trackMetrics.fileEndY}`;
-      hide();
+    if (!visible) {
+      const renderKey = `track-only:${mode}:${trackHeight}:${trackMetrics.fileEndY}:${trackMetrics.showFileEndLine ? 1 : 0}`;
+      if (renderKey === lastRenderKey) {
+        return;
+      }
+      lastRenderKey = renderKey;
+      root.textContent = '';
+      if (trackMetrics.showFileEndLine) {
+        const boundary = document.createElement('div');
+        boundary.className = 'meo-git-overview-ruler-file-end';
+        boundary.style.top = `${clamp(trackMetrics.fileEndY - 1, 0, trackHeight - 1)}px`;
+        root.appendChild(boundary);
+      }
+      root.hidden = false;
       return;
     }
 
-    const pixelSegments = [];
+    const totalLines = Math.max(1, view.state.doc.lines);
+    const segments = getGitDiffOverviewSegments(view.state);
+    if (!segments.length) {
+      const renderKey = `track-only:${mode}:no-segments:${totalLines}:${trackHeight}:${trackMetrics.fileEndY}:${trackMetrics.showFileEndLine ? 1 : 0}`;
+      if (renderKey === lastRenderKey) {
+        return;
+      }
+      lastRenderKey = renderKey;
+      root.textContent = '';
+      if (trackMetrics.showFileEndLine) {
+        const boundary = document.createElement('div');
+        boundary.className = 'meo-git-overview-ruler-file-end';
+        boundary.style.top = `${clamp(trackMetrics.fileEndY - 1, 0, trackHeight - 1)}px`;
+        root.appendChild(boundary);
+      }
+      root.hidden = false;
+      return;
+    }
+
+    const pixelSegments: PixelSegment[] = [];
     for (const segment of segments) {
       const topRatio = (segment.fromLine - 1) / totalLines;
       const bottomRatio = segment.toLine / totalLines;

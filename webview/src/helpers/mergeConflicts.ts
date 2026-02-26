@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateField } from '@codemirror/state';
+import { RangeSetBuilder, StateField, EditorState } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 
 const lineDecos = {
@@ -11,24 +11,43 @@ const lineDecos = {
   incoming: Decoration.line({ class: 'meo-merge-line meo-merge-incoming' })
 };
 
-function lineText(state, lineNo) {
+interface MergeConflict {
+  id: number;
+  startLineNo: number;
+  baseMarkerLineNo: number | null;
+  separatorLineNo: number;
+  endLineNo: number;
+  blockFrom: number;
+  blockTo: number;
+  currentLabel: string;
+  incomingLabel: string;
+  currentText: string;
+  incomingText: string;
+}
+
+interface MergeConflictState {
+  conflicts: MergeConflict[];
+  decorations: any;
+}
+
+function lineText(state: EditorState, lineNo: number): string {
   const line = state.doc.line(lineNo);
   return state.doc.sliceString(line.from, line.to);
 }
 
-function lineEndWithBreak(doc, lineNo) {
+function lineEndWithBreak(doc: any, lineNo: number): number {
   if (lineNo < doc.lines) {
     return doc.line(lineNo + 1).from;
   }
   return doc.line(lineNo).to;
 }
 
-function markerLabel(text, marker) {
+function markerLabel(text: string, marker: string): string {
   return text.slice(marker.length).trim();
 }
 
-export function parseMergeConflicts(state) {
-  const conflicts = [];
+export function parseMergeConflicts(state: EditorState): MergeConflict[] {
+  const conflicts: MergeConflict[] = [];
   const { doc } = state;
   let lineNo = 1;
 
@@ -41,9 +60,9 @@ export function parseMergeConflicts(state) {
 
     const startLineNo = lineNo;
     const currentLabel = markerLabel(startText, '<<<<<<<');
-    let baseMarkerLineNo = null;
-    let separatorLineNo = null;
-    let endLineNo = null;
+    let baseMarkerLineNo: number | null = null;
+    let separatorLineNo: number | null = null;
+    let endLineNo: number | null = null;
 
     let scanLineNo = startLineNo + 1;
     while (scanLineNo <= doc.lines) {
@@ -113,21 +132,25 @@ export function parseMergeConflicts(state) {
 }
 
 class MergeConflictActionsWidget extends WidgetType {
-  constructor(conflictId, currentLabel, incomingLabel) {
+  conflictId: number;
+  currentLabel: string;
+  incomingLabel: string;
+
+  constructor(conflictId: number, currentLabel: string, incomingLabel: string) {
     super();
     this.conflictId = conflictId;
     this.currentLabel = currentLabel;
     this.incomingLabel = incomingLabel;
   }
 
-  eq(other) {
+  eq(other: MergeConflictActionsWidget): boolean {
     return other instanceof MergeConflictActionsWidget &&
       other.conflictId === this.conflictId &&
       other.currentLabel === this.currentLabel &&
       other.incomingLabel === this.incomingLabel;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'meo-merge-actions';
     wrap.setAttribute('contenteditable', 'false');
@@ -151,7 +174,7 @@ class MergeConflictActionsWidget extends WidgetType {
     if (this.currentLabel || this.incomingLabel) {
       const labels = document.createElement('span');
       labels.className = 'meo-merge-action-labels';
-      const parts = [];
+      const parts: string[] = [];
       if (this.currentLabel) {
         parts.push(`Current: ${this.currentLabel},`);
       }
@@ -165,20 +188,18 @@ class MergeConflictActionsWidget extends WidgetType {
     return wrap;
   }
 
-  ignoreEvent() {
-    // Let CodeMirror pass widget events through to the editor-level DOM handlers
-    // that resolve and apply the selected merge-conflict action.
+  ignoreEvent(): boolean {
     return false;
   }
 }
 
-function addLineDeco(builder, state, lineNo, deco) {
+function addLineDeco(builder: RangeSetBuilder<any>, state: EditorState, lineNo: number, deco: any) {
   const line = state.doc.line(lineNo);
   builder.add(line.from, line.from, deco);
 }
 
-function buildConflictDecorations(state, conflicts) {
-  const builder = new RangeSetBuilder();
+function buildConflictDecorations(state: EditorState, conflicts: MergeConflict[]): any {
+  const builder = new RangeSetBuilder<any>();
 
   for (const conflict of conflicts) {
     const startLine = state.doc.line(conflict.startLineNo);
@@ -216,7 +237,7 @@ function buildConflictDecorations(state, conflicts) {
   return builder.finish();
 }
 
-function buildMergeConflictState(state) {
+function buildMergeConflictState(state: EditorState): MergeConflictState {
   const conflicts = parseMergeConflicts(state);
   return {
     conflicts,
@@ -224,27 +245,27 @@ function buildMergeConflictState(state) {
   };
 }
 
-const mergeConflictField = StateField.define({
-  create(state) {
+const mergeConflictField = StateField.define<MergeConflictState>({
+  create(state: EditorState) {
     return buildMergeConflictState(state);
   },
-  update(value, tr) {
+  update(value: MergeConflictState, tr: any): MergeConflictState {
     if (!tr.docChanged) {
       return value;
     }
     return buildMergeConflictState(tr.state);
   },
-  provide(field) {
-    return EditorView.decorations.from(field, (value) => value.decorations);
+  provide(field: any) {
+    return EditorView.decorations.from(field, (value: MergeConflictState) => value.decorations);
   }
 });
 
-function detectDocEol(state) {
+function detectDocEol(state: EditorState): string {
   const text = state.doc.toString();
   return text.includes('\r\n') ? '\r\n' : '\n';
 }
 
-function joinConflictBoth(state, currentText, incomingText) {
+function joinConflictBoth(state: EditorState, currentText: string, incomingText: string): string {
   if (!currentText || !incomingText) {
     return currentText + incomingText;
   }
@@ -254,7 +275,7 @@ function joinConflictBoth(state, currentText, incomingText) {
   return `${currentText}${detectDocEol(state)}${incomingText}`;
 }
 
-function applyConflictResolution(view, conflict, action) {
+function applyConflictResolution(view: EditorView, conflict: MergeConflict, action: string): boolean {
   let insert = '';
   if (action === 'current') {
     insert = conflict.currentText;
@@ -280,7 +301,7 @@ function applyConflictResolution(view, conflict, action) {
 }
 
 const mergeConflictDomHandlers = EditorView.domEventHandlers({
-  mousedown(event, view) {
+  mousedown(event: MouseEvent, view: EditorView) {
     const target = event.target instanceof Element ? event.target : null;
     const button = target?.closest('.meo-merge-action-btn');
     if (!(button instanceof HTMLButtonElement)) {
@@ -305,6 +326,6 @@ const mergeConflictDomHandlers = EditorView.domEventHandlers({
   }
 });
 
-export function mergeConflictSourceExtensions() {
+export function mergeConflictSourceExtensions(): any[] {
   return [mergeConflictField, mergeConflictDomHandlers];
 }

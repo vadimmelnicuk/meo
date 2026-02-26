@@ -1,11 +1,29 @@
 import { WidgetType } from '@codemirror/view';
 import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2, X } from 'lucide';
+import type { EditorState } from '@codemirror/state';
+
+declare global {
+  interface Window {
+    mermaid?: MermaidRuntime;
+  }
+  var mermaid: MermaidRuntime | undefined;
+}
+
+interface MermaidRuntime {
+  initialize(config: any): void;
+  render(id: string, text: string): Promise<{ svg: string }>;
+}
+
+interface MermaidResult {
+  svg?: string;
+  error?: string;
+}
 
 let mermaidInitialized = false;
-let mermaidRuntimePromise = null;
+let mermaidRuntimePromise: Promise<MermaidRuntime> | null = null;
 const MERMAID_CACHE_LIMIT = 100;
-const mermaidCache = new Map();
-const mermaidRenderInFlight = new Map();
+const mermaidCache = new Map<string, MermaidResult>();
+const mermaidRenderInFlight = new Map<string, Promise<MermaidResult>>();
 let mermaidIdCounter = 0;
 const MERMAID_MATH_CLASS = 'meoMath';
 const MERMAID_DIAGRAM_START_RE =
@@ -50,7 +68,7 @@ function loadMermaidRuntime() {
     return Promise.reject(new Error('Missing Mermaid runtime source'));
   }
 
-  mermaidRuntimePromise = new Promise((resolve, reject) => {
+  mermaidRuntimePromise = new Promise<MermaidRuntime>((resolve, reject) => {
     const script = document.createElement('script');
     script.src = source;
     script.async = true;
@@ -124,7 +142,7 @@ function cacheMermaidResult(diagramText, result) {
   }
 }
 
-async function renderMermaidDiagram(diagramText) {
+async function renderMermaidDiagram(diagramText: string): Promise<MermaidResult> {
   const normalizedDiagramText = normalizeMermaidDiagramText(diagramText);
   const cached = getCachedMermaidResult(diagramText);
   if (cached) {
@@ -137,15 +155,15 @@ async function renderMermaidDiagram(diagramText) {
   }
 
   const id = `mermaid-${++mermaidIdCounter}`;
-  const renderPromise = initMermaid()
+  const renderPromise: Promise<MermaidResult> = initMermaid()
     .then((runtime) => runtime.render(id, normalizedDiagramText))
     .then(({ svg }) => {
-      const result = { svg };
+      const result: MermaidResult = { svg };
       cacheMermaidResult(diagramText, result);
       return result;
     })
     .catch((err) => {
-      const result = { error: err.message || String(err) };
+      const result: MermaidResult = { error: err.message || String(err) };
       cacheMermaidResult(diagramText, result);
       return result;
     })
@@ -200,11 +218,11 @@ function normalizeMermaidDiagramText(diagramText) {
   ].join('\n');
 }
 
-export function getFencedCodeContent(state, node) {
+export function getFencedCodeContent(state: EditorState, node: any): string {
   const startLine = state.doc.lineAt(node.from);
   const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
 
-  const lines = [];
+  const lines: string[] = [];
   let inContent = false;
 
   for (let lineNum = startLine.number; lineNum <= endLine.number; lineNum += 1) {
@@ -229,7 +247,24 @@ export function getFencedCodeContent(state, node) {
 }
 
 export class MermaidDiagramWidget extends WidgetType {
-  constructor(diagramText) {
+  diagramText: string;
+  isDisplayMath: boolean;
+  zoom: number;
+  panX: number;
+  panY: number;
+  isDragging: boolean;
+  lastMouseX: number;
+  lastMouseY: number;
+  isFullscreen: boolean;
+  fullscreenOverlay: HTMLElement | null;
+  svgContent: string | null;
+  fullscreenBaseScale: number;
+  inlineCleanup: (() => void) | null;
+  fullscreenSvgWrapper: HTMLElement | null;
+  fullscreenCleanup: (() => void) | null;
+  exitFullscreenHandler: ((e: KeyboardEvent) => void) | null;
+
+  constructor(diagramText: string) {
     super();
     this.diagramText = diagramText;
     this.isDisplayMath = isDisplayMathDiagram(diagramText);
@@ -244,10 +279,13 @@ export class MermaidDiagramWidget extends WidgetType {
     this.svgContent = null;
     this.fullscreenBaseScale = 1;
     this.inlineCleanup = null;
+    this.fullscreenSvgWrapper = null;
+    this.fullscreenCleanup = null;
+    this.exitFullscreenHandler = null;
   }
 
-  eq(other) {
-    return other.diagramText === this.diagramText;
+  eq(other: WidgetType): boolean {
+    return other instanceof MermaidDiagramWidget && other.diagramText === this.diagramText;
   }
 
   toDOM() {

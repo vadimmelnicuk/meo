@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateField } from '@codemirror/state';
+import { RangeSetBuilder, StateField, EditorState } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
 import { Decoration, EditorView, GutterMarker, WidgetType, gutterLineClass } from '@codemirror/view';
@@ -21,7 +21,12 @@ import {
   getCollapsedHeadingSections,
   headingCollapseLiveExtensions
 } from './helpers/headingCollapse';
-import { addListMarkerDecoration, listMarkerData, detectListIndentStylesByLine } from './helpers/listMarkers';
+import {
+  addListMarkerDecoration,
+  listMarkerData,
+  detectListIndentStylesByLine,
+  nextOrderedSequenceNumber
+} from './helpers/listMarkers';
 import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
 import {
   forEachYamlFrontmatterField,
@@ -54,12 +59,10 @@ const collapsedHeadingBodyDeco = Decoration.replace({
   inclusiveEnd: false
 });
 const collapsedHeadingLineDeco = Decoration.line({ class: 'meo-md-heading-collapsed' });
-const tableDelimiterGutterLineClassMarker = new class extends GutterMarker {
-  get elementClass() {
-    return 'meo-md-hide-line-number';
-  }
-}();
-const isTableContentLine = (lineText) => lineText.includes('|');
+const tableDelimiterGutterLineClassMarker = new (class extends GutterMarker {
+  elementClass = 'meo-md-hide-line-number';
+})();
+const isTableContentLine = (lineText: string): boolean => lineText.includes('|');
 
 const lineStyleDecos = {
   h1: Decoration.line({ class: 'meo-md-h1' }),
@@ -91,16 +94,18 @@ function isMergeConflictMarkerLine(state, pos) {
 }
 
 class ListIndentWidget extends WidgetType {
-  constructor(indentColumns) {
+  indentColumns: number;
+
+  constructor(indentColumns: number) {
     super();
     this.indentColumns = indentColumns;
   }
 
-  eq(other) {
+  eq(other: WidgetType): boolean {
     return other instanceof ListIndentWidget && other.indentColumns === this.indentColumns;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const spacer = document.createElement('span');
     spacer.className = 'meo-md-list-indent-spacer';
     spacer.style.width = `${Math.max(0, this.indentColumns)}ch`;
@@ -270,17 +275,20 @@ function findChildNode(node, name) {
 }
 
 class ClearLinkUrlWidget extends WidgetType {
-  constructor(urlFrom, urlTo) {
+  urlFrom: number;
+  urlTo: number;
+
+  constructor(urlFrom: number, urlTo: number) {
     super();
     this.urlFrom = urlFrom;
     this.urlTo = urlTo;
   }
 
-  eq(other) {
-    return other.urlFrom === this.urlFrom && other.urlTo === this.urlTo;
+  eq(other: WidgetType): boolean {
+    return other instanceof ClearLinkUrlWidget && other.urlFrom === this.urlFrom && other.urlTo === this.urlTo;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'meo-md-link-clear-btn';
@@ -307,7 +315,7 @@ class ClearLinkUrlWidget extends WidgetType {
     return button;
   }
 
-  ignoreEvent() {
+  ignoreEvent(): boolean {
     return true;
   }
 }
@@ -317,7 +325,7 @@ class MissingWikiLinkWidget extends WidgetType {
     return other instanceof MissingWikiLinkWidget;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const badge = document.createElement('span');
     badge.className = 'meo-md-wiki-missing-icon';
     badge.title = 'Wiki link target not found locally';
@@ -326,23 +334,26 @@ class MissingWikiLinkWidget extends WidgetType {
     return badge;
   }
 
-  ignoreEvent() {
+  ignoreEvent(): boolean {
     return true;
   }
 }
 
 class FrontmatterArrayPillsWidget extends WidgetType {
-  constructor(itemLabels, cacheKey) {
+  itemLabels: string[];
+  cacheKey: string;
+
+  constructor(itemLabels: string[], cacheKey: string) {
     super();
     this.itemLabels = itemLabels;
     this.cacheKey = cacheKey;
   }
 
-  eq(other) {
+  eq(other: WidgetType): boolean {
     return other instanceof FrontmatterArrayPillsWidget && other.cacheKey === this.cacheKey;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const container = document.createElement('span');
     container.className = 'meo-md-frontmatter-array-pills';
     container.setAttribute('aria-hidden', 'true');
@@ -355,7 +366,7 @@ class FrontmatterArrayPillsWidget extends WidgetType {
     return container;
   }
 
-  ignoreEvent() {
+  ignoreEvent(): boolean {
     return true;
   }
 }
@@ -515,8 +526,8 @@ function addSingleTildeStrikeDecorations(builder, state, activeLines, existingSt
   }
 }
 
-function collectActiveLines(state) {
-  const lines = new Set();
+function collectActiveLines(state: EditorState): Set<number> {
+  const lines = new Set<number>();
   for (const range of state.selection.ranges) {
     // In live mode, only reveal markdown markers on the focused line.
     const focusLine = state.doc.lineAt(range.head).number;
@@ -525,8 +536,8 @@ function collectActiveLines(state) {
   return lines;
 }
 
-function collectIndentSelectedLines(state) {
-  const lines = new Set();
+function collectIndentSelectedLines(state: EditorState): Set<number> {
+  const lines = new Set<number>();
   for (const range of state.selection.ranges) {
     if (range.empty) {
       continue;
@@ -572,7 +583,7 @@ function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
 
 function addListLineDecorations(builder, state, indentSelectedLines, frontmatter = null, codeBlockLines = null) {
   const stylesByLine = detectListIndentStylesByLine(state);
-  const orderedCountsByLevel = [];
+  const orderedCountsByLevel: Array<number | null> = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (codeBlockLines?.has(lineNo)) {
@@ -589,15 +600,11 @@ function addListLineDecorations(builder, state, indentSelectedLines, frontmatter
     }
 
     const level = marker.indentLevel;
-    orderedCountsByLevel.length = level + 1;
-
-    let orderedDisplayIndex = null;
-    if (marker.orderedNumber) {
-      orderedDisplayIndex = (orderedCountsByLevel[level] ?? 0) + 1;
-      orderedCountsByLevel[level] = orderedDisplayIndex;
-    } else {
-      orderedCountsByLevel[level] = 0;
-    }
+    const { expected: orderedDisplayIndex } = nextOrderedSequenceNumber(
+      orderedCountsByLevel,
+      level,
+      marker.orderedNumber
+    );
 
     const inFrontmatterContent = isInsideFrontmatterContent(frontmatter, line.from);
     if (inFrontmatterContent) {
@@ -748,13 +755,23 @@ function buildDecorations(state) {
         }
       } else if (node.name === 'Image') {
         const line = state.doc.lineAt(node.from);
-        if (activeLines.has(line.number)) {
-          return;
-        }
+        const isActiveLine = activeLines.has(line.number);
         const imageSelection = overlapsSelection(state, node.from, node.to);
-        if (imageSelection) {
+
+        if (isActiveLine || imageSelection) {
+          const { url, altText, linkUrl } = getImageData(state, node);
+          if (url) {
+            ranges.push(
+              Decoration.widget({
+                widget: new ImageWidget(url, altText, linkUrl),
+                side: 1,
+                block: true
+              }).range(line.to)
+            );
+          }
           return;
         }
+
         const { url, altText, linkUrl } = getImageData(state, node);
         if (url) {
           ranges.push(

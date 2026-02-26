@@ -1,13 +1,50 @@
+interface GitBlameResult {
+  kind: 'available' | 'unavailable';
+  reason?: string;
+  hash?: string;
+  author?: string;
+  date?: string;
+  message?: string;
+  lineNumber?: number;
+}
+
+interface PendingBlameRequest {
+  cacheKey: string;
+  timer: number;
+  resolve: (result: GitBlameResult) => void;
+  reject: (error: Error) => void;
+}
+
+interface GitClientOptions {
+  vscode: any;
+  getCurrentEditorText?: () => string | undefined;
+  getSyncedText?: () => string | undefined;
+  clearTransientUi?: () => void;
+  maxBlameSnapshotChars?: number;
+  blameTimeoutMs?: number;
+}
+
+interface GitClient {
+  clearBlameCache: (options?: { hideTooltip?: boolean }) => void;
+  bumpLocalEditGeneration: () => void;
+  resetForInit: (options?: { hideTooltip?: boolean }) => void;
+  requestBlameForLine: (options: { lineNumber: number }) => Promise<GitBlameResult>;
+  openRevisionForLine: (options: { lineNumber: number }) => void;
+  openWorktreeForLine: (options: { lineNumber: number }) => void;
+  applyBaselineToEditor: (editor: any) => void;
+  handleMessage: (message: any, options?: { editor?: any }) => boolean;
+}
+
 const defaultMaxBlameSnapshotChars = 500 * 1024;
 const defaultBlameTimeoutMs = 8000;
 
-const normalizeEol = (text) => `${text ?? ''}`.replace(/\r\n?/g, '\n');
+const normalizeEol = (text: string | null | undefined): string => `${text ?? ''}`.replace(/\r\n?/g, '\n');
 
-const normalizeLineNumber = (lineNumber) => (
+const normalizeLineNumber = (lineNumber: number): number => (
   Number.isFinite(lineNumber) ? Math.max(1, Math.floor(lineNumber)) : 1
 );
 
-function shouldIncludeBlameSnapshotText(currentText, syncedText, maxChars) {
+function shouldIncludeBlameSnapshotText(currentText: string | undefined, syncedText: string | undefined, maxChars: number): boolean {
   if (typeof currentText !== 'string') {
     return false;
   }
@@ -24,16 +61,16 @@ export function createGitClient({
   clearTransientUi,
   maxBlameSnapshotChars = defaultMaxBlameSnapshotChars,
   blameTimeoutMs = defaultBlameTimeoutMs
-}) {
-  let gitBaselineSnapshot = null;
-  let pendingGitBaselineBeforeEditorMount = null;
+}: GitClientOptions): GitClient {
+  let gitBaselineSnapshot: any = null;
+  let pendingGitBaselineBeforeEditorMount: any = null;
   let gitBlameRequestCounter = 0;
   let localEditGeneration = 0;
-  const pendingGitBlameRequests = new Map();
-  const gitBlameCache = new Map();
-  const inFlightGitBlameRequests = new Map();
+  const pendingGitBlameRequests = new Map<string, PendingBlameRequest>();
+  const gitBlameCache = new Map<string, GitBlameResult>();
+  const inFlightGitBlameRequests = new Map<string, Promise<GitBlameResult>>();
 
-  const clearBlameCache = ({ hideTooltip = true } = {}) => {
+  const clearBlameCache = ({ hideTooltip = true }: { hideTooltip?: boolean } = {}) => {
     gitBlameCache.clear();
     inFlightGitBlameRequests.clear();
     for (const [requestId, pending] of pendingGitBlameRequests) {
@@ -51,12 +88,12 @@ export function createGitClient({
     clearBlameCache();
   };
 
-  const resetForInit = ({ hideTooltip = false } = {}) => {
+  const resetForInit = ({ hideTooltip = false }: { hideTooltip?: boolean } = {}) => {
     localEditGeneration = 0;
     clearBlameCache({ hideTooltip });
   };
 
-  const requestBlameForLine = ({ lineNumber }) => {
+  const requestBlameForLine = ({ lineNumber }: { lineNumber: number }): Promise<GitBlameResult> => {
     const normalizedLine = normalizeLineNumber(lineNumber);
     const cacheKey = `${localEditGeneration}:${normalizedLine}`;
     const cached = gitBlameCache.get(cacheKey);
@@ -70,7 +107,7 @@ export function createGitClient({
 
     const requestId = `blame-${gitBlameRequestCounter++}`;
     const currentText = getCurrentEditorText?.();
-    const message = {
+    const message: any = {
       type: 'requestGitBlame',
       requestId,
       lineNumber: normalizedLine,
@@ -81,7 +118,7 @@ export function createGitClient({
       message.text = currentText;
     }
 
-    const requestPromise = new Promise((resolve, reject) => {
+    const requestPromise = new Promise<GitBlameResult>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         inFlightGitBlameRequests.delete(cacheKey);
         pendingGitBlameRequests.delete(requestId);
@@ -111,10 +148,10 @@ export function createGitClient({
     return requestPromise;
   };
 
-  const openRevisionForLine = ({ lineNumber }) => {
+  const openRevisionForLine = ({ lineNumber }: { lineNumber: number }) => {
     const normalizedLine = normalizeLineNumber(lineNumber);
     const currentText = getCurrentEditorText?.();
-    const message = {
+    const message: any = {
       type: 'openGitRevisionForLine',
       lineNumber: normalizedLine
     };
@@ -124,7 +161,7 @@ export function createGitClient({
     vscode.postMessage(message);
   };
 
-  const openWorktreeForLine = ({ lineNumber }) => {
+  const openWorktreeForLine = ({ lineNumber }: { lineNumber: number }) => {
     const normalizedLine = normalizeLineNumber(lineNumber);
     vscode.postMessage({
       type: 'openGitWorktreeForLine',
@@ -132,7 +169,7 @@ export function createGitClient({
     });
   };
 
-  const applyBaselineToEditor = (editor) => {
+  const applyBaselineToEditor = (editor: any) => {
     if (!editor) {
       return;
     }
@@ -146,7 +183,7 @@ export function createGitClient({
     }
   };
 
-  const handleMessage = (message, { editor } = {}) => {
+  const handleMessage = (message: any, { editor }: { editor?: any } = {}): boolean => {
     if (message.type === 'gitBaselineChanged') {
       gitBaselineSnapshot = message.payload ?? null;
       if (editor) {

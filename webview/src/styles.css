@@ -1,9 +1,11 @@
 :root {
   color-scheme: light dark;
-  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 25%, transparent 75%);
+  --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 20%, transparent 80%);
+  --meo-selection-bg: var(--vscode-editor-selectionBackground);
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent 50%);
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
+  --meo-font-size: var(--vscode-editor-font-size, 13px);
   --meo-active-editor-font: var(--vscode-editor-font-family);
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
@@ -99,7 +101,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 14px 8px 72px;
+  padding: 8px 14px 8px 82px;
   background-color: var(--vscode-sideBar-background);
 }
 
@@ -487,7 +489,7 @@ body {
 
 .cm-editor {
   font-family: var(--meo-active-editor-font);
-  font-size: var(--vscode-editor-font-size);
+  font-size: var(--meo-font-size);
   min-width: 0;
   position: relative;
 }
@@ -723,7 +725,7 @@ body {
 
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content *::selection {
-  background-color: var(--vscode-editor-selectionBackground);
+  background-color: var(--meo-selection-bg);
 }
 
 .cm-editor .meo-search-match {
@@ -898,7 +900,7 @@ body {
 }
 
 .cm-editor .meo-md-quote {
-  border-left: 3px solid var(--meo-color-base09);
+  border-left: 3px solid var(--meo-color-base07);
   padding-left: 3ch;
   text-indent: -1ch;
 }
@@ -1214,7 +1216,7 @@ body {
 
 .cm-editor .meo-mermaid-fallback code {
   font-family: var(--meo-active-editor-font);
-  font-size: var(--vscode-editor-font-size);
+  font-size: var(--meo-font-size);
 }
 
 .cm-editor .meo-mermaid-error-badge {
@@ -1265,7 +1267,7 @@ body {
 
 .cm-editor .meo-md-image-fallback-text {
   font-family: var(--meo-active-editor-font);
-  font-size: var(--vscode-editor-font-size);
+  font-size: var(--meo-font-size);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -1457,6 +1459,22 @@ body {
 .cm-editor .meo-git-gutter-marker.is-hit-hover .meo-git-gutter-stripe {
   left: -2px;
   width: 5px;
+}
+
+.cm-editor .meo-diff-added-line {
+  background-color: color-mix(in srgb, var(--meo-color-base09) 15%, transparent 85%) !important;
+}
+
+.cm-editor .meo-diff-changed-line {
+  background-color: color-mix(in srgb, var(--meo-color-base05) 15%, transparent 85%) !important;
+}
+Í
+.cm-editor .cm-activeLine.meo-diff-added-line {
+  background-color: color-mix(in srgb, var(--meo-color-base09) 50%, transparent 50%) !important;
+}
+
+.cm-editor .cm-activeLine.meo-diff-changed-line {
+  background-color: color-mix(in srgb, var(--meo-color-base05) 25%, transparent 75%) !important;
 }
 
 .cm-editor.meo-git-hover-band .cm-gutters {

@@ -1,5 +1,5 @@
-import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
-import { GutterMarker, gutter } from '@codemirror/view';
+import { RangeSetBuilder, StateEffect, StateField, EditorState, Transaction } from '@codemirror/state';
+import { GutterMarker, gutter, EditorView } from '@codemirror/view';
 import {
   buildCurrentToBaselineLineMapFromLines,
   lcsDiffRuns,
@@ -11,20 +11,37 @@ const MAX_DIFF_TEXT_CHARS = 1024 * 1024;
 const MAX_DIFF_LINES = 1200;
 const MAX_DIFF_CELLS = 1_500_000;
 
-const setGitBaselineEffect = StateEffect.define();
+export const setGitBaselineEffect = StateEffect.define<any>();
 
-const emptyBaseline = Object.freeze({
+interface BaselineSnapshot {
+  available: boolean;
+  tracked: boolean;
+  baseText: string | null;
+  baseLines: string[] | null;
+  headOid?: string | null;
+  reason?: string;
+}
+
+export interface MarkerFlags {
+  added: boolean;
+  modified: boolean;
+  eofProxy?: boolean;
+  trailingEofProxyOnly?: boolean;
+  trailingEofProxySource?: boolean;
+}
+
+const emptyBaseline: BaselineSnapshot = Object.freeze({
   available: false,
   tracked: false,
   baseText: null,
   baseLines: null
 });
 
-function normalizeBaselineSnapshot(snapshot) {
+function normalizeBaselineSnapshot(snapshot: any): BaselineSnapshot {
   if (!snapshot || typeof snapshot !== 'object') {
     return emptyBaseline;
   }
-  const baseText = typeof snapshot.baseText === 'string' ? snapshot.baseText : snapshot.baseText === null ? null : null;
+  const baseText = typeof snapshot.baseText === 'string' ? snapshot.baseText : null;
   return {
     available: snapshot.available === true,
     tracked: snapshot.tracked === true,
@@ -35,11 +52,11 @@ function normalizeBaselineSnapshot(snapshot) {
   };
 }
 
-const gitBaselineField = StateField.define({
-  create() {
+const gitBaselineField = StateField.define<BaselineSnapshot>({
+  create(): BaselineSnapshot {
     return emptyBaseline;
   },
-  update(value, tr) {
+  update(value: BaselineSnapshot, tr: Transaction): BaselineSnapshot {
     for (const effect of tr.effects) {
       if (effect.is(setGitBaselineEffect)) {
         return normalizeBaselineSnapshot(effect.value);
@@ -50,17 +67,20 @@ const gitBaselineField = StateField.define({
 });
 
 class GitGutterMarker extends GutterMarker {
-  constructor(flags) {
+  flags: MarkerFlags;
+  key: string;
+
+  constructor(flags: MarkerFlags) {
     super();
     this.flags = flags;
     this.key = JSON.stringify(flags);
   }
 
-  eq(other) {
+  eq(other: GitGutterMarker): boolean {
     return other instanceof GitGutterMarker && other.key === this.key;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const el = document.createElement('span');
     el.className = 'meo-git-gutter-marker';
     if (this.flags.eofProxy) {
@@ -87,17 +107,17 @@ class GitGutterMarker extends GutterMarker {
 }
 
 class GitGutterSpacerMarker extends GutterMarker {
-  toDOM() {
+  toDOM(): HTMLElement {
     const el = document.createElement('span');
     el.className = 'meo-git-gutter-marker meo-git-gutter-spacer';
     return el;
   }
 }
 
-const markerCache = new Map();
+const markerCache = new Map<string, GitGutterMarker>();
 const spacerMarker = new GitGutterSpacerMarker();
 
-function gitMarker(flags) {
+function gitMarker(flags: MarkerFlags): GitGutterMarker {
   const key = JSON.stringify(flags);
   let marker = markerCache.get(key);
   if (!marker) {
@@ -107,7 +127,7 @@ function gitMarker(flags) {
   return marker;
 }
 
-function getDocLines(doc) {
+function getDocLines(doc: any): string[] {
   const lines = new Array(doc.lines);
   for (let i = 1; i <= doc.lines; i += 1) {
     const line = doc.line(i);
@@ -116,7 +136,7 @@ function getDocLines(doc) {
   return lines;
 }
 
-function isTrailingEofVisualLine(doc, lineNo) {
+function isTrailingEofVisualLine(doc: any, lineNo: number): boolean {
   if (!doc || doc.length <= 0 || doc.lines <= 1 || lineNo !== doc.lines) {
     return false;
   }
@@ -124,7 +144,14 @@ function isTrailingEofVisualLine(doc, lineNo) {
   return lastLine.from === lastLine.to;
 }
 
-function coalesceTrailingEofVisualLineFlag(doc, lineFlags) {
+function emptyMarkerFlags(): MarkerFlags {
+  return {
+    added: false,
+    modified: false
+  };
+}
+
+function coalesceTrailingEofVisualLineFlag(doc: any, lineFlags: (MarkerFlags | undefined)[] | null): (MarkerFlags | undefined)[] | null {
   if (!Array.isArray(lineFlags) || !isTrailingEofVisualLine(doc, doc.lines) || doc.lines < 2) {
     return lineFlags;
   }
@@ -145,12 +172,8 @@ function coalesceTrailingEofVisualLineFlag(doc, lineFlags) {
     if (previousFlags.added) {
       previousFlags.added = true;
     } else if (!previousHadChange && !trailingFlags.modified) {
-      // Pure newline-at-EOF insertion: keep the previous committed line visually
-      // clean and render the change on the explicit EOF proxy row instead.
       previousFlags.trailingEofProxyOnly = true;
     } else {
-      // A newline-at-EOF change is represented by CodeMirror as a synthetic empty
-      // line insertion, but visually it belongs to the previous real line.
       previousFlags.modified = true;
     }
   }
@@ -160,15 +183,8 @@ function coalesceTrailingEofVisualLineFlag(doc, lineFlags) {
   return lineFlags;
 }
 
-function emptyMarkerFlags() {
-  return {
-    added: false,
-    modified: false
-  };
-}
-
-function buildLineFlagsFromRuns(runs, currentLineCount) {
-  const lineFlags = new Array(currentLineCount);
+function buildLineFlagsFromRuns(runs: any[] | null, currentLineCount: number): (MarkerFlags | undefined)[] {
+  const lineFlags: (MarkerFlags | undefined)[] = new Array(currentLineCount);
   if (!runs) {
     return lineFlags;
   }
@@ -243,16 +259,14 @@ function buildLineFlagsFromRuns(runs, currentLineCount) {
         i += 1;
         continue;
       }
-
-      // Pure deletions have no current line to annotate in the gutter.
     }
   }
 
   return lineFlags;
 }
 
-function buildLineFlagsFromMapping(baseLines, currentLines, mapping) {
-  const lineFlags = new Array(currentLines.length);
+function buildLineFlagsFromMapping(baseLines: string[], currentLines: string[], mapping: Record<number, number> | null): (MarkerFlags | undefined)[] {
+  const lineFlags: (MarkerFlags | undefined)[] = new Array(currentLines.length);
   if (!mapping) {
     return lineFlags;
   }
@@ -275,14 +289,14 @@ function buildLineFlagsFromMapping(baseLines, currentLines, mapping) {
   return lineFlags;
 }
 
-function buildDiffLineFlags(state, baseline) {
+function buildDiffLineFlags(state: EditorState, baseline: BaselineSnapshot | null): (MarkerFlags | undefined)[] | null {
   if (!baseline?.available) {
     return null;
   }
 
   if (typeof baseline.baseText !== 'string') {
     if (!baseline.tracked || baseline.headOid === null) {
-      const lineFlags = new Array(state.doc.lines);
+      const lineFlags: (MarkerFlags | undefined)[] = new Array(state.doc.lines);
       const textLength = state.doc.length;
       if (!textLength && state.doc.lines === 1 && state.doc.sliceString(0, state.doc.length) === '') {
         return lineFlags;
@@ -319,12 +333,12 @@ function buildDiffLineFlags(state, baseline) {
   return buildLineFlagsFromRuns(runs, currentLines.length);
 }
 
-function buildCoalescedDiffLineFlags(state, baseline) {
+function buildCoalescedDiffLineFlags(state: EditorState, baseline: BaselineSnapshot | null): (MarkerFlags | undefined)[] | null {
   return coalesceTrailingEofVisualLineFlag(state.doc, buildDiffLineFlags(state, baseline));
 }
 
-function buildGitGutterMarkersFromLineFlags(state, lineFlags) {
-  const builder = new RangeSetBuilder();
+function buildGitGutterMarkersFromLineFlags(state: EditorState, lineFlags: (MarkerFlags | undefined)[] | null): any {
+  const builder = new RangeSetBuilder<any>();
   if (!lineFlags) {
     return builder.finish();
   }
@@ -337,9 +351,6 @@ function buildGitGutterMarkersFromLineFlags(state, lineFlags) {
               return null;
             }
           }
-          // Preferred path: explicitly tagged by EOF-row coalescing. Fallback path:
-          // if the last real line is changed and the document has a synthetic EOF row,
-          // mirror a proxy marker there so hover/click has a concrete DOM target.
           if (!prevFlags.trailingEofProxySource && lineFlags[state.doc.lines - 1]) {
             return null;
           }
@@ -374,11 +385,11 @@ function buildGitGutterMarkersFromLineFlags(state, lineFlags) {
   return builder.finish();
 }
 
-const gitDiffLineFlagsField = StateField.define({
-  create(state) {
+export const gitDiffLineFlagsField = StateField.define<(MarkerFlags | undefined)[] | null>({
+  create(state: EditorState): (MarkerFlags | undefined)[] | null {
     return buildCoalescedDiffLineFlags(state, state.field(gitBaselineField));
   },
-  update(value, tr) {
+  update(value: (MarkerFlags | undefined)[] | null, tr: Transaction): (MarkerFlags | undefined)[] | null {
     let baselineChanged = false;
     for (const effect of tr.effects) {
       if (effect.is(setGitBaselineEffect)) {
@@ -394,11 +405,11 @@ const gitDiffLineFlagsField = StateField.define({
   }
 });
 
-const gitDiffGutterField = StateField.define({
-  create(state) {
+const gitDiffGutterField = StateField.define<any>({
+  create(state: EditorState): any {
     return buildGitGutterMarkersFromLineFlags(state, state.field(gitDiffLineFlagsField));
   },
-  update(value, tr) {
+  update(value: any, tr: Transaction): any {
     let baselineChanged = false;
     for (const effect of tr.effects) {
       if (effect.is(setGitBaselineEffect)) {
@@ -419,7 +430,7 @@ const gitDiffGutterExtension = gutter({
   initialSpacer() {
     return spacerMarker;
   },
-  markers(view) {
+  markers(view: EditorView) {
     return view.state.field(gitDiffGutterField);
   }
 });
@@ -431,30 +442,37 @@ const gitGutterPlaceholderExtension = gutter({
   }
 });
 
-export function gitDiffGutterBaselineExtensions() {
+export function gitDiffGutterBaselineExtensions(): any[] {
   return [gitBaselineField, gitDiffLineFlagsField];
 }
 
-export function gitDiffGutterRenderExtensions() {
+export function gitDiffGutterRenderExtensions(): any[] {
   return [gitDiffGutterField, gitDiffGutterExtension];
 }
 
-export function gitDiffGutterPlaceholderExtensions() {
+export function gitDiffGutterPlaceholderExtensions(): any[] {
   return [gitGutterPlaceholderExtension];
 }
 
-export function gitDiffGutterExtensions() {
+export function gitDiffGutterExtensions(): any[] {
   return [...gitDiffGutterBaselineExtensions(), ...gitDiffGutterRenderExtensions()];
 }
 
-export function getGitDiffOverviewSegments(state) {
+interface DiffSegment {
+  fromLine: number;
+  toLine: number;
+  added: boolean;
+  modified: boolean;
+}
+
+export function getGitDiffOverviewSegments(state: EditorState): DiffSegment[] {
   const lineFlags = state.field(gitDiffLineFlagsField, false);
   if (!Array.isArray(lineFlags) || !lineFlags.length) {
     return [];
   }
 
-  const segments = [];
-  let active = null;
+  const segments: DiffSegment[] = [];
+  let active: DiffSegment | null = null;
 
   const flush = () => {
     if (!active) {
@@ -491,7 +509,7 @@ export function getGitDiffOverviewSegments(state) {
   return segments;
 }
 
-export function setGitBaseline(view, snapshot) {
+export function setGitBaseline(view: EditorView, snapshot: any): void {
   view.dispatch({
     effects: setGitBaselineEffect.of(snapshot)
   });

@@ -44,7 +44,7 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-accent-2: ${colors.base06};
   --meo-strong: ${colors.base07};
   --meo-number: ${colors.base08};
-  --meo-quote: ${colors.base09};
+  --meo-quote: ${colors.base07};
   --meo-font-body: ${liveFont};
   --meo-font-code: ${sourceFont};
   --meo-font-size: ${fontSizePx}px;

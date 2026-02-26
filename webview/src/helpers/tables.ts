@@ -1,9 +1,68 @@
-import { StateField } from '@codemirror/state';
+import { StateField, EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
 import { ImageWidget } from './images';
 import { wikiLinkScheme } from './wikiLinks';
+
+declare global {
+  interface HTMLDivElement {
+    _meoTableResizeObserver?: ResizeObserver;
+  }
+}
+
+interface TableData {
+  rows: string[][];
+  alignments: string[];
+  colCount: number;
+  startLine?: number;
+  endLine?: number;
+  indent?: string;
+  signature?: string;
+  from?: number;
+  to?: number;
+  headerCells?: string[];
+}
+
+interface RowEntry {
+  row: number;
+  inputs: HTMLInputElement[];
+}
+
+interface DomRefs {
+  headerInputs: HTMLInputElement[];
+  rowInputs: HTMLInputElement[][];
+  allRowInputs: HTMLInputElement[][];
+  table: HTMLTableElement;
+  container: HTMLElement;
+  wrap: HTMLElement;
+  cellGrid: HTMLTableCellElement[][];
+  rowEntries: RowEntry[];
+  colEls: HTMLElement[];
+}
+
+interface CellCoords {
+  row: number;
+  col: number;
+}
+
+interface SelectionRange {
+  fromRow: number;
+  toRow: number;
+  fromCol: number;
+  toCol: number;
+}
+
+interface CellMatrix {
+  headerCells: string[];
+  rows: string[][];
+  alignments?: string[];
+}
+
+interface TableRange {
+  from: number;
+  to: number;
+}
 
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
@@ -376,7 +435,7 @@ function appendTableInlinePreviewImage(parent, altText, url) {
   parent.appendChild(dom);
 }
 
-function appendTableInlinePreviewNodes(parent, text, options = {}) {
+function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, options: { disableLinkParsers?: boolean } = {}) {
   const { disableLinkParsers = false } = options;
   let buffer = '';
   const flushBuffer = () => {
@@ -700,7 +759,20 @@ function buildTableDataForLineRange(state, startLineNo, endLineNo) {
 }
 
 class HtmlTableWidget extends WidgetType {
-  constructor(tableData) {
+  tableData: TableData;
+  layoutFrame: number;
+  pendingResizeRows: boolean;
+  lastAppliedWidths: number[];
+  domRefs: DomRefs | null;
+  chPx: number;
+  cleanupFns: (() => void)[];
+  selectionAnchor: CellCoords | null;
+  selectionRange: SelectionRange | null;
+  selectionPointerId: number | null;
+  isDraggingSelection: boolean;
+  hasPendingCellEdits: boolean;
+
+  constructor(tableData: TableData) {
     super();
     this.tableData = tableData;
     this.layoutFrame = 0;
@@ -716,7 +788,7 @@ class HtmlTableWidget extends WidgetType {
     this.hasPendingCellEdits = false;
   }
 
-  eq(other) {
+  eq(other: WidgetType): boolean {
     return (
       other instanceof HtmlTableWidget &&
       other.tableData.signature === this.tableData.signature &&
@@ -724,7 +796,7 @@ class HtmlTableWidget extends WidgetType {
     );
   }
 
-  resolveCurrentTableRange(view, dom) {
+  resolveCurrentTableRange(view: EditorView, dom: HTMLElement): TableRange | null {
     let pos = 0;
     try {
       pos = view.posAtDOM(dom, 0);
@@ -755,14 +827,14 @@ class HtmlTableWidget extends WidgetType {
     return null;
   }
 
-  readCellMatrix() {
-    if (!this.domRefs) return { headerCells: [], rows: [] };
+  readCellMatrix(): CellMatrix {
+    if (!this.domRefs) return { headerCells: [], rows: [], alignments: [] };
     const { headerInputs, rowInputs } = this.domRefs;
     const headerCells = normalizeRow(headerInputs.map((input) => input.value.trim()), this.tableData.colCount);
 
     const rows = rowInputs.map((inputs) => normalizeRow(inputs.map((input) => input.value.trim()), this.tableData.colCount));
 
-    return { headerCells, rows };
+    return { headerCells, rows, alignments: this.tableData.alignments };
   }
 
   parseCellCoords(rowText, colText) {
@@ -1563,7 +1635,7 @@ class HtmlTableWidget extends WidgetType {
     table.appendChild(tbody);
 
     wrap.appendChild(table);
-    this.domRefs = { wrap, table, colEls, rowEntries, headerInputs, rowInputs: bodyRowInputs, allRowInputs, cellGrid };
+    this.domRefs = { wrap, table, container: wrap, colEls, rowEntries, headerInputs, rowInputs: bodyRowInputs, allRowInputs, cellGrid };
     this.wireTableSelection(table);
     this.pendingResizeRows = true;
     this.scheduleLayout({ resizeRows: true });

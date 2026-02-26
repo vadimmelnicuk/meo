@@ -84,6 +84,18 @@ type AppliedMessage = {
   version: number;
 };
 
+type RevealSelectionMessage = {
+  type: 'revealSelection';
+  anchor: number;
+  head: number;
+  focus?: boolean;
+};
+
+type RevealSelectionPayload = {
+  anchor: number;
+  head: number;
+};
+
 type ApplyChangesMessage = {
   type: 'applyChanges';
   baseVersion: number;
@@ -141,12 +153,14 @@ type SetAutoSaveMessage = {
 
 type SetLineNumbersMessage = {
   type: 'setLineNumbers';
-  enabled: boolean;
+  visible?: boolean;
+  enabled?: boolean;
 };
 
 type SetGitChangesGutterMessage = {
   type: 'setGitChangesGutter';
-  enabled: boolean;
+  visible?: boolean;
+  enabled?: boolean;
 };
 
 type ResolvedImageSrcMessage = {
@@ -195,6 +209,21 @@ type OpenGitWorktreeForLineMessage = {
   lineNumber: number;
 };
 
+type SaveImageFromClipboardMessage = {
+  type: 'saveImageFromClipboard';
+  requestId: string;
+  imageData: string;
+  fileName: string;
+};
+
+type SavedImagePathMessage = {
+  type: 'savedImagePath';
+  requestId: string;
+  success: boolean;
+  path?: string;
+  error?: string;
+};
+
 type GitBaselineChangedMessage = {
   type: 'gitBaselineChanged';
   version: number;
@@ -229,6 +258,7 @@ type WebviewMessage =
   | RequestGitBlameMessage
   | OpenGitRevisionForLineMessage
   | OpenGitWorktreeForLineMessage
+  | SaveImageFromClipboardMessage
   | { type: 'ready' };
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i;
@@ -313,8 +343,8 @@ export function activate(context: vscode.ExtensionContext): void {
   void migrateLegacyToggleSettings(context);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('markdownEditorOptimized.open', async (uri?: vscode.Uri) => {
-      let targetUri = uri;
+    vscode.commands.registerCommand('markdownEditorOptimized.open', async (uriLike?: unknown) => {
+      let targetUri = coerceCommandUri(uriLike);
       if (!targetUri) {
         const active = vscode.window.activeTextEditor;
         if (!active) {
@@ -322,7 +352,8 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         targetUri = active.document.uri;
       }
-      if (!targetUri.fsPath.endsWith('.md') && !targetUri.fsPath.endsWith('.markdown')) {
+      const targetPath = (targetUri.path || targetUri.fsPath || '').toLowerCase();
+      if (!targetPath.endsWith('.md') && !targetPath.endsWith('.markdown')) {
         return;
       }
       await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
@@ -368,7 +399,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
   private lastActivePanel: vscode.WebviewPanel | null = null;
   private exportSnapshotRequestCounter = 0;
-
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async initializeGitWatcher(): Promise<void> {
@@ -664,6 +694,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     let gitRefreshRunning = false;
     let gitRefreshPending = false;
     let gitRefreshPendingForcePost = false;
+    let lastSentRevealSelectionKey: string | null = null;
+    let pendingRevealSelection: RevealSelectionPayload | null = null;
     const gitDocumentState = new GitDocumentState(documentUri.fsPath);
     const pendingExportSnapshots = new Map<string, {
       resolve: (value: { text: string; environment?: ExportStyleEnvironment }) => void;
@@ -735,6 +767,30 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         gitDocumentState.setLastSentBaselineHash(payloadHash);
       }
       return posted;
+    };
+
+    const parseRevealOffsetFromUriFragment = (uri: vscode.Uri): number | null => {
+      const fragment = uri.fragment?.trim() ?? '';
+      if (!fragment) {
+        return null;
+      }
+
+      const match = /^(?:L)?(\d+)(?:(?:,|:|C)(\d+))?$/i.exec(fragment);
+      if (!match) {
+        return null;
+      }
+
+      const lineNumber = Number.parseInt(match[1], 10);
+      if (!Number.isFinite(lineNumber) || lineNumber < 1) {
+        return null;
+      }
+      const clampedLine = Math.min(lineNumber, document.lineCount);
+      const line = document.lineAt(clampedLine - 1);
+
+      const oneBasedColumn = match[2] ? Number.parseInt(match[2], 10) : 1;
+      const zeroBasedColumn = Number.isFinite(oneBasedColumn) && oneBasedColumn > 0 ? oneBasedColumn - 1 : 0;
+      const targetCharacter = Math.min(line.range.end.character, Math.max(0, zeroBasedColumn));
+      return document.offsetAt(new vscode.Position(clampedLine - 1, targetCharacter));
     };
 
     const ensureInitDelivered = async (): Promise<void> => {
@@ -816,6 +872,75 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       void runPendingGitRefreshes();
     };
 
+    const isTextEditorForDocument = (textEditor: vscode.TextEditor | undefined): textEditor is vscode.TextEditor => {
+      if (!textEditor) {
+        return false;
+      }
+      return resolveWorktreeUri(textEditor.document).toString() === documentUri.toString();
+    };
+
+    const revealSelectionForTextEditor = (textEditor: vscode.TextEditor): RevealSelectionPayload => {
+      const anchor = textEditor.document.offsetAt(textEditor.selection.start);
+      const head = textEditor.document.offsetAt(textEditor.selection.end);
+      return { anchor, head };
+    };
+
+    const getRevealSelectionKey = (selection: RevealSelectionPayload): string => {
+      return `${selection.anchor}:${selection.head}`;
+    };
+
+    const postRevealSelection = async (selection: RevealSelectionPayload): Promise<void> => {
+      await ensureInitDelivered();
+      const message: RevealSelectionMessage = {
+        type: 'revealSelection',
+        anchor: selection.anchor,
+        head: selection.head
+      };
+      const posted = await panel.webview.postMessage(message);
+      if (posted) {
+        lastSentRevealSelectionKey = getRevealSelectionKey(selection);
+        pendingRevealSelection = null;
+      } else {
+        pendingRevealSelection = selection;
+      }
+    };
+
+    const flushPendingRevealSelection = async (): Promise<void> => {
+      if (pendingRevealSelection === null) {
+        return;
+      }
+      const selection = pendingRevealSelection;
+      await postRevealSelection(selection);
+    };
+
+    const sendRevealSelectionForEditor = async (textEditor: vscode.TextEditor | undefined): Promise<void> => {
+      if (!isTextEditorForDocument(textEditor)) {
+        return;
+      }
+
+      const selection = revealSelectionForTextEditor(textEditor);
+      if (lastSentRevealSelectionKey === getRevealSelectionKey(selection)) {
+        return;
+      }
+      await postRevealSelection(selection);
+    };
+
+    const findEditorForDocumentReveal = (): vscode.TextEditor | undefined => {
+      const active = vscode.window.activeTextEditor;
+      if (isTextEditorForDocument(active)) {
+        return active;
+      }
+      return vscode.window.visibleTextEditors.find((editor) => isTextEditorForDocument(editor));
+    };
+
+    const initialRevealEditor = findEditorForDocumentReveal();
+    if (initialRevealEditor) {
+      pendingRevealSelection = revealSelectionForTextEditor(initialRevealEditor);
+    } else {
+      const initialOffset = parseRevealOffsetFromUriFragment(document.uri);
+      pendingRevealSelection = initialOffset === null ? null : { anchor: initialOffset, head: initialOffset };
+    }
+
     const session: PanelSession = {
       panel,
       document,
@@ -839,6 +964,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         case 'ready':
           await ensureInitDelivered();
           refreshGitBaseline(true);
+          await flushPendingRevealSelection();
           return;
         case 'setMode':
           mode = raw.mode;
@@ -849,14 +975,26 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
             .update(AUTO_SAVE_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
           return;
         case 'setLineNumbers':
-          await vscode.workspace
-            .getConfiguration(EXTENSION_CONFIG_SECTION)
-            .update(LINE_NUMBERS_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
+          {
+            const visible = raw.visible ?? raw.enabled;
+            if (typeof visible !== 'boolean') {
+              return;
+            }
+            await vscode.workspace
+              .getConfiguration(EXTENSION_CONFIG_SECTION)
+              .update(LINE_NUMBERS_SETTING_KEY, visible, vscode.ConfigurationTarget.Global);
+          }
           return;
         case 'setGitChangesGutter':
-          await vscode.workspace
-            .getConfiguration(EXTENSION_CONFIG_SECTION)
-            .update(GIT_CHANGES_GUTTER_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
+          {
+            const visible = raw.visible ?? raw.enabled;
+            if (typeof visible !== 'boolean') {
+              return;
+            }
+            await vscode.workspace
+              .getConfiguration(EXTENSION_CONFIG_SECTION)
+              .update(GIT_CHANGES_GUTTER_SETTING_KEY, visible, vscode.ConfigurationTarget.Global);
+          }
           return;
         case 'exportDocument':
           await this.exportSessionDocument(session, raw.format);
@@ -940,6 +1078,11 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           isApplyingOwnChange = false;
           refreshGitBaseline(false);
           return;
+        case 'saveImageFromClipboard': {
+          const response: SavedImagePathMessage = await handleSaveImageFromClipboard(raw, documentUri);
+          await panel.webview.postMessage(response);
+          return;
+        }
       }
     });
 
@@ -964,13 +1107,34 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       refreshGitBaseline(false);
     });
 
+    const textEditorSelectionSubscription = vscode.window.onDidChangeTextEditorSelection((event) => {
+      if (!isTextEditorForDocument(event.textEditor)) {
+        return;
+      }
+      void sendRevealSelectionForEditor(event.textEditor);
+    });
+
+    const activeTextEditorSubscription = vscode.window.onDidChangeActiveTextEditor((textEditor) => {
+      if (!isTextEditorForDocument(textEditor)) {
+        return;
+      }
+      void sendRevealSelectionForEditor(textEditor);
+    });
+
+    const visibleTextEditorsSubscription = vscode.window.onDidChangeVisibleTextEditors(() => {
+      void sendRevealSelectionForEditor(findEditorForDocumentReveal());
+    });
+
     void ensureInitDelivered();
     refreshGitBaseline(true);
+    void sendRevealSelectionForEditor(findEditorForDocumentReveal());
 
     const viewStateSubscription = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) {
         this.lastActivePanel = event.webviewPanel;
         refreshGitBaseline(false);
+        void flushPendingRevealSelection();
+        void sendRevealSelectionForEditor(findEditorForDocumentReveal());
       }
       this.updateActiveEditorContext();
     });
@@ -985,6 +1149,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       messageSubscription.dispose();
       documentChangeSubscription.dispose();
       documentSaveSubscription.dispose();
+      textEditorSelectionSubscription.dispose();
+      activeTextEditorSubscription.dispose();
+      visibleTextEditorsSubscription.dispose();
       viewStateSubscription.dispose();
       this.updateActiveEditorContext();
     });
@@ -1754,11 +1921,97 @@ function resolveWorktreeUriFromGitUri(uri: vscode.Uri): vscode.Uri | undefined {
 }
 
 function resolveWorktreeUri(document: vscode.TextDocument): vscode.Uri {
-  if (document.fileName) {
-    return vscode.Uri.file(document.fileName);
+  if (document.uri.scheme === 'file') {
+    return document.uri;
   }
 
   return resolveWorktreeUriFromGitUri(document.uri) ?? document.uri;
+}
+
+function coerceCommandUri(value: unknown): vscode.Uri | undefined {
+  if (value instanceof vscode.Uri) {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidateRecords = [value as Record<string, unknown>];
+  const directDocument = (value as { document?: unknown }).document;
+  if (directDocument && typeof directDocument === 'object') {
+    candidateRecords.push(directDocument as Record<string, unknown>);
+  }
+
+  for (const record of candidateRecords) {
+    const nested = record.uri;
+    if (nested instanceof vscode.Uri) {
+      return nested;
+    }
+    const resource = record.resource;
+    if (resource instanceof vscode.Uri) {
+      return resource;
+    }
+    const resourceUri = record.resourceUri;
+    if (resourceUri instanceof vscode.Uri) {
+      return resourceUri;
+    }
+
+    const fromRaw = uriFromUnknown(record);
+    if (fromRaw) {
+      return fromRaw;
+    }
+    if (nested && typeof nested === 'object') {
+      const fromNested = uriFromUnknown(nested);
+      if (fromNested) {
+        return fromNested;
+      }
+    }
+    if (resource && typeof resource === 'object') {
+      const fromResource = uriFromUnknown(resource);
+      if (fromResource) {
+        return fromResource;
+      }
+    }
+    if (resourceUri && typeof resourceUri === 'object') {
+      const fromResource = uriFromUnknown(resourceUri);
+      if (fromResource) {
+        return fromResource;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function uriFromUnknown(value: unknown): vscode.Uri | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as Partial<vscode.Uri> & {
+    scheme?: unknown;
+    path?: unknown;
+    query?: unknown;
+    fragment?: unknown;
+    authority?: unknown;
+  };
+
+  if (typeof candidate.scheme !== 'string' || typeof candidate.path !== 'string') {
+    return undefined;
+  }
+
+  try {
+    return vscode.Uri.from({
+      scheme: candidate.scheme,
+      authority: typeof candidate.authority === 'string' ? candidate.authority : '',
+      path: candidate.path,
+      query: typeof candidate.query === 'string' ? candidate.query : '',
+      fragment: typeof candidate.fragment === 'string' ? candidate.fragment : ''
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 function findDiffContextForGitUri(uri: vscode.Uri): { original: vscode.Uri; modified: vscode.Uri; title: string } | undefined {
@@ -1843,6 +2096,7 @@ function getThemeSettings(): ThemeSettings {
     fonts: {
       live: readThemeFont(config, 'fonts.live', defaultThemeFonts.live),
       source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source),
+      fontSize: readThemeFontSize(config, 'fonts.fontSize', defaultThemeFonts.fontSize),
       liveLineHeight: readThemeLineHeight(config, 'fonts.liveLineHeight', defaultThemeFonts.liveLineHeight),
       sourceLineHeight: readThemeLineHeight(config, 'fonts.sourceLineHeight', defaultThemeFonts.sourceLineHeight)
     }
@@ -1988,6 +2242,17 @@ function readThemeFont(config: vscode.WorkspaceConfiguration, key: string, fallb
   return value.trim() || fallback;
 }
 
+function readThemeFontSize(config: vscode.WorkspaceConfiguration, key: string, fallback: number | null): number | null {
+  const value = config.get<number | null>(key, fallback);
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
 function readThemeLineHeight(config: vscode.WorkspaceConfiguration, key: string, fallback: number): number {
   const value = config.get<number>(key, fallback);
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -2003,6 +2268,7 @@ async function resetThemeSettingsToDefaults(): Promise<void> {
     ...themeColorKeys.map((key) => `theme.${key}`),
     'fonts.live',
     'fonts.source',
+    'fonts.fontSize',
     'fonts.liveLineHeight',
     'fonts.sourceLineHeight'
   ];
@@ -2044,6 +2310,58 @@ function hasThemeKeyValueAtTarget(
     return inspected.workspaceFolderValue !== undefined;
   }
   return false;
+}
+
+async function handleSaveImageFromClipboard(
+  message: SaveImageFromClipboardMessage,
+  documentUri: vscode.Uri
+): Promise<SavedImagePathMessage> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return {
+      type: 'savedImagePath',
+      requestId: message.requestId,
+      success: false,
+      error: 'No workspace folder open'
+    };
+  }
+
+  const workspaceRoot = (vscode.workspace.getWorkspaceFolder(documentUri) ?? workspaceFolders[0]).uri;
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  const imageFolder = config.get<string>('imageFolder', 'assets');
+
+  try {
+    const base64Data = message.imageData.replace(/^data:image\/[^;]+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    const assetsFolderUri = vscode.Uri.joinPath(workspaceRoot, imageFolder);
+
+    try {
+      await vscode.workspace.fs.stat(assetsFolderUri);
+    } catch {
+      await vscode.workspace.fs.createDirectory(assetsFolderUri);
+    }
+
+    const filePath = vscode.Uri.joinPath(assetsFolderUri, message.fileName);
+    await vscode.workspace.fs.writeFile(filePath, imageBuffer);
+
+    const relativePath = path.relative(path.dirname(documentUri.fsPath), filePath.fsPath).replace(/\\/g, '/');
+
+    return {
+      type: 'savedImagePath',
+      requestId: message.requestId,
+      success: true,
+      path: relativePath
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save image';
+    return {
+      type: 'savedImagePath',
+      requestId: message.requestId,
+      success: false,
+      error: errorMessage
+    };
+  }
 }
 
 export function deactivate(): void {}

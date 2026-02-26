@@ -1,7 +1,29 @@
-import { StateField, RangeSetBuilder } from '@codemirror/state';
+import { StateField, RangeSetBuilder, EditorState, Transaction } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { base02 } from '../theme';
 import { parseFrontmatter, isInsideFrontmatterContent } from './frontmatter';
+
+interface ListMarkerData {
+  fromOffset: number;
+  leadingWhitespace: string;
+  indentLevel: number;
+  indentColumns: number;
+  markerEndOffset: number;
+  toOffset: number;
+  contentOffsetColumns: number;
+  markerText: string;
+  classes: string;
+  orderedNumber: string;
+  isTask: boolean;
+  taskHiddenPrefixColumns: number;
+  taskBracketStart?: number;
+  taskState?: boolean;
+}
+
+interface ListIndentStyle {
+  columns: number;
+  insert: string;
+}
 
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
@@ -130,6 +152,29 @@ export function detectListIndentStylesByLine(state) {
 
 function lineIndentStyle(lineNumber, stylesByLine) {
   return stylesByLine?.get(lineNumber) ?? defaultListIndentStyle;
+}
+
+export function nextOrderedSequenceNumber(
+  orderedCountsByLevel: Array<number | null>,
+  level: number,
+  orderedNumber: string | null | undefined
+): { expected: number | null; isAnchor: boolean } {
+  orderedCountsByLevel.length = level + 1;
+  if (!orderedNumber) {
+    orderedCountsByLevel[level] = null;
+    return { expected: null, isAnchor: false };
+  }
+
+  const current = orderedCountsByLevel[level];
+  if (current === null || current === undefined) {
+    const parsed = Number.parseInt(orderedNumber, 10);
+    orderedCountsByLevel[level] = parsed;
+    return { expected: parsed, isAnchor: true };
+  }
+
+  const next = current + 1;
+  orderedCountsByLevel[level] = next;
+  return { expected: next, isAnchor: false };
 }
 
 function indentationColumns(leadingWhitespace, style = defaultListIndentStyle) {
@@ -309,7 +354,7 @@ function buildListMarkerText(parts, orderedNumber = parts?.orderedNumber) {
     : `${parts.leadingWhitespace}${orderedNumber}${parts.orderedSuffix} `;
 }
 
-export function listMarkerData(lineText, orderedDisplayIndex = null, style = defaultListIndentStyle) {
+export function listMarkerData(lineText: string, orderedDisplayIndex: string | null = null, style: ListIndentStyle = defaultListIndentStyle): ListMarkerData | null {
   const match = listMarkerRegex.exec(lineText);
   if (!match) {
     return null;
@@ -334,7 +379,7 @@ export function listMarkerData(lineText, orderedDisplayIndex = null, style = def
   const indentColumns = indentationColumns(leadingWhitespace, style);
   const contentOffsetColumns = indentColumns + (match[0].length - indent);
 
-  const result = {
+  const result: ListMarkerData = {
     fromOffset: indent,
     leadingWhitespace,
     indentLevel: Math.floor(indentColumns / style.columns),
@@ -361,17 +406,20 @@ export function listMarkerData(lineText, orderedDisplayIndex = null, style = def
 }
 
 class ListMarkerWidget extends WidgetType {
-  constructor(text, classes) {
+  text: string;
+  classes: string;
+
+  constructor(text: string, classes: string) {
     super();
     this.text = text;
     this.classes = classes;
   }
 
-  eq(other) {
-    return other.text === this.text && other.classes === this.classes;
+  eq(other: WidgetType): boolean {
+    return other instanceof ListMarkerWidget && other.text === this.text && other.classes === this.classes;
   }
 
-  toDOM() {
+  toDOM(): HTMLElement {
     const marker = document.createElement('span');
     marker.className = `meo-md-list-marker ${this.classes}`;
     marker.style.color = base02;
@@ -381,17 +429,20 @@ class ListMarkerWidget extends WidgetType {
 }
 
 class CheckboxWidget extends WidgetType {
-  constructor(checked, bracketStart) {
+  checked: boolean;
+  bracketStart: number;
+
+  constructor(checked: boolean, bracketStart: number) {
     super();
     this.checked = checked;
     this.bracketStart = bracketStart;
   }
 
-  eq(other) {
-    return other.checked === this.checked && other.bracketStart === this.bracketStart;
+  eq(other: WidgetType): boolean {
+    return other instanceof CheckboxWidget && other.checked === this.checked && other.bracketStart === this.bracketStart;
   }
 
-  toDOM(view) {
+  toDOM(view: EditorView): HTMLElement {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'meo-task-checkbox';
@@ -412,7 +463,7 @@ class CheckboxWidget extends WidgetType {
     return checkbox;
   }
 
-  ignoreEvent() {
+  ignoreEvent(): boolean {
     return false;
   }
 }
@@ -523,6 +574,37 @@ export function handleEnterContinueList(view) {
   view.dispatch({
     changes: { from: position, insert },
     selection: { anchor: position + insert.length }
+  });
+  return true;
+}
+
+export function handleEnterOnEmptyListItem(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const position = selection.head;
+  const line = state.doc.lineAt(position);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const marker = listMarkerData(lineText);
+  if (!marker) {
+    return false;
+  }
+
+  const contentStart = line.from + marker.toOffset;
+  if (position !== contentStart && position !== line.to) {
+    return false;
+  }
+
+  if (lineText.slice(marker.toOffset).trim().length > 0) {
+    return false;
+  }
+
+  view.dispatch({
+    changes: { from: line.from, to: contentStart, insert: '' },
+    selection: { anchor: line.from }
   });
   return true;
 }
@@ -715,7 +797,7 @@ export function handleEnterBeforeNestedList(view) {
 export function collectOrderedListRenumberChanges(state) {
   const changes = [];
   const stylesByLine = detectListIndentStylesByLine(state);
-  const orderedCountsByLevel = [];
+  const orderedCountsByLevel: Array<number | null> = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
@@ -729,14 +811,14 @@ export function collectOrderedListRenumberChanges(state) {
     }
 
     const level = marker.indentLevel;
-    orderedCountsByLevel.length = level + 1;
-    if (!marker.orderedNumber) {
-      orderedCountsByLevel[level] = 0;
+    const { expected, isAnchor } = nextOrderedSequenceNumber(
+      orderedCountsByLevel,
+      level,
+      marker.orderedNumber
+    );
+    if (expected === null || isAnchor) {
       continue;
     }
-
-    const expected = (orderedCountsByLevel[level] ?? 0) + 1;
-    orderedCountsByLevel[level] = expected;
     const expectedText = String(expected);
     if (marker.orderedNumber !== expectedText) {
       const from = line.from + marker.leadingWhitespace.length;
@@ -797,15 +879,15 @@ function computeSourceListMarkers(state) {
   return ranges.finish();
 }
 
-export const sourceListBorderField = StateField.define({
-  create(state) {
+export const sourceListBorderField = StateField.define<any>({
+  create(state: EditorState) {
     try {
       return computeSourceListBorders(state);
     } catch {
       return Decoration.none;
     }
   },
-  update(borders, transaction) {
+  update(borders: any, transaction: Transaction) {
     if (!transaction.docChanged) {
       return borders;
     }
@@ -815,18 +897,18 @@ export const sourceListBorderField = StateField.define({
       return borders;
     }
   },
-  provide: (field) => EditorView.decorations.from(field)
+  provide: (field: any) => EditorView.decorations.from(field)
 });
 
-export const sourceListMarkerField = StateField.define({
-  create(state) {
+export const sourceListMarkerField = StateField.define<any>({
+  create(state: EditorState) {
     try {
       return computeSourceListMarkers(state);
     } catch {
       return Decoration.none;
     }
   },
-  update(markers, transaction) {
+  update(markers: any, transaction: Transaction) {
     if (!transaction.docChanged) {
       return markers;
     }
@@ -836,5 +918,5 @@ export const sourceListMarkerField = StateField.define({
       return markers;
     }
   },
-  provide: (field) => EditorView.decorations.from(field)
+  provide: (field: any) => EditorView.decorations.from(field)
 });

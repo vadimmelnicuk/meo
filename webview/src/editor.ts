@@ -16,6 +16,7 @@ import {
   gitDiffGutterPlaceholderExtensions,
   setGitBaseline as applyGitBaseline
 } from './helpers/gitDiffGutter';
+import { gitDiffLineHighlightsField } from './helpers/gitDiffLineHighlights';
 import { createGitDiffOverviewRulerController } from './helpers/gitDiffOverviewRuler';
 import { createGitBlameHoverController } from './helpers/gitBlameHover';
 import { mergeConflictSourceExtensions } from './helpers/mergeConflicts';
@@ -27,6 +28,7 @@ import {
   handleArrowRightAtListLineStart,
   handleBackspaceAtListContentStart,
   handleEnterAtListContentStart,
+  handleEnterOnEmptyListItem,
   handleEnterContinueList,
   handleEnterBeforeNestedList,
   collectOrderedListRenumberChanges,
@@ -36,7 +38,13 @@ import {
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
 
-const setSearchQueryEffect = StateEffect.define();
+declare module '@codemirror/view' {
+  interface EditorView {
+    EDIT_CONTEXT?: boolean;
+  }
+}
+
+const setSearchQueryEffect = StateEffect.define<string>();
 const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
 
@@ -73,11 +81,11 @@ const searchQueryField = StateField.define({
   }
 });
 
-const searchMatchField = StateField.define({
+const searchMatchField = StateField.define<any>({
   create() {
     return Decoration.none;
   },
-  update(value, tr) {
+  update(value: any, tr: Transaction) {
     if (tr.docChanged) {
       const query = tr.state.field(searchQueryField);
       return buildSearchDecorations(tr.state.doc, query);
@@ -91,7 +99,7 @@ const searchMatchField = StateField.define({
 
     return value;
   },
-  provide(field) {
+  provide(field: any) {
     return EditorView.decorations.from(field);
   }
 });
@@ -112,7 +120,7 @@ export function createEditor({
 }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
-  EditorView.EDIT_CONTEXT = false;
+  (EditorView as any).EDIT_CONTEXT = false;
 
   const modeCompartment = new Compartment();
   const gitGutterCompartment = new Compartment();
@@ -421,6 +429,32 @@ export function createEditor({
     }
   };
 
+  const applyRevealSelection = (anchor, head = anchor, { focusEditor = true, align = 'center' } = {}) => {
+    const max = view.state.doc.length;
+    const nextAnchor = Math.max(0, Math.min(anchor, max));
+    const nextHead = Math.max(0, Math.min(head, max));
+    const y = align === 'top' ? 'start' : 'center';
+    const selection = view.state.selection.main;
+
+    if (selection.anchor === nextAnchor && selection.head === nextHead) {
+      view.dispatch({
+        effects: EditorView.scrollIntoView(nextAnchor, { y })
+      });
+      if (focusEditor) {
+        view.focus();
+      }
+      return;
+    }
+
+    view.dispatch({
+      selection: { anchor: nextAnchor, head: nextHead },
+      effects: EditorView.scrollIntoView(nextAnchor, { y })
+    });
+    if (focusEditor) {
+      view.focus();
+    }
+  };
+
   const findMatch = (query, backward = false, { focusEditor = true } = {}) => {
     if (!query) {
       return { found: false, current: 0, total: 0 };
@@ -508,6 +542,7 @@ export function createEditor({
         {
           key: 'Enter',
           run: (view) =>
+            handleEnterOnEmptyListItem(view) ||
             handleEnterAtListContentStart(view) ||
             handleEnterContinueList(view) ||
             handleEnterBeforeNestedList(view)
@@ -740,6 +775,8 @@ export function createEditor({
   emitSelectionChange();
 
   return {
+    view,
+    state: view.state,
     getText() {
       return view.state.doc.toString();
     },
@@ -1066,12 +1103,10 @@ export function createEditor({
     },
     scrollToLine(lineNumber, align = 'center') {
       const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
-      const y = align === 'top' ? 'start' : 'center';
-      view.dispatch({
-        selection: { anchor: line.from },
-        effects: EditorView.scrollIntoView(line.from, { y })
-      });
-      view.focus();
+      applyRevealSelection(line.from, line.from, { focusEditor: true, align });
+    },
+    revealSelection(anchor, head, options) {
+      applyRevealSelection(anchor, head, options);
     },
     refreshSelectionOverlay() {
       emitSelectionChange();
@@ -1236,11 +1271,16 @@ function insertInlineCode(view, selection) {
   const { state } = view;
 
   if (!selection.empty) {
-    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    let from = Math.min(selection.from, selection.to);
+    let to = Math.max(selection.from, selection.to);
+    while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
+      to -= 1;
+    }
+    const selectedText = state.doc.sliceString(from, to);
     const insert = `\`${selectedText}\``;
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + insert.length }
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length }
     });
     return;
   }
@@ -1266,7 +1306,10 @@ function insertInlineFence(view, selection, marker) {
   }
 
   const from = Math.min(selection.from, selection.to);
-  const to = Math.max(selection.from, selection.to);
+  let to = Math.max(selection.from, selection.to);
+  while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
+    to -= 1;
+  }
   const hasOpenMarker =
     from >= markerLength && state.doc.sliceString(from - markerLength, from) === marker;
   const hasCloseMarker = state.doc.sliceString(to, to + markerLength) === marker;
@@ -1322,26 +1365,39 @@ function insertHr(view, selection) {
   const { state } = view;
   const line = state.doc.lineAt(selection.from);
   const lineText = state.doc.sliceString(line.from, line.to);
-  const leadingWhitespace = /^(\s*)/.exec(lineText)[1];
+  const trimmed = lineText.trim();
 
-  const insert = `\n${leadingWhitespace}---\n`;
-  const cursorPos = line.to + insert.length;
-
-  view.dispatch({
-    changes: { from: line.to, insert },
-    selection: { anchor: cursorPos }
-  });
+  if (!trimmed) {
+    const insert = '---';
+    const cursorPos = line.from + insert.length;
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert },
+      selection: { anchor: cursorPos }
+    });
+  } else {
+    const insert = '\n---';
+    const cursorPos = line.to + insert.length;
+    view.dispatch({
+      changes: { from: line.to, insert },
+      selection: { anchor: cursorPos }
+    });
+  }
 }
 
 function insertLink(view, selection) {
   const { state } = view;
 
   if (!selection.empty) {
-    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    let from = Math.min(selection.from, selection.to);
+    let to = Math.max(selection.from, selection.to);
+    while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
+      to -= 1;
+    }
+    const selectedText = state.doc.sliceString(from, to);
     const insert = `[${selectedText}]()`;
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + insert.length - 1 }
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length - 1 }
     });
     return;
   }
@@ -1357,11 +1413,16 @@ function insertImage(view, selection) {
   const { state } = view;
 
   if (!selection.empty) {
-    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    let from = Math.min(selection.from, selection.to);
+    let to = Math.max(selection.from, selection.to);
+    while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
+      to -= 1;
+    }
+    const selectedText = state.doc.sliceString(from, to);
     const insert = `![${selectedText}]()`;
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + insert.length - 1 }
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length - 1 }
     });
     return;
   }
@@ -1377,11 +1438,16 @@ function insertWikiLink(view, selection) {
   const { state } = view;
 
   if (!selection.empty) {
-    const selectedText = state.doc.sliceString(selection.from, selection.to);
+    let from = Math.min(selection.from, selection.to);
+    let to = Math.max(selection.from, selection.to);
+    while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
+      to -= 1;
+    }
+    const selectedText = state.doc.sliceString(from, to);
     const insert = `[[${selectedText}]]`;
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + insert.length }
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length }
     });
     return;
   }
@@ -1409,6 +1475,7 @@ function sourceMode() {
     sourceWikiMarkerField,
     sourceTableHeaderLineField,
     sourceFrontmatterField,
+    gitDiffLineHighlightsField,
     ...headingCollapseSourceSpacerExtensions(),
     ...mergeConflictSourceExtensions()
   ];
@@ -1442,10 +1509,11 @@ function isRegularInlineSelection(state, from, to) {
     return false;
   }
   const text = state.doc.sliceString(from, to);
-  if (!text.trim()) {
+  const trimmedText = text.trim();
+  if (!trimmedText) {
     return false;
   }
-  if (text.includes('\n')) {
+  if (trimmedText.includes('\n')) {
     return false;
   }
   if (hasBlockedInlineAncestor(state, from) || hasBlockedInlineAncestor(state, to - 1)) {

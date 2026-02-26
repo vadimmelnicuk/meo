@@ -28,7 +28,7 @@ An optimized markdown editor with live editing mode for VS Code.
 ### Customisation & Export
 
 - **Theming** - Customise syntax colors, fonts, and line height to match your style
-- **Syntax highlighting** - Monokai-inspired theme for clear, readable markdown source
+- **Syntax highlighting** - Monokai-inspired theme for clear, readable markdown
 - **Export** - Save your document as HTML or PDF
 - **Auto-save** - Optionally save changes automatically as you type
 

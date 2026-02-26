@@ -19,6 +19,7 @@ export const defaultThemeLineHeight = 1.5;
 export type ThemeFonts = {
   live: string;
   source: string;
+  fontSize: number | null;
   liveLineHeight: number;
   sourceLineHeight: number;
 };
@@ -42,6 +43,7 @@ export const defaultThemeColors: ThemeColors = {
 export const defaultThemeFonts: ThemeFonts = {
   live: '',
   source: '',
+  fontSize: null,
   liveLineHeight: defaultThemeLineHeight,
   sourceLineHeight: defaultThemeLineHeight
 };
