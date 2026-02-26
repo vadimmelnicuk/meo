@@ -1,5 +1,13 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.13
+- Refactored webview from JS to TS
+- Added image paste function with 'assets' as default folder
+- Added font size setting
+- Fixed top toolbar position
+- Fixed numeric lists issue & double enter press behaviour
+- Performance improvements
+
 ## 0.1.12
 - Added Git change visualisations to the left gutter and scroller with toggle functionality
 - Added Git blame feature
