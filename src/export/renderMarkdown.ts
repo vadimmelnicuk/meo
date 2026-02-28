@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import { light as emoji } from 'markdown-it-emoji';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc } from './assetPaths';
@@ -53,6 +54,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       ].join('');
     }
   });
+  md.use(emoji);
   installTaskListTransform(md);
 
   const defaultImageRule = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts));

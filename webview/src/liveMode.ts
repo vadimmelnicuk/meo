@@ -16,6 +16,7 @@ import {
 import { ImageWidget, getImageData, isImageUrl } from './helpers/images';
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
+import { collectEmojiRangesFromText } from './helpers/emoji';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import {
   getCollapsedHeadingSections,
@@ -843,6 +844,7 @@ function buildDecorations(state) {
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
+  addEmojiDecorations(ranges, state, codeBlockLines);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
     addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);
@@ -938,6 +940,51 @@ function collectCodeBlockLines(state, tree) {
     }
   });
   return lines;
+}
+
+const emojiWidgetCache = new Map<string, WidgetType>();
+
+function getEmojiWidget(emoji: string): WidgetType {
+  let widget = emojiWidgetCache.get(emoji);
+  if (!widget) {
+    widget = new (class extends WidgetType {
+      toDOM() {
+        const span = document.createElement('span');
+        span.className = 'meo-md-emoji';
+        span.textContent = emoji;
+        return span;
+      }
+      ignoreEvent() {
+        return true;
+      }
+    })();
+    emojiWidgetCache.set(emoji, widget);
+  }
+  return widget;
+}
+
+function addEmojiDecorations(builder, state, codeBlockLines = null) {
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    if (codeBlockLines?.has(lineNo)) {
+      continue;
+    }
+    const line = state.doc.line(lineNo);
+    const lineText = state.doc.sliceString(line.from, line.to);
+
+    if (lineText.indexOf(':') === -1) {
+      continue;
+    }
+
+    const emojiRanges = collectEmojiRangesFromText(lineText, line.from);
+    for (const emojiRange of emojiRanges) {
+      builder.push(
+        Decoration.replace({
+          widget: getEmojiWidget(emojiRange.emoji),
+          inclusive: false
+        }).range(emojiRange.from, emojiRange.to)
+      );
+    }
+  }
 }
 
 const liveDecorationField = StateField.define({

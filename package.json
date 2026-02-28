@@ -292,6 +292,7 @@
     "highlight.js": "^11.11.1",
     "lucide": "^0.564.0",
     "markdown-it": "^14.1.0",
+    "markdown-it-emoji": "^3.0.0",
     "mermaid": "^11.4.1",
     "puppeteer-core": "^24.1.1",
     "sanitize-html": "^2.17.0"
