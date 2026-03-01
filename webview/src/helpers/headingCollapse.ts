@@ -25,7 +25,9 @@ function getCollapsibleHeadingSectionMap(state: EditorState): Map<number, Headin
 
 function hasHeadingCollapseEffect(transaction: any): boolean {
   return transaction.effects.some(
-    (effect: any) => effect.is(toggleHeadingCollapseEffect) || effect.is(expandHeadingCollapseEffect)
+    (effect: any) =>
+      effect.is(toggleHeadingCollapseEffect) ||
+      effect.is(expandHeadingCollapseEffect)
   );
 }
 

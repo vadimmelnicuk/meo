@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc } from './assetPaths';
+import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 
 export type RenderMarkdownTarget = 'html' | 'pdf';
 
@@ -54,6 +55,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     }
   });
   installTaskListTransform(md);
+  installAlertTransform(md);
 
   const defaultImageRule = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts));
   md.renderer.rules.image = (tokens, idx, opts, env, self) => {
@@ -91,7 +93,14 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       'code',
       'span',
       'div',
-      'hr'
+      'hr',
+      'svg',
+      'path',
+      'circle',
+      'line',
+      'rect',
+      'polygon',
+      'polyline'
     ],
     allowedAttributes: {
       a: ['href', 'name', 'target', 'rel', 'title'],
@@ -100,7 +109,14 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       th: ['colspan', 'rowspan', 'style'],
       td: ['colspan', 'rowspan', 'style'],
       code: ['class'],
-      div: ['class', 'data-source-b64']
+      div: ['class', 'data-source-b64'],
+      svg: ['xmlns', 'width', 'height', 'viewbox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'],
+      path: ['d'],
+      circle: ['cx', 'cy', 'r'],
+      line: ['x1', 'x2', 'y1', 'y2'],
+      rect: ['x', 'y', 'width', 'height', 'rx', 'ry'],
+      polygon: ['points'],
+      polyline: ['points']
     },
     allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data'],
     allowedSchemesByTag: {
@@ -113,6 +129,18 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       }
     },
     transformTags: {
+      svg: (tagName, attribs) => {
+        return {
+          tagName,
+          attribs: {
+            ...attribs,
+            viewBox: attribs.viewbox,
+            'stroke-width': attribs['stroke-width'],
+            'stroke-linecap': attribs['stroke-linecap'],
+            'stroke-linejoin': attribs['stroke-linejoin']
+          }
+        };
+      },
       a: (tagName, attribs) => {
         const href = `${attribs.href ?? ''}`.trim();
         const next = { ...attribs };
@@ -307,6 +335,107 @@ function removeTaskPrefixFromInlineToken(token: any, prefixLength: number): void
 function normalizeFenceLanguage(info: string): string {
   const first = `${info ?? ''}`.trim().split(/\s+/, 1)[0] ?? '';
   return first.toLowerCase();
+}
+
+const ALERT_TYPES = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'] as const;
+type AlertType = typeof ALERT_TYPES[number];
+
+type IconNode = [string, Record<string, string>][];
+
+function renderLucideIcon(iconNode: IconNode): string {
+  const innerHtml = iconNode.map(([tag, attrs]) => {
+    const attrString = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
+    return `<${tag} ${attrString}/>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${innerHtml}</svg>`;
+}
+
+const ALERT_ICONS: Record<AlertType, string> = {
+  NOTE: renderLucideIcon(Info as unknown as IconNode),
+  TIP: renderLucideIcon(Lightbulb as unknown as IconNode),
+  IMPORTANT: renderLucideIcon(AlertCircle as unknown as IconNode),
+  WARNING: renderLucideIcon(AlertTriangle as unknown as IconNode),
+  CAUTION: renderLucideIcon(XCircle as unknown as IconNode)
+};
+
+function installAlertTransform(md: MarkdownIt): void {
+  const defaultBlockquoteRender = md.renderer.rules.blockquote_open ??
+    ((tokens: any, idx: number, opts: any, _env: any, self: any) => self.renderToken(tokens, idx, opts));
+
+  md.renderer.rules.blockquote_open = (tokens: any, idx: number, opts: any, env: any, self: any) => {
+    const openToken = tokens[idx];
+    let alertType: AlertType | null = null;
+    let headerHtml = '';
+    const TokenCons = tokens[0].constructor as any;
+
+    for (let i = idx + 1; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token.type === 'blockquote_close') break;
+      if (token.type === 'paragraph_open') continue;
+      if (token.type === 'inline' && token.content) {
+        const match = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(token.content.trim());
+        if (match) {
+          alertType = match[1].toUpperCase() as AlertType;
+          headerHtml = [
+            '<span class="meo-export-alert-header">',
+            `<span class="meo-export-alert-icon">${ALERT_ICONS[alertType]}</span>`,
+            `<span class="meo-export-alert-label">${alertType}</span>`,
+            '</span>'
+          ].join('');
+          token.content = token.content.replace(match[0], '').trim();
+          if (!token.content && tokens[i + 1]?.type === 'paragraph_close') {
+            token.content = '';
+            token.children = [];
+          }
+        }
+        break;
+      }
+    }
+
+    if (alertType && ALERT_TYPES.includes(alertType)) {
+      openToken.attrJoin('class', `meo-export-alert meo-export-alert-${alertType.toLowerCase()}`);
+
+      let insertedHeader = false;
+      for (let i = idx + 1; i < tokens.length; i += 1) {
+        const token = tokens[i];
+        if (token.type === 'blockquote_close') break;
+        if (token.type !== 'inline') {
+          continue;
+        }
+
+        if (token.children) {
+          for (const child of token.children) {
+            if (child.type === 'softbreak') {
+              child.type = 'hardbreak';
+              child.tag = 'br';
+              child.nesting = 0;
+            }
+          }
+        }
+
+        if (insertedHeader) {
+          continue;
+        }
+
+        const htmlToken = new TokenCons('html_inline', '', 0);
+        htmlToken.content = headerHtml;
+
+        token.children = token.children ?? [];
+        token.children.unshift(htmlToken);
+
+        for (const child of token.children) {
+          if (child.type === 'text') {
+            child.content = child.content.replace(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i, '').trimLeft();
+            break;
+          }
+        }
+
+        insertedHeader = true;
+      }
+    }
+
+    return defaultBlockquoteRender(tokens, idx, opts, env, self);
+  };
 }
 
 function highlightFence(code: string, language: string): string {

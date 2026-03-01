@@ -13,7 +13,7 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Toolbar formatting** - Insert headings, lists, tasks, tables, code blocks, links, images, and quotes in one click
 - **Floating selection menu** - Instantly apply bold, italic, strikethrough, inline code, or links on any text selection
 - **Interactive editing** - Toggle tasks, open links, find/replace, render full-screen Mermaid diagrams
-- **Images** - Inline image rendering with automatic path resolution
+- **Images** - Paste images for inline rendering with automatic path resolution
 
 ### Navigation & Organisation
 
@@ -34,7 +34,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 ## Getting Started
 
-1. Right-click any `.md` or `.markdown` file in the Explorer → **Open With Markdown Editor Optimized**
+1. Right-click any `.md`, `.markdown`, `.mdx`, or `.mdc` file in the Explorer → **Open With Markdown Editor Optimized**
 2. Set as default: `Cmd/Ctrl + Shift + P` → **Markdown Editor Optimized: Set as Default**
 3. Toggle between Live/Source modes: `Option/Alt + Shift + M`
 

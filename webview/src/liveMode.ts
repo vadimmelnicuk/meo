@@ -18,8 +18,9 @@ import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import {
-  getCollapsedHeadingSections,
-  headingCollapseLiveExtensions
+  headingCollapseLiveExtensions,
+  headingCollapseSharedExtensions,
+  getCollapsedHeadingSections
 } from './helpers/headingCollapse';
 import {
   addListMarkerDecoration,
@@ -38,6 +39,11 @@ import {
 } from './helpers/frontmatter';
 import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
 import { mergeConflictSourceExtensions, parseMergeConflicts } from './helpers/mergeConflicts';
+import {
+  AlertType,
+  AlertIconWidget,
+  detectAlertInBlockquote
+} from './helpers/alerts';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -79,6 +85,18 @@ const lineStyleDecos = {
   hrActive: Decoration.line({ class: 'meo-md-hr-active' }),
   hr: Decoration.line({ class: 'meo-md-hr' })
 };
+
+const alertLineDecos: Record<AlertType, ReturnType<typeof Decoration.line>> = {
+  NOTE: Decoration.line({ class: 'meo-md-alert meo-md-alert-note' }),
+  TIP: Decoration.line({ class: 'meo-md-alert meo-md-alert-tip' }),
+  IMPORTANT: Decoration.line({ class: 'meo-md-alert meo-md-alert-important' }),
+  WARNING: Decoration.line({ class: 'meo-md-alert meo-md-alert-warning' }),
+  CAUTION: Decoration.line({ class: 'meo-md-alert meo-md-alert-caution' })
+};
+
+const alertMarkerDeco = Decoration.mark({ class: 'meo-md-alert-marker' });
+const alertLabelActiveDeco = Decoration.mark({ class: 'meo-md-alert-label-active' });
+const hiddenAlertMarkerDeco = Decoration.mark({ class: 'meo-md-alert-marker-hidden' });
 const frontmatterKeyDeco = Decoration.mark({ class: 'meo-md-frontmatter-key' });
 const frontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value' });
 const mergeConflictMarkerPrefixes = ['<<<<<<<', '|||||||', '=======', '>>>>>>>'];
@@ -688,6 +706,11 @@ function buildDecorations(state) {
           addLineClass(ranges, state, node.from, node.to, lineStyleDecos.mergeIncomingHeader);
           return;
         }
+        const alertBlock = detectAlertInBlockquote(state, node);
+        if (alertBlock) {
+          addAlertBlockDecorations(ranges, state, node, alertBlock, activeLines);
+          return;
+        }
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.quote);
       } else if (node.name === 'Table') {
         const tableInfo = parseTableInfo(state, node);
@@ -861,6 +884,30 @@ function hasCodeBlockAncestor(node) {
     parent = parent.parent;
   }
   return false;
+}
+
+function addAlertBlockDecorations(builder, state, node, alertBlock, activeLines) {
+  const startLine = state.doc.lineAt(node.from);
+  const endLine = state.doc.lineAt(node.to);
+  const lineDeco = alertLineDecos[alertBlock.type];
+
+  for (let lineNo = startLine.number; lineNo <= endLine.number; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    builder.push(lineDeco.range(line.from));
+  }
+
+  if (!activeLines.has(startLine.number)) {
+    builder.push(
+      Decoration.widget({
+        widget: new AlertIconWidget(alertBlock.type),
+        side: -1
+      }).range(startLine.from)
+    );
+    addRange(builder, alertBlock.directiveFrom, alertBlock.directiveTo, hiddenAlertMarkerDeco);
+  } else {
+    addRange(builder, alertBlock.directiveFrom, alertBlock.directiveTo, alertMarkerDeco);
+    addRange(builder, alertBlock.labelFrom, alertBlock.labelTo, alertLabelActiveDeco);
+  }
 }
 
 function safeBuildDecorations(state, fallback, context, extra = {}) {
@@ -1067,6 +1114,7 @@ export function liveModeExtensions() {
     liveDecorationField,
     liveLineNumberMarkerField,
     ...mergeConflictSourceExtensions(),
+    ...headingCollapseSharedExtensions(),
     ...headingCollapseLiveExtensions()
   ];
 }

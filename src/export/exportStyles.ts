@@ -39,6 +39,11 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-fg: ${editorForegroundColor};
   --meo-muted: ${colors.base02};
   --meo-border: ${colors.base03};
+  --meo-base04: ${colors.base04};
+  --meo-base05: ${colors.base05};
+  --meo-base07: ${colors.base07};
+  --meo-base08: ${colors.base08};
+  --meo-base09: ${colors.base09};
   --meo-heading: ${colors.base04};
   --meo-link: ${colors.base05};
   --meo-accent-2: ${colors.base06};
@@ -203,7 +208,7 @@ ol ol {
 .meo-export-task-checkbox.is-checked::after {
   content: '';
   position: absolute;
-  left: 4px;
+  left: 5px;
   top: 2px;
   width: 4px;
   height: 7px;
@@ -325,8 +330,120 @@ th {
 
 td:empty::before,
 th:empty::before {
-  content: '\00a0';
+  content: '\\00a0';
   visibility: hidden;
+}
+
+/* GitHub Alerts */
+.meo-export-alert {
+  margin: 1em 0;
+  padding: 0 0 0 3ch;
+  border-left: 3px solid;
+  border-radius: 0;
+  background: transparent;
+}
+
+.meo-export-alert-note {
+  --meo-alert-color: var(--meo-base05);
+  border-left-color: var(--meo-base05);
+  background-color: color-mix(in srgb, var(--meo-base05) 8%, transparent);
+}
+
+.meo-export-alert-tip {
+  --meo-alert-color: var(--meo-base09);
+  border-left-color: var(--meo-base09);
+  background-color: color-mix(in srgb, var(--meo-base09) 8%, transparent);
+}
+
+.meo-export-alert-important {
+  --meo-alert-color: var(--meo-base08);
+  border-left-color: var(--meo-base08);
+  background-color: color-mix(in srgb, var(--meo-base08) 8%, transparent);
+}
+
+.meo-export-alert-warning {
+  --meo-alert-color: var(--meo-base07);
+  border-left-color: var(--meo-base07);
+  background-color: color-mix(in srgb, var(--meo-base07) 8%, transparent);
+}
+
+.meo-export-alert-caution {
+  --meo-alert-color: var(--meo-base04);
+  border-left-color: var(--meo-base04);
+  background-color: color-mix(in srgb, var(--meo-base04) 8%, transparent);
+}
+
+.meo-export-alert,
+.meo-export-alert p,
+.meo-export-alert li,
+.meo-export-alert p *,
+.meo-export-alert li * {
+  color: var(--meo-alert-color);
+}
+
+.meo-export-alert-header {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  line-height: inherit;
+  padding-right: 0.5ch;
+  text-indent: 0;
+  vertical-align: baseline;
+}
+
+.meo-export-alert-icon {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+.meo-export-alert-note .meo-export-alert-icon {
+  color: var(--meo-base05);
+}
+
+.meo-export-alert-tip .meo-export-alert-icon {
+  color: var(--meo-base09);
+}
+
+.meo-export-alert-important .meo-export-alert-icon {
+  color: var(--meo-base08);
+}
+
+.meo-export-alert-warning .meo-export-alert-icon {
+  color: var(--meo-base07);
+}
+
+.meo-export-alert-caution .meo-export-alert-icon {
+  color: var(--meo-base04);
+}
+
+.meo-export-alert-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: none;
+  position: relative;
+  top: 0.08em;
+}
+
+.meo-export-alert-label {
+  display: inline-block;
+  font-weight: 500;
+  line-height: inherit;
+  margin-left: 2px;
+  text-indent: 0;
+  text-transform: uppercase;
+  vertical-align: baseline;
+}
+
+.meo-export-alert > p:first-child {
+  margin-top: 0;
+}
+
+.meo-export-alert > p:last-child {
+  margin-bottom: 0;
 }
 
 .meo-export-mermaid {

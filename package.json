@@ -28,6 +28,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onCustomEditor:markdownEditorOptimized.editor",
+    "onStartupFinished",
     "onLanguage:markdown",
     "onCommand:markdownEditorOptimized.open",
     "onCommand:markdownEditorOptimized.setDefaultEditor",
@@ -37,6 +39,15 @@
     "onCommand:markdownEditorOptimized.exportPdf"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "extensions": [
+          ".mdx",
+          ".mdc"
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "markdownEditorOptimized.open",
@@ -86,6 +97,12 @@
           },
           {
             "filenamePattern": "*.markdown"
+          },
+          {
+            "filenamePattern": "*.mdx"
+          },
+          {
+            "filenamePattern": "*.mdc"
           }
         ],
         "priority": "default"
@@ -95,27 +112,43 @@
       "explorer/context": [
         {
           "command": "markdownEditorOptimized.open",
-          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
           "group": "navigation"
         }
       ],
       "editor/title/context": [
         {
           "command": "markdownEditorOptimized.open",
-          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
           "group": "navigation"
         },
         {
           "command": "markdownEditorOptimized.exportHtml",
-          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
           "group": "navigation@1"
         },
         {
           "command": "markdownEditorOptimized.exportPdf",
-          "when": "resourceFilename =~ /\\.(md|markdown)$/",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
           "group": "navigation@2"
         }
       ]
+    },
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.md": "markdownEditorOptimized.editor",
+        "*.markdown": "markdownEditorOptimized.editor",
+        "*.mdx": "markdownEditorOptimized.editor",
+        "*.mdc": "markdownEditorOptimized.editor",
+        "git:/**/*.md": "default",
+        "git:/**/*.markdown": "default",
+        "git:/**/*.mdx": "default",
+        "git:/**/*.mdc": "default",
+        "git:**/*.md": "default",
+        "git:**/*.markdown": "default",
+        "git:**/*.mdx": "default",
+        "git:**/*.mdc": "default"
+      }
     },
     "configuration": {
       "title": "Markdown Editor Optimized",
@@ -286,8 +319,8 @@
     "@codemirror/language": "6.11.3",
     "@codemirror/state": "6.5.2",
     "@codemirror/view": "6.36.4",
-    "@replit/codemirror-vim": "^6.3.0",
     "@lezer/highlight": "^1.2.3",
+    "@replit/codemirror-vim": "^6.3.0",
     "@types/vscode": "^1.109.0",
     "highlight.js": "^11.11.1",
     "lucide": "^0.564.0",
@@ -297,6 +330,7 @@
     "sanitize-html": "^2.17.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/sanitize-html": "^2.16.0",
     "typescript": "^5.9.3"
   }

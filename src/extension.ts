@@ -37,6 +37,7 @@ const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 const VIM_MODE_KEY = 'vimModeEnabled';
 const WIKI_LINK_SCHEME = 'meo-wiki:';
+const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
 type EditorMode = 'live' | 'source';
 type OutlinePosition = 'left' | 'right';
 
@@ -353,7 +354,7 @@ export function activate(context: vscode.ExtensionContext): void {
         targetUri = active.document.uri;
       }
       const targetPath = (targetUri.path || targetUri.fsPath || '').toLowerCase();
-      if (!targetPath.endsWith('.md') && !targetPath.endsWith('.markdown')) {
+      if (!isMarkdownDocumentPath(targetPath)) {
         return;
       }
       await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
@@ -1725,9 +1726,7 @@ async function resolveWikiLinkTargetUri(target: string, documentUri: vscode.Uri)
     ? normalized
     : path.resolve(path.dirname(documentUri.fsPath), normalized);
   const ext = path.extname(normalized);
-  const candidates = ext
-    ? [basePath]
-    : [`${basePath}.md`, `${basePath}.markdown`, basePath];
+  const candidates = ext ? [basePath] : withMarkdownExtensions(basePath);
 
   for (const candidate of candidates) {
     const uri = vscode.Uri.file(candidate);
@@ -1767,9 +1766,7 @@ async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Ur
     ? decodedPath
     : path.resolve(path.dirname(documentUri.fsPath), decodedPath);
   const ext = path.extname(decodedPath);
-  const candidates = ext
-    ? [basePath]
-    : [basePath, `${basePath}.md`, `${basePath}.markdown`];
+  const candidates = ext ? [basePath] : withMarkdownExtensions(basePath, true);
 
   for (const candidate of candidates) {
     const uri = vscode.Uri.file(candidate);
@@ -2242,6 +2239,15 @@ function readThemeFont(config: vscode.WorkspaceConfiguration, key: string, fallb
   return value.trim() || fallback;
 }
 
+function isMarkdownDocumentPath(filePath: string): boolean {
+  return MARKDOWN_FILE_EXTENSIONS.some((extension) => filePath.endsWith(extension));
+}
+
+function withMarkdownExtensions(basePath: string, preferExtensionlessFirst = false): string[] {
+  const extensionCandidates = MARKDOWN_FILE_EXTENSIONS.map((extension) => `${basePath}${extension}`);
+  return preferExtensionlessFirst ? [basePath, ...extensionCandidates] : [...extensionCandidates, basePath];
+}
+
 function readThemeFontSize(config: vscode.WorkspaceConfiguration, key: string, fallback: number | null): number | null {
   const value = config.get<number | null>(key, fallback);
   if (value === null || value === undefined) {
@@ -2368,25 +2374,47 @@ export function deactivate(): void {}
 
 async function syncEditorAssociations(useAsDefault: boolean): Promise<void> {
   const config = vscode.workspace.getConfiguration('workbench');
-  const associations = { ...(config.get<Record<string, string>>('editorAssociations') || {}) };
+  const inspected = config.inspect<Record<string, string>>('editorAssociations');
   const markdownAssociation = useAsDefault ? VIEW_TYPE : 'default';
-  const next = {
-    ...associations,
-    '*.md': markdownAssociation,
-    '*.markdown': markdownAssociation,
-    'git:/**/*.md': 'default',
-    'git:/**/*.markdown': 'default',
-    'git:**/*.md': 'default',
-    'git:**/*.markdown': 'default'
-  };
+  await syncEditorAssociationsForTarget(
+    config,
+    inspected?.globalValue,
+    vscode.ConfigurationTarget.Global,
+    markdownAssociation
+  );
 
-  if (JSON.stringify(associations) === JSON.stringify(next)) {
-    return;
+  if (inspected?.workspaceValue !== undefined) {
+    await syncEditorAssociationsForTarget(
+      config,
+      inspected.workspaceValue,
+      vscode.ConfigurationTarget.Workspace,
+      markdownAssociation
+    );
   }
-
-  await config.update('editorAssociations', next, vscode.ConfigurationTarget.Global);
 }
 
 async function updateEditorAssociations(): Promise<void> {
   await syncEditorAssociations(true);
+}
+
+async function syncEditorAssociationsForTarget(
+  config: vscode.WorkspaceConfiguration,
+  associations: Record<string, string> | undefined,
+  target: vscode.ConfigurationTarget.Global | vscode.ConfigurationTarget.Workspace,
+  markdownAssociation: string
+): Promise<void> {
+  const current = { ...(associations || {}) };
+  const next = { ...current };
+
+  for (const extension of MARKDOWN_FILE_EXTENSIONS) {
+    next[`*${extension}`] = markdownAssociation;
+    next[`git:**/*${extension}`] = 'default';
+    next[`git:/**/*${extension}`] = 'default';
+  }
+
+  if (JSON.stringify(current) === JSON.stringify(next)) {
+    return;
+  }
+
+  await config.update('editorAssociations', next, target);
 }

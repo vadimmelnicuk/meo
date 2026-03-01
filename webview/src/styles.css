@@ -2058,3 +2058,132 @@ body {
   line-height: 1.1;
   white-space: nowrap;
 }
+
+/* ========== GitHub Alerts ========== */
+
+.cm-editor .meo-md-alert {
+  border-left: 3px solid;
+  border-radius: 0;
+  padding-left: 3ch;
+  text-indent: -1ch;
+}
+
+.cm-editor .meo-md-alert-icon {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-left: 1ch;
+  line-height: inherit;
+  padding-right: 0.5ch;
+  text-indent: 0;
+  vertical-align: baseline;
+}
+
+.cm-editor .meo-md-alert-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: none;
+  position: relative;
+  top: 0.08em;
+}
+
+.cm-editor .meo-md-alert-label {
+  display: inline-block;
+  font-weight: 500;
+  line-height: inherit;
+  text-indent: 0;
+  text-transform: uppercase;
+  vertical-align: baseline;
+}
+
+.cm-editor .meo-md-alert-marker {
+  color: var(--meo-color-base02);
+}
+
+.cm-editor.meo-mode-live .meo-md-alert-marker-hidden {
+  display: none;
+}
+
+.cm-editor .cm-activeLine.meo-md-alert {
+  padding-left: 3ch;
+  text-indent: -2ch;
+}
+
+.cm-editor .meo-md-alert-note {
+  --meo-alert-color: var(--meo-color-base05);
+  border-left-color: var(--meo-color-base05);
+  background-color: color-mix(in srgb, var(--meo-color-base05) 8%, transparent);
+}
+
+.cm-editor .meo-md-alert-tip {
+  --meo-alert-color: var(--meo-color-base09);
+  border-left-color: var(--meo-color-base09);
+  background-color: color-mix(in srgb, var(--meo-color-base09) 8%, transparent);
+}
+
+.cm-editor .meo-md-alert-important {
+  --meo-alert-color: var(--meo-color-base08);
+  border-left-color: var(--meo-color-base08);
+  background-color: color-mix(in srgb, var(--meo-color-base08) 8%, transparent);
+}
+
+.cm-editor .meo-md-alert-warning {
+  --meo-alert-color: var(--meo-color-base07);
+  border-left-color: var(--meo-color-base07);
+  background-color: color-mix(in srgb, var(--meo-color-base07) 8%, transparent);
+}
+
+.cm-editor .meo-md-alert-caution {
+  --meo-alert-color: var(--meo-color-base04);
+  border-left-color: var(--meo-color-base04);
+  background-color: color-mix(in srgb, var(--meo-color-base04) 8%, transparent);
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert {
+  color: var(--meo-alert-color) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert *,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert * {
+  color: inherit !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-marker-active,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-link-marker-active,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-strike-marker-active,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-list-prefix,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-alert-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-link-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-strike-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-list-prefix,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-alert-marker {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-wiki-marker,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-wiki-marker *,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-wiki-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-wiki-marker * {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-code-marker-active,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-code-marker-active *,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-code-marker,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert .meo-md-code-marker * {
+  color: var(--meo-color-base02) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-hr-marker,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-frontmatter-boundary-marker,
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-frontmatter-boundary-marker-active {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-alert-label-active {
+  color: var(--meo-color-base05) !important;
+}
