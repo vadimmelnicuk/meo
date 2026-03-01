@@ -32,6 +32,28 @@ export interface HeadingSection extends HeadingInfo {
   collapseTo: number;
 }
 
+export interface DetailsBlockInfo {
+  kind: 'details';
+  anchorFrom: number;
+  anchorTo: number;
+  summaryFrom: number;
+  summaryTo: number;
+  lineFrom: number;
+  lineTo: number;
+  sectionFrom: number;
+  sectionTo: number;
+  bodyFrom: number;
+  bodyTo: number;
+  closingFrom: number;
+  closingTo: number;
+  summaryText: string;
+  defaultCollapsed: boolean;
+}
+
+const detailsOpenTagPattern = /<details\b[^>]*>/i;
+const detailsCloseTagPattern = /<\/details\s*>/i;
+const summaryTagPattern = /<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i;
+
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
   const tree = resolvedSyntaxTree(state);
@@ -54,6 +76,97 @@ export function extractHeadings(state: EditorState): HeadingInfo[] {
   });
 
   return headings;
+}
+
+function hasDetailsOpenAttribute(openTag: string): boolean {
+  const attributeText = openTag
+    .replace(/^<details\b/i, '')
+    .replace(/>$/, '');
+  return /(?:^|[\s/])open(?=[\s=/>]|$)/i.test(attributeText);
+}
+
+function normalizeSummaryText(rawText: string | undefined): string {
+  const text = String(rawText ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text || 'Details';
+}
+
+export function extractDetailsBlocks(state: EditorState): DetailsBlockInfo[] {
+  const detailsBlocks: DetailsBlockInfo[] = [];
+  const pendingBlocks: Array<{
+    anchorFrom: number;
+    anchorTo: number;
+    summaryFrom: number;
+    summaryTo: number;
+    lineFrom: number;
+    lineTo: number;
+    summaryText: string;
+    defaultCollapsed: boolean;
+  }> = [];
+  const tree = resolvedSyntaxTree(state);
+
+  tree.iterate({
+    enter(node: any) {
+      if (node.name !== 'HTMLBlock') {
+        return;
+      }
+
+      const rawText = state.doc.sliceString(node.from, node.to);
+      const openTagMatch = rawText.match(detailsOpenTagPattern);
+      if (openTagMatch) {
+        const openingLine = state.doc.lineAt(node.from);
+        const summaryMatch = rawText.match(summaryTagPattern);
+        const summaryFrom = typeof summaryMatch?.index === 'number'
+          ? node.from + summaryMatch.index
+          : node.from;
+        const summaryTo = typeof summaryMatch?.index === 'number'
+          ? summaryFrom + summaryMatch[0].length
+          : openingLine.to;
+        pendingBlocks.push({
+          anchorFrom: node.from,
+          anchorTo: node.to,
+          summaryFrom,
+          summaryTo,
+          lineFrom: openingLine.from,
+          lineTo: openingLine.to,
+          summaryText: normalizeSummaryText(summaryMatch?.[1]),
+          defaultCollapsed: !hasDetailsOpenAttribute(openTagMatch[0])
+        });
+      }
+
+      if (!detailsCloseTagPattern.test(rawText)) {
+        return;
+      }
+
+      const openBlock = pendingBlocks.pop();
+      if (!openBlock) {
+        return;
+      }
+
+      detailsBlocks.push({
+        kind: 'details',
+        anchorFrom: openBlock.anchorFrom,
+        anchorTo: openBlock.anchorTo,
+        summaryFrom: openBlock.summaryFrom,
+        summaryTo: openBlock.summaryTo,
+        lineFrom: openBlock.lineFrom,
+        lineTo: openBlock.lineTo,
+        sectionFrom: openBlock.anchorFrom,
+        sectionTo: node.to,
+        bodyFrom: openBlock.anchorTo,
+        bodyTo: node.from,
+        closingFrom: node.from,
+        closingTo: node.to,
+        summaryText: openBlock.summaryText,
+        defaultCollapsed: openBlock.defaultCollapsed
+      });
+    }
+  });
+
+  detailsBlocks.sort((a, b) => a.anchorFrom - b.anchorFrom);
+  return detailsBlocks;
 }
 
 export function extractHeadingSections(state: EditorState): HeadingSection[] {

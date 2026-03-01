@@ -666,6 +666,38 @@ body {
   transform: rotate(-90deg);
 }
 
+.cm-editor .meo-md-details-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.cm-editor .cm-line.meo-md-details-summary-line {
+  box-shadow: inset 0 -1px 0 color-mix(
+    in srgb,
+    var(--meo-color-base03, var(--vscode-editorLineNumber-foreground)) 70%,
+    transparent
+  );
+}
+
+.cm-editor .meo-md-details-summary:hover,
+.cm-editor .meo-md-details-summary:focus-visible {
+  color: var(--vscode-editor-foreground);
+  outline: none;
+}
+
+.cm-editor .meo-md-details-summary-label {
+  display: inline;
+}
+
 .cm-editor .cm-gutterElement.cm-activeLineGutter {
   background: transparent !important;
   color: var(--vscode-editor-foreground);

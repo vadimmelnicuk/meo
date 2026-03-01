@@ -21,7 +21,9 @@ import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSynt
 import {
   headingCollapseLiveExtensions,
   headingCollapseSharedExtensions,
-  getCollapsedHeadingSections
+  getCollapsedHeadingSections,
+  getDetailsBlocks,
+  toggleCollapsibleSection
 } from './helpers/headingCollapse';
 import {
   addListMarkerDecoration,
@@ -78,6 +80,7 @@ const lineStyleDecos = {
   h4: Decoration.line({ class: 'meo-md-h4' }),
   h5: Decoration.line({ class: 'meo-md-h5' }),
   h6: Decoration.line({ class: 'meo-md-h6' }),
+  detailsSummary: Decoration.line({ class: 'meo-md-details-summary-line' }),
   quote: Decoration.line({ class: 'meo-md-quote' }),
   mergeIncomingHeader: Decoration.line({ class: 'meo-merge-line meo-merge-incoming-header' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
@@ -401,6 +404,61 @@ function frontmatterArrayPillsWidget(itemLabels) {
   return widget;
 }
 
+class DetailsSummaryWidget extends WidgetType {
+  anchor: number;
+  lineFrom: number;
+  summaryText: string;
+  collapsed: boolean;
+
+  constructor(anchor: number, lineFrom: number, summaryText: string, collapsed: boolean) {
+    super();
+    this.anchor = anchor;
+    this.lineFrom = lineFrom;
+    this.summaryText = summaryText;
+    this.collapsed = collapsed;
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof DetailsSummaryWidget &&
+      other.anchor === this.anchor &&
+      other.lineFrom === this.lineFrom &&
+      other.summaryText === this.summaryText &&
+      other.collapsed === this.collapsed
+    );
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'meo-md-details-summary';
+    button.title = this.collapsed ? 'Expand details' : 'Collapse details';
+    button.setAttribute('aria-label', this.collapsed ? 'Expand details' : 'Collapse details');
+
+    const label = document.createElement('span');
+    label.className = 'meo-md-details-summary-label';
+    label.textContent = this.summaryText;
+    button.appendChild(label);
+
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCollapsibleSection(view, this.anchor);
+    });
+
+    return button;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   const urlNode = findChildNode(node, 'URL');
   if (!urlNode) {
@@ -584,6 +642,64 @@ function addLineClass(builder, state, from, to, deco) {
   }
 }
 
+function rangeTouchesActiveLine(state: EditorState, from: number, to: number, activeLines: Set<number>): boolean {
+  if (to <= from) {
+    return false;
+  }
+
+  const startLine = state.doc.lineAt(from).number;
+  const endLine = state.doc.lineAt(Math.max(from, to - 1)).number;
+  for (let lineNo = startLine; lineNo <= endLine; lineNo += 1) {
+    if (activeLines.has(lineNo)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function addDetailsBlockDecorations(builder, state, detailsBlocks, activeLines) {
+  for (const detailsBlock of detailsBlocks) {
+    const openingActive = rangeTouchesActiveLine(state, detailsBlock.anchorFrom, detailsBlock.anchorTo, activeLines);
+    const closingActive = rangeTouchesActiveLine(state, detailsBlock.closingFrom, detailsBlock.closingTo, activeLines);
+    const editingBoundary = openingActive || closingActive;
+
+    if (!editingBoundary) {
+      addLineClass(builder, state, detailsBlock.lineFrom, detailsBlock.lineTo, lineStyleDecos.detailsSummary);
+
+      if (detailsBlock.summaryFrom > detailsBlock.anchorFrom) {
+        builder.push(
+          collapsedHeadingBodyDeco.range(detailsBlock.anchorFrom, detailsBlock.summaryFrom)
+        );
+      }
+
+      builder.push(
+        Decoration.replace({
+          widget: new DetailsSummaryWidget(
+            detailsBlock.anchorFrom,
+            detailsBlock.lineFrom,
+            detailsBlock.summaryText,
+            detailsBlock.collapsed
+          )
+        }).range(detailsBlock.summaryFrom, detailsBlock.summaryTo)
+      );
+
+      if (detailsBlock.anchorTo > detailsBlock.summaryTo) {
+        builder.push(
+          collapsedHeadingBodyDeco.range(detailsBlock.summaryTo, detailsBlock.anchorTo)
+        );
+      }
+    }
+
+    if (!editingBoundary) {
+      builder.push(collapsedHeadingBodyDeco.range(detailsBlock.closingFrom, detailsBlock.closingTo));
+    }
+
+    if (detailsBlock.collapsed && detailsBlock.bodyTo > detailsBlock.bodyFrom) {
+      builder.push(collapsedHeadingBodyDeco.range(detailsBlock.bodyFrom, detailsBlock.bodyTo));
+    }
+  }
+}
+
 function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -664,6 +780,7 @@ function buildDecorations(state) {
   const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
   const collapsedHeadingSections = getCollapsedHeadingSections(state);
+  const detailsBlocks = getDetailsBlocks(state);
   const strikeRanges = collectStrikethroughRanges(tree);
   const codeBlockLines = collectCodeBlockLines(state, tree);
   const parsedTableRanges = [];
@@ -868,6 +985,7 @@ function buildDecorations(state) {
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
   addEmojiDecorations(ranges, state, codeBlockLines);
+  addDetailsBlockDecorations(ranges, state, detailsBlocks, activeLines);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
     addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);

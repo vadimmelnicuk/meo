@@ -1,11 +1,26 @@
 import { RangeSetBuilder, StateEffect, StateField, Transaction, EditorState } from '@codemirror/state';
 import { EditorView, GutterMarker, gutter } from '@codemirror/view';
 import { createElement, ChevronDown } from 'lucide';
-import { extractHeadingSections, HeadingSection } from './markdownSyntax';
+import { extractDetailsBlocks, extractHeadingSections, HeadingSection, DetailsBlockInfo } from './markdownSyntax';
 
 const toggleHeadingCollapseEffect = StateEffect.define<number>();
 const expandHeadingCollapseEffect = StateEffect.define<number[]>();
-const emptyCollapsedHeadings: readonly number[] = Object.freeze([]);
+const emptyCollapseOverrides = Object.freeze(new Map<number, boolean>());
+
+interface CollapsibleSection {
+  kind: 'heading' | 'details';
+  anchor: number;
+  lineFrom: number;
+  collapseFrom: number;
+  collapseTo: number;
+  defaultCollapsed: boolean;
+  headingSection: HeadingSection | null;
+  detailsBlock: DetailsBlockInfo | null;
+}
+
+export interface DetailsBlockState extends DetailsBlockInfo {
+  collapsed: boolean;
+}
 
 function isHeadingSectionCollapsible(state: EditorState, section: HeadingSection): boolean {
   if (!section || section.collapseTo <= section.collapseFrom) {
@@ -14,13 +29,52 @@ function isHeadingSectionCollapsible(state: EditorState, section: HeadingSection
   return state.doc.sliceString(section.collapseFrom, section.collapseTo).trim().length > 0;
 }
 
+function createHeadingCollapsibleSection(section: HeadingSection): CollapsibleSection {
+  return {
+    kind: 'heading',
+    anchor: section.lineFrom,
+    lineFrom: section.lineFrom,
+    collapseFrom: section.collapseFrom,
+    collapseTo: section.collapseTo,
+    defaultCollapsed: false,
+    headingSection: section,
+    detailsBlock: null
+  };
+}
+
+function createDetailsCollapsibleSection(detailsBlock: DetailsBlockInfo): CollapsibleSection {
+  return {
+    kind: 'details',
+    anchor: detailsBlock.anchorFrom,
+    lineFrom: detailsBlock.lineFrom,
+    collapseFrom: detailsBlock.bodyFrom,
+    collapseTo: detailsBlock.bodyTo,
+    defaultCollapsed: detailsBlock.defaultCollapsed,
+    headingSection: null,
+    detailsBlock
+  };
+}
+
 function getCollapsibleHeadingSections(state: EditorState): HeadingSection[] {
   return extractHeadingSections(state).filter((section) => isHeadingSectionCollapsible(state, section));
 }
 
-function getCollapsibleHeadingSectionMap(state: EditorState): Map<number, HeadingSection> {
-  const sections = getCollapsibleHeadingSections(state);
-  return new Map(sections.map((section) => [section.lineFrom, section]));
+function getCollapsibleSections(state: EditorState): CollapsibleSection[] {
+  const sections = [
+    ...getCollapsibleHeadingSections(state).map(createHeadingCollapsibleSection),
+    ...extractDetailsBlocks(state).map(createDetailsCollapsibleSection)
+  ];
+
+  sections.sort((a, b) => a.lineFrom - b.lineFrom || a.anchor - b.anchor);
+  return sections;
+}
+
+function getCollapsibleSectionLineMap(state: EditorState): Map<number, CollapsibleSection> {
+  return new Map(getCollapsibleSections(state).map((section) => [section.lineFrom, section]));
+}
+
+function getCollapsibleSectionAnchorMap(state: EditorState): Map<number, CollapsibleSection> {
+  return new Map(getCollapsibleSections(state).map((section) => [section.anchor, section]));
 }
 
 function hasHeadingCollapseEffect(transaction: any): boolean {
@@ -35,127 +89,216 @@ function hasToggleHeadingCollapseEffect(transaction: any): boolean {
   return transaction.effects.some((effect: any) => effect.is(toggleHeadingCollapseEffect));
 }
 
-function mapCollapsedHeadingAnchors(anchors: readonly number[], transaction: any): number[] {
-  if (!anchors.length || !transaction.docChanged) {
-    return anchors.slice();
+function mapCollapseOverrides(
+  overrides: ReadonlyMap<number, boolean>,
+  transaction: Transaction
+): Map<number, boolean> {
+  if (!overrides.size || !transaction.docChanged) {
+    return new Map(overrides);
   }
-  return anchors.map((lineFrom) => transaction.changes.mapPos(lineFrom, 1));
+
+  const mapped = new Map<number, boolean>();
+  for (const [anchor, collapsed] of overrides) {
+    mapped.set(transaction.changes.mapPos(anchor, 1), collapsed);
+  }
+  return mapped;
 }
 
-function normalizeCollapsedHeadingAnchors(state: EditorState, anchors: number[]): readonly number[] {
-  if (!anchors.length) {
-    return emptyCollapsedHeadings;
+function normalizeCollapseOverrides(
+  state: EditorState,
+  overrides: Map<number, boolean>
+): ReadonlyMap<number, boolean> {
+  if (!overrides.size) {
+    return emptyCollapseOverrides;
   }
 
-  const validLineStarts = new Set(getCollapsibleHeadingSections(state).map((section) => section.lineFrom));
-  const normalized: number[] = [];
+  const sections = getCollapsibleSectionAnchorMap(state);
+  const normalizedEntries: Array<[number, boolean]> = [];
   const seen = new Set<number>();
-  for (const lineFrom of anchors) {
-    if (!validLineStarts.has(lineFrom) || seen.has(lineFrom)) {
+  for (const [anchor, collapsed] of overrides) {
+    if (seen.has(anchor)) {
       continue;
     }
-    seen.add(lineFrom);
-    normalized.push(lineFrom);
+    seen.add(anchor);
+
+    const section = sections.get(anchor);
+    if (!section || collapsed === section.defaultCollapsed) {
+      continue;
+    }
+
+    normalizedEntries.push([anchor, collapsed]);
   }
 
-  normalized.sort((a, b) => a - b);
-  return normalized.length ? normalized : emptyCollapsedHeadings;
+  if (!normalizedEntries.length) {
+    return emptyCollapseOverrides;
+  }
+
+  normalizedEntries.sort((a, b) => a[0] - b[0]);
+  return new Map(normalizedEntries);
 }
 
-function arraysEqual(a: readonly number[], b: readonly number[]): boolean {
+function collapseOverridesEqual(
+  a: ReadonlyMap<number, boolean>,
+  b: ReadonlyMap<number, boolean>
+): boolean {
   if (a === b) {
     return true;
   }
-  if (a.length !== b.length) {
+  if (a.size !== b.size) {
     return false;
   }
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) {
+
+  const aEntries = a.entries();
+  const bEntries = b.entries();
+  while (true) {
+    const nextA = aEntries.next();
+    const nextB = bEntries.next();
+    if (nextA.done || nextB.done) {
+      return nextA.done === nextB.done;
+    }
+    if (nextA.value[0] !== nextB.value[0] || nextA.value[1] !== nextB.value[1]) {
       return false;
     }
   }
-  return true;
 }
 
 function sortedNumbersFromSet(values: Set<number>): readonly number[] {
   if (!values.size) {
-    return emptyCollapsedHeadings;
+    return [];
   }
   return Array.from(values).sort((a, b) => a - b);
 }
 
-function toggleSetNumber(values: Set<number>, value: number): void {
-  if (values.has(value)) {
-    values.delete(value);
-    return;
-  }
-  values.add(value);
+function getEffectiveCollapsedState(
+  overrides: ReadonlyMap<number, boolean>,
+  section: CollapsibleSection
+): boolean {
+  return overrides.get(section.anchor) ?? section.defaultCollapsed;
 }
 
-const headingCollapseStateField = StateField.define<readonly number[]>({
-  create(): readonly number[] {
-    return emptyCollapsedHeadings;
+function setCollapseOverride(
+  overrides: Map<number, boolean>,
+  sections: Map<number, CollapsibleSection>,
+  anchor: number,
+  collapsed: boolean
+): void {
+  const section = sections.get(anchor);
+  if (!section) {
+    return;
+  }
+
+  if (collapsed === section.defaultCollapsed) {
+    overrides.delete(anchor);
+    return;
+  }
+
+  overrides.set(anchor, collapsed);
+}
+
+function toggleCollapseOverride(
+  overrides: Map<number, boolean>,
+  sections: Map<number, CollapsibleSection>,
+  anchor: number
+): void {
+  const section = sections.get(anchor);
+  if (!section) {
+    return;
+  }
+
+  const nextCollapsed = !getEffectiveCollapsedState(overrides, section);
+  setCollapseOverride(overrides, sections, anchor, nextCollapsed);
+}
+
+const headingCollapseStateField = StateField.define<ReadonlyMap<number, boolean>>({
+  create(): ReadonlyMap<number, boolean> {
+    return emptyCollapseOverrides;
   },
-  update(collapsedHeadings: readonly number[], transaction: any): readonly number[] {
+  update(
+    collapsedHeadings: ReadonlyMap<number, boolean>,
+    transaction: Transaction
+  ): ReadonlyMap<number, boolean> {
     const hasEffectChange = hasHeadingCollapseEffect(transaction);
     if (!transaction.docChanged && !hasEffectChange) {
       return collapsedHeadings;
     }
 
-    let next = mapCollapsedHeadingAnchors(collapsedHeadings, transaction);
+    let next = mapCollapseOverrides(collapsedHeadings, transaction);
+    const sections = getCollapsibleSectionAnchorMap(transaction.state);
 
     if (hasEffectChange) {
-      const nextSet = new Set(next);
       for (const effect of transaction.effects) {
         if (effect.is(toggleHeadingCollapseEffect)) {
-          toggleSetNumber(nextSet, effect.value);
+          toggleCollapseOverride(next, sections, effect.value);
           continue;
         }
         if (effect.is(expandHeadingCollapseEffect)) {
-          for (const lineFrom of effect.value) {
-            nextSet.delete(lineFrom);
+          for (const anchor of effect.value) {
+            setCollapseOverride(next, sections, anchor, false);
           }
         }
       }
-      next = Array.from(nextSet);
     }
 
-    const normalized = normalizeCollapsedHeadingAnchors(transaction.state, next);
-    return arraysEqual(normalized, collapsedHeadings) ? collapsedHeadings : normalized;
+    const normalized = normalizeCollapseOverrides(transaction.state, next);
+    return collapseOverridesEqual(normalized, collapsedHeadings) ? collapsedHeadings : normalized;
   }
 });
 
 const headingCollapseSharedExtension = Object.freeze([headingCollapseStateField]);
 
-function getCollapsedHeadingAnchors(state: EditorState): readonly number[] {
-  return state.field(headingCollapseStateField, false) ?? emptyCollapsedHeadings;
+function getCollapseOverrides(state: EditorState): ReadonlyMap<number, boolean> {
+  return state.field(headingCollapseStateField, false) ?? emptyCollapseOverrides;
 }
 
-function isHeadingCollapsed(state: EditorState, lineFrom: number): boolean {
-  return getCollapsedHeadingAnchors(state).includes(lineFrom);
+function isSectionCollapsed(state: EditorState, section: CollapsibleSection): boolean {
+  return getEffectiveCollapsedState(getCollapseOverrides(state), section);
+}
+
+function isSectionCollapsedByAnchor(state: EditorState, anchor: number, defaultCollapsed: boolean): boolean {
+  return getCollapseOverrides(state).get(anchor) ?? defaultCollapsed;
+}
+
+function getCollapsedSections(state: EditorState): CollapsibleSection[] {
+  return getCollapsibleSections(state).filter((section) => isSectionCollapsed(state, section));
 }
 
 export function getCollapsedHeadingSections(state: EditorState): HeadingSection[] {
-  const collapsedLineStarts = getCollapsedHeadingAnchors(state);
-  if (!collapsedLineStarts.length) {
-    return [];
+  return getCollapsedSections(state)
+    .filter((section) => section.kind === 'heading' && section.headingSection)
+    .map((section) => section.headingSection as HeadingSection);
+}
+
+export function getDetailsBlocks(state: EditorState): DetailsBlockState[] {
+  return extractDetailsBlocks(state).map((detailsBlock) => ({
+    ...detailsBlock,
+    collapsed: isSectionCollapsedByAnchor(state, detailsBlock.anchorFrom, detailsBlock.defaultCollapsed)
+  }));
+}
+
+export function toggleCollapsibleSection(view: EditorView, anchor: number): boolean {
+  const section = getCollapsibleSectionAnchorMap(view.state).get(anchor);
+  if (!section) {
+    return false;
   }
 
-  const sectionMap = getCollapsibleHeadingSectionMap(state);
-  const sections: HeadingSection[] = [];
-  for (const lineFrom of collapsedLineStarts) {
-    const section = sectionMap.get(lineFrom);
-    if (section) {
-      sections.push(section);
-    }
+  const isCollapsed = isSectionCollapsed(view.state, section);
+  const transactionSpec: any = {
+    effects: toggleHeadingCollapseEffect.of(section.anchor),
+    annotations: Transaction.addToHistory.of(false)
+  };
+  if (!isCollapsed && section.kind === 'heading') {
+    transactionSpec.selection = { anchor: section.lineFrom };
   }
-  return sections.length ? sections : [];
+
+  view.dispatch(transactionSpec);
+  view.focus();
+  return true;
 }
 
 function collectCollapsedHeadingAnchorsForSelection(state: EditorState): readonly number[] {
-  const collapsedSections = getCollapsedHeadingSections(state);
+  const collapsedSections = getCollapsedSections(state);
   if (!collapsedSections.length) {
-    return emptyCollapsedHeadings;
+    return [];
   }
 
   const matches = new Set<number>();
@@ -165,12 +308,12 @@ function collectCollapsedHeadingAnchorsForSelection(state: EditorState): readonl
     for (const section of collapsedSections) {
       if (selectionRange.empty) {
         if (from > section.collapseFrom && from < section.collapseTo) {
-          matches.add(section.lineFrom);
+          matches.add(section.anchor);
         }
         continue;
       }
       if (from < section.collapseTo && to > section.collapseFrom) {
-        matches.add(section.lineFrom);
+        matches.add(section.anchor);
       }
     }
   }
@@ -230,12 +373,11 @@ const headingFoldGutterSpacerMarker = new HeadingFoldGutterSpacerMarker();
 
 function buildHeadingFoldGutterMarkers(state: EditorState): any {
   const builder = new RangeSetBuilder<any>();
-  const collapsedAnchors = new Set(getCollapsedHeadingAnchors(state));
-  for (const section of getCollapsibleHeadingSections(state)) {
+  for (const section of getCollapsibleSections(state)) {
     builder.add(
       section.lineFrom,
       section.lineFrom,
-      collapsedAnchors.has(section.lineFrom) ? collapsedHeadingFoldMarker : expandedHeadingFoldMarker
+      isSectionCollapsed(state, section) ? collapsedHeadingFoldMarker : expandedHeadingFoldMarker
     );
   }
   return builder.finish();
@@ -269,24 +411,12 @@ const liveHeadingFoldGutterExtension = gutter({
         return false;
       }
 
-      const section = getCollapsibleHeadingSectionMap(view.state).get(line.from);
+      const section = getCollapsibleSectionLineMap(view.state).get(line.from);
       event.preventDefault();
       event.stopPropagation();
-      if (!section) {
-        return true;
+      if (section) {
+        toggleCollapsibleSection(view, section.anchor);
       }
-
-      const isCollapsed = isHeadingCollapsed(view.state, section.lineFrom);
-      const transactionSpec: any = {
-        effects: toggleHeadingCollapseEffect.of(section.lineFrom),
-        annotations: Transaction.addToHistory.of(false)
-      };
-      if (!isCollapsed) {
-        transactionSpec.selection = { anchor: section.lineFrom };
-      }
-
-      view.dispatch(transactionSpec);
-      view.focus();
       return true;
     }
   }
@@ -297,18 +427,18 @@ const liveHeadingAutoExpandSelectionExtension = EditorView.updateListener.of((up
     return;
   }
 
-  const collapsedAnchors = getCollapsedHeadingAnchors(update.state);
-  if (!collapsedAnchors.length) {
+  const collapsedSections = getCollapsedSections(update.state);
+  if (!collapsedSections.length) {
     return;
   }
 
-  const expandLineStarts = collectCollapsedHeadingAnchorsForSelection(update.state);
-  if (!expandLineStarts.length) {
+  const expandAnchors = collectCollapsedHeadingAnchorsForSelection(update.state);
+  if (!expandAnchors.length) {
     return;
   }
 
   update.view.dispatch({
-    effects: expandHeadingCollapseEffect.of(expandLineStarts as number[]),
+    effects: expandHeadingCollapseEffect.of(expandAnchors as number[]),
     annotations: Transaction.addToHistory.of(false)
   });
 });
