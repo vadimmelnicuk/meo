@@ -3,7 +3,20 @@ import { light as emoji } from 'markdown-it-emoji';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc } from './assetPaths';
+import { extractExportFrontmatter } from './frontmatter';
+import { prepareMarkdownWithFootnotes } from './footnotes';
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
+
+const POWER_QUERY_KEYWORDS =
+  'let in each if then else try otherwise error and or not as is type meta section shared';
+const POWER_QUERY_HASH_KEYWORDS =
+  '#date #time #datetime #datetimezone #duration #table #binary #sections #shared';
+const FENCE_LANGUAGE_ALIASES: Record<string, string> = {
+  m: 'powerquery',
+  pq: 'powerquery'
+};
+
+registerExportLanguages();
 
 export type RenderMarkdownTarget = 'html' | 'pdf';
 
@@ -22,11 +35,12 @@ export type RenderMarkdownResult = {
 export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMarkdownResult {
   let hasMermaid = false;
   const normalizedMarkdown = normalizeMarkdownForExport(options.markdownText);
+  const extractedFrontmatter = extractExportFrontmatter(normalizedMarkdown);
 
   const md = new MarkdownIt({
     html: true,
     linkify: true,
-    breaks: false,
+    breaks: true,
     langPrefix: 'language-',
     highlight(code, info) {
       const language = normalizeFenceLanguage(info);
@@ -73,7 +87,18 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     return defaultImageRule(tokens, idx, opts, env, self);
   };
 
-  const rawHtml = md.render(normalizedMarkdown);
+  const preparedMarkdown = prepareMarkdownWithFootnotes(extractedFrontmatter.bodyMarkdown, {
+    target: options.target,
+    outputFilePath: options.outputFilePath,
+    renderMarkdown: (markdownText) => md.render(markdownText),
+    normalizeMarkdown: normalizeMarkdownForExport
+  });
+  const bodyHtml = md.render(preparedMarkdown.bodyMarkdown);
+  const rawHtml = [
+    extractedFrontmatter.frontmatterHtml,
+    bodyHtml,
+    preparedMarkdown.footnotesHtml
+  ].join('');
   const html = sanitizeHtml(rawHtml, {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags,
@@ -336,7 +361,8 @@ function removeTaskPrefixFromInlineToken(token: any, prefixLength: number): void
 
 function normalizeFenceLanguage(info: string): string {
   const first = `${info ?? ''}`.trim().split(/\s+/, 1)[0] ?? '';
-  return first.toLowerCase();
+  const normalized = first.toLowerCase();
+  return FENCE_LANGUAGE_ALIASES[normalized] ?? normalized;
 }
 
 const ALERT_TYPES = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'] as const;
@@ -438,6 +464,47 @@ function installAlertTransform(md: MarkdownIt): void {
 
     return defaultBlockquoteRender(tokens, idx, opts, env, self);
   };
+}
+
+function registerExportLanguages(): void {
+  if (hljs.getLanguage('powerquery')) {
+    return;
+  }
+
+  hljs.registerLanguage('powerquery', () => ({
+    name: 'PowerQuery',
+    keywords: {
+      keyword: POWER_QUERY_KEYWORDS,
+      literal: 'true false null',
+      built_in: POWER_QUERY_HASH_KEYWORDS
+    },
+    contains: [
+      hljs.C_LINE_COMMENT_MODE,
+      hljs.COMMENT(/\/\*/, /\*\//),
+      {
+        className: 'property',
+        begin: /\[[^\]\r\n]+\]/
+      },
+      {
+        className: 'variable',
+        begin: /@[a-z_][a-z0-9_]*/i
+      },
+      {
+        className: 'string',
+        variants: [
+          {
+            begin: /#?"/,
+            end: /(?<!")"(?!")/,
+            contains: [{ begin: /""/ }]
+          }
+        ]
+      },
+      {
+        className: 'number',
+        begin: /\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i
+      }
+    ]
+  }));
 }
 
 function highlightFence(code: string, language: string): string {

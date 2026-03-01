@@ -118,15 +118,18 @@ export function extractDetailsBlocks(state: EditorState): DetailsBlockInfo[] {
       if (openTagMatch) {
         const openingLine = state.doc.lineAt(node.from);
         const summaryMatch = rawText.match(summaryTagPattern);
+        const openerTo = typeof summaryMatch?.index === 'number'
+          ? node.from + summaryMatch.index + summaryMatch[0].length
+          : openingLine.to;
         const summaryFrom = typeof summaryMatch?.index === 'number'
           ? node.from + summaryMatch.index
           : node.from;
         const summaryTo = typeof summaryMatch?.index === 'number'
-          ? summaryFrom + summaryMatch[0].length
+          ? openerTo
           : openingLine.to;
         pendingBlocks.push({
           anchorFrom: node.from,
-          anchorTo: node.to,
+          anchorTo: openerTo,
           summaryFrom,
           summaryTo,
           lineFrom: openingLine.from,
@@ -145,6 +148,8 @@ export function extractDetailsBlocks(state: EditorState): DetailsBlockInfo[] {
         return;
       }
 
+      const closingLine = state.doc.lineAt(node.from);
+
       detailsBlocks.push({
         kind: 'details',
         anchorFrom: openBlock.anchorFrom,
@@ -154,11 +159,11 @@ export function extractDetailsBlocks(state: EditorState): DetailsBlockInfo[] {
         lineFrom: openBlock.lineFrom,
         lineTo: openBlock.lineTo,
         sectionFrom: openBlock.anchorFrom,
-        sectionTo: node.to,
+        sectionTo: closingLine.to,
         bodyFrom: openBlock.anchorTo,
         bodyTo: node.from,
         closingFrom: node.from,
-        closingTo: node.to,
+        closingTo: closingLine.to,
         summaryText: openBlock.summaryText,
         defaultCollapsed: openBlock.defaultCollapsed
       });

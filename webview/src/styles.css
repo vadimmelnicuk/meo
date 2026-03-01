@@ -667,15 +667,16 @@ body {
 }
 
 .cm-editor .meo-md-details-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 1px 0;
+  display: inline-block;
+  margin: 0;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   font-weight: 600;
+  line-height: inherit;
+  vertical-align: baseline;
   cursor: pointer;
   border-radius: 3px;
 }
@@ -875,6 +876,54 @@ body {
 .cm-editor .meo-md-link-marker,
 .cm-editor .meo-md-link-marker-active {
   color: var(--meo-color-base02) !important;
+}
+
+.cm-editor .meo-md-footnote-ref,
+.cm-editor .meo-md-footnote-backref {
+  display: inline-flex;
+  align-items: baseline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--meo-color-base05);
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.cm-editor .meo-md-footnote-ref {
+  vertical-align: super;
+  font-size: 0.78em;
+}
+
+.cm-editor .meo-md-footnote-ref sup {
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.cm-editor .meo-md-footnote-backref {
+  margin-right: 0.45em;
+  color: var(--meo-color-base05);
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-editor .meo-md-footnote-ref:hover,
+.cm-editor .meo-md-footnote-ref:focus-visible,
+.cm-editor .meo-md-footnote-backref:hover,
+.cm-editor .meo-md-footnote-backref:focus-visible {
+  color: var(--vscode-editor-foreground);
+  outline: none;
+}
+
+.cm-editor .cm-line.meo-md-footnote-line {
+  color: var(--vscode-editor-foreground);
+}
+
+.cm-editor .cm-line.meo-md-footnote-continuation {
+  padding-left: 2.1em;
 }
 
 .cm-editor .meo-md-wiki-marker,
@@ -1117,8 +1166,10 @@ body {
   outline: none;
 }
 
-.cm-editor .meo-task-complete {
-  color: var(--meo-color-base02);
+.cm-editor .meo-task-complete,
+.cm-editor .meo-task-complete * {
+  color: var(--meo-color-base02) !important;
+  text-decoration-color: currentColor !important;
 }
 
 .cm-editor .meo-md-list-border {

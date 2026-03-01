@@ -47,6 +47,7 @@ import {
   AlertIconWidget,
   detectAlertInBlockquote
 } from './helpers/alerts';
+import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -84,6 +85,8 @@ const lineStyleDecos = {
   quote: Decoration.line({ class: 'meo-md-quote' }),
   mergeIncomingHeader: Decoration.line({ class: 'meo-merge-line meo-merge-incoming-header' }),
   codeBlock: Decoration.line({ class: 'meo-md-code-block' }),
+  footnote: Decoration.line({ class: 'meo-md-footnote-line' }),
+  footnoteContinuation: Decoration.line({ class: 'meo-md-footnote-line meo-md-footnote-continuation' }),
   frontmatterContent: Decoration.line({ class: 'meo-md-frontmatter-content' }),
   frontmatterBoundary: Decoration.line({ class: 'meo-md-hr meo-md-frontmatter-boundary' }),
   hrActive: Decoration.line({ class: 'meo-md-hr-active' }),
@@ -459,6 +462,107 @@ class DetailsSummaryWidget extends WidgetType {
   }
 }
 
+class FootnoteReferenceWidget extends WidgetType {
+  footnoteNumber: number;
+  definitionFrom: number;
+
+  constructor(footnoteNumber: number, definitionFrom: number) {
+    super();
+    this.footnoteNumber = footnoteNumber;
+    this.definitionFrom = definitionFrom;
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof FootnoteReferenceWidget &&
+      other.footnoteNumber === this.footnoteNumber &&
+      other.definitionFrom === this.definitionFrom
+    );
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'meo-md-footnote-ref';
+    button.title = `Jump to footnote ${this.footnoteNumber}`;
+    button.setAttribute('aria-label', `Jump to footnote ${this.footnoteNumber}`);
+
+    const number = document.createElement('sup');
+    number.textContent = String(this.footnoteNumber);
+    button.appendChild(number);
+
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      view.dispatch({
+        selection: { anchor: this.definitionFrom },
+        effects: EditorView.scrollIntoView(this.definitionFrom, { y: 'center' })
+      });
+      view.focus();
+    });
+
+    return button;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+class FootnoteBacklinkWidget extends WidgetType {
+  footnoteNumber: number;
+  referenceFrom: number;
+
+  constructor(footnoteNumber: number, referenceFrom: number) {
+    super();
+    this.footnoteNumber = footnoteNumber;
+    this.referenceFrom = referenceFrom;
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof FootnoteBacklinkWidget &&
+      other.footnoteNumber === this.footnoteNumber &&
+      other.referenceFrom === this.referenceFrom
+    );
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'meo-md-footnote-backref';
+    button.title = `Jump to footnote reference ${this.footnoteNumber}`;
+    button.setAttribute('aria-label', `Jump to footnote reference ${this.footnoteNumber}`);
+    button.textContent = `${this.footnoteNumber}.`;
+
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      view.dispatch({
+        selection: { anchor: this.referenceFrom },
+        effects: EditorView.scrollIntoView(this.referenceFrom, { y: 'center' })
+      });
+      view.focus();
+    });
+
+    return button;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   const urlNode = findChildNode(node, 'URL');
   if (!urlNode) {
@@ -493,6 +597,21 @@ function addMarkdownLinkDecorations(builder, state, node, activeLines) {
       widget: new ClearLinkUrlWidget(urlNode.from, urlNode.to),
       side: 1
     }).range(urlNode.to)
+  );
+}
+
+function addFootnoteReferenceDecorations(builder, state, reference, activeLines) {
+  const line = state.doc.lineAt(reference.from);
+  const editingReference = activeLines.has(line.number) || overlapsSelection(state, reference.from, reference.to);
+  if (editingReference || !reference.number || !reference.definition) {
+    return;
+  }
+
+  builder.push(
+    Decoration.replace({
+      widget: new FootnoteReferenceWidget(reference.number, reference.definition.lineFrom),
+      inclusive: false
+    }).range(reference.from, reference.to)
   );
 }
 
@@ -700,6 +819,44 @@ function addDetailsBlockDecorations(builder, state, detailsBlocks, activeLines) 
   }
 }
 
+function addFootnoteDefinitionDecorations(builder, state, footnotes, activeLines) {
+  for (const definition of footnotes.definitions) {
+    if (!definition.isPrimary) {
+      continue;
+    }
+
+    const showRawSyntax =
+      rangeTouchesActiveLine(state, definition.lineFrom, definition.lineTo, activeLines) ||
+      overlapsSelection(state, definition.lineFrom, definition.lineTo);
+    const hasResolvedTarget = definition.number !== null && definition.firstReferenceFrom !== null;
+
+    if (showRawSyntax || !hasResolvedTarget) {
+      addRange(builder, definition.colonFrom, definition.colonTo, activeLinkMarkerDeco);
+    }
+    if (showRawSyntax || !hasResolvedTarget) {
+      continue;
+    }
+
+    const firstLine = state.doc.lineAt(definition.lineFrom);
+    builder.push(
+      Decoration.replace({
+        widget: new FootnoteBacklinkWidget(definition.number, definition.firstReferenceFrom),
+        inclusive: false
+      }).range(definition.markerFrom, definition.markerTo)
+    );
+    builder.push(lineStyleDecos.footnote.range(firstLine.from));
+
+    for (const continuationLine of definition.continuationLines) {
+      builder.push(lineStyleDecos.footnoteContinuation.range(continuationLine.from));
+      if (continuationLine.hideIndentFrom !== null && continuationLine.hideIndentTo !== null) {
+        builder.push(
+          collapsedHeadingBodyDeco.range(continuationLine.hideIndentFrom, continuationLine.hideIndentTo)
+        );
+      }
+    }
+  }
+}
+
 function addAtxHeadingPrefixMarkers(builder, state, from, activeLines) {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
@@ -779,6 +936,7 @@ function buildDecorations(state) {
   const activeLines = collectActiveLines(state);
   const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
+  const footnotes = parseFootnotes(state);
   const collapsedHeadingSections = getCollapsedHeadingSections(state);
   const detailsBlocks = getDetailsBlocks(state);
   const strikeRanges = collectStrikethroughRanges(tree);
@@ -867,6 +1025,11 @@ function buildDecorations(state) {
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
       } else if (node.name === 'Link') {
+        const footnoteReference = footnotes.referenceByKey.get(footnoteReferenceKey(node.from, node.to));
+        if (footnoteReference) {
+          addFootnoteReferenceDecorations(ranges, state, footnoteReference, activeLines);
+          return;
+        }
         if (addWikiLinkDecorations(ranges, state, node, activeLines)) {
           return;
         }
@@ -949,6 +1112,14 @@ function buildDecorations(state) {
         addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, codeMarkerDeco, activeCodeMarkerDeco);
       } else if (node.name === 'LinkMark') {
         const parentName = node.node.parent?.name ?? '';
+        if (
+          parentName === 'Link' &&
+          footnotes.referenceByKey.has(
+            footnoteReferenceKey(node.node.parent?.from ?? -1, node.node.parent?.to ?? -1)
+          )
+        ) {
+          return;
+        }
         if (parentName === 'Image') {
           const { url } = getImageData(state, node.node.parent);
           if (!url) {
@@ -985,6 +1156,7 @@ function buildDecorations(state) {
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
   addEmojiDecorations(ranges, state, codeBlockLines);
+  addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines);
   addDetailsBlockDecorations(ranges, state, detailsBlocks, activeLines);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);

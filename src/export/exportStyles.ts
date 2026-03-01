@@ -156,6 +156,69 @@ body[data-meo-export-target='pdf'] hr {
 .meo-export-doc > :first-child { margin-top: 0; }
 .meo-export-doc > :last-child { margin-bottom: 0; }
 
+.meo-export-frontmatter {
+  margin: 0 0 1em;
+  color: var(--meo-base07);
+  font-family: var(--meo-font-code);
+}
+
+.meo-export-frontmatter-boundary {
+  min-height: 1.4em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meo-export-frontmatter-label {
+  display: inline-block;
+  color: var(--meo-muted);
+  font-size: 11px;
+  line-height: 1.4em;
+  text-transform: lowercase;
+}
+
+.meo-export-frontmatter-boundary.is-closing {
+  color: var(--meo-muted);
+}
+
+.meo-export-frontmatter-line {
+  min-height: 1.2em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meo-export-frontmatter-line + .meo-export-frontmatter-line {
+  margin-top: 0.2em;
+}
+
+.meo-export-frontmatter-key {
+  color: var(--meo-base07);
+}
+
+.meo-export-frontmatter-value {
+  color: var(--meo-fg);
+}
+
+.meo-export-frontmatter-array {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 100%;
+  vertical-align: text-top;
+}
+
+.meo-export-frontmatter-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--meo-border);
+  color: var(--meo-fg);
+  font-size: 0.92em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 h1, h2, h3, h4, h5, h6 {
   color: var(--meo-heading);
   line-height: 1.25;
@@ -225,6 +288,66 @@ a {
   color: var(--meo-link);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+sup.footnote-ref {
+  font-size: 0.8em;
+  line-height: 1;
+  vertical-align: super;
+}
+
+.footnote-ref a,
+.footnote-backref {
+  color: var(--meo-link);
+  text-decoration: none;
+}
+
+.footnotes {
+  margin-top: 1.6em;
+  padding-top: 1em;
+  border-top: 1px solid var(--meo-hr);
+}
+
+.footnotes > hr {
+  display: none;
+}
+
+.footnotes-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.footnote-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55em;
+}
+
+.footnote-index {
+  flex: 0 0 auto;
+  min-width: 1.6em;
+  color: var(--meo-link);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.footnote-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.footnote-item + .footnote-item {
+  margin-top: 0.45em;
+}
+
+.footnote-body > :last-child {
+  margin-bottom: 0;
+}
+
+.footnote-backref {
+  margin-left: 0.35em;
+  color: var(--meo-muted);
 }
 
 strong { color: var(--meo-strong); }
