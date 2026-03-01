@@ -278,6 +278,41 @@ function findCollapsedBlockAtLine(
   return null;
 }
 
+function findRenderedBlockAtLine(
+  blocks: readonly LiveRenderedBlock[],
+  lineNo: number
+): LiveRenderedBlock | null {
+  let low = 0;
+  let high = blocks.length - 1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const block = blocks[mid];
+    if (lineNo < block.startLine) {
+      high = mid - 1;
+      continue;
+    }
+    if (lineNo > block.endLine) {
+      low = mid + 1;
+      continue;
+    }
+    return block;
+  }
+
+  return null;
+}
+
+export function getLiveRenderedBlockAtLine(
+  state: EditorState,
+  lineNo: number
+): LiveRenderedBlock | null {
+  const blocks = getLiveRenderedBlocks(state);
+  if (!blocks.length) {
+    return null;
+  }
+  return findRenderedBlockAtLine(blocks, Math.max(1, Math.floor(lineNo)));
+}
+
 export function getLiveGitCollapsedBlocks(
   state: EditorState,
   lineFlags: readonly LineFlagLike[] | null | undefined

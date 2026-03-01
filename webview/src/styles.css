@@ -919,7 +919,12 @@ body {
 }
 
 .cm-editor .cm-line.meo-md-footnote-continuation {
-  padding-left: 2.1em;
+  padding-left: 0;
+}
+
+.cm-editor .meo-md-footnote-backref-spacer {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .cm-editor .meo-md-wiki-marker,
@@ -1516,40 +1521,6 @@ body {
   background: var(--git-changed);
 }
 
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty,
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added,
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified {
-  position: relative;
-}
-
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 2px;
-  height: 100%;
-  background: var(--meo-color-base03);
-}
-
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added::before,
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 0;
-  width: 3px;
-  height: 100%;
-}
-
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added::before {
-  background: var(--git-added);
-}
-
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified::before {
-  background: var(--git-changed);
-}
-
 .cm-editor .meo-git-gutter-marker:hover .meo-git-gutter-stripe {
   left: -2px;
   width: 5px;
@@ -1639,6 +1610,29 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+.meo-git-hover-overlay {
+  position: fixed;
+  z-index: 29;
+  pointer-events: none;
+  background: transparent;
+}
+
+.meo-git-hover-overlay[hidden] {
+  display: none;
+}
+
+.meo-git-hover-overlay.is-empty {
+  background: var(--meo-color-base03);
+}
+
+.meo-git-hover-overlay.is-added {
+  background: var(--git-added);
+}
+
+.meo-git-hover-overlay.is-modified {
+  background: var(--git-changed);
 }
 
 .meo-git-blame-title {

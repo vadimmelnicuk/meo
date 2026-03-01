@@ -150,6 +150,27 @@ function listIndentWidget(indentColumns) {
   return widget;
 }
 
+class FootnoteBackrefSpacerWidget extends WidgetType {
+  footnoteNumber: number;
+
+  constructor(footnoteNumber: number) {
+    super();
+    this.footnoteNumber = footnoteNumber;
+  }
+
+  eq(other: WidgetType): boolean {
+    return other instanceof FootnoteBackrefSpacerWidget && other.footnoteNumber === this.footnoteNumber;
+  }
+
+  toDOM(): HTMLElement {
+    const marker = document.createElement('span');
+    marker.className = 'meo-md-footnote-backref meo-md-footnote-backref-spacer';
+    marker.textContent = `${this.footnoteNumber}.`;
+    marker.setAttribute('aria-hidden', 'true');
+    return marker;
+  }
+}
+
 function listLineDeco(
   contentOffsetColumns,
   indentColumns,
@@ -851,8 +872,19 @@ function addFootnoteDefinitionDecorations(builder, state, footnotes, activeLines
       builder.push(lineStyleDecos.footnoteContinuation.range(continuationLine.from));
       if (continuationLine.hideIndentFrom !== null && continuationLine.hideIndentTo !== null) {
         builder.push(
-          collapsedHeadingBodyDeco.range(continuationLine.hideIndentFrom, continuationLine.hideIndentTo)
+          Decoration.replace({
+            widget: new FootnoteBackrefSpacerWidget(definition.number),
+            inclusive: false
+          }).range(continuationLine.hideIndentFrom, continuationLine.hideIndentTo)
         );
+        if (continuationLine.extraIndentColumns > 0) {
+          builder.push(
+            Decoration.widget({
+              widget: listIndentWidget(continuationLine.extraIndentColumns),
+              side: 1
+            }).range(continuationLine.hideIndentTo)
+          );
+        }
       }
     }
   }

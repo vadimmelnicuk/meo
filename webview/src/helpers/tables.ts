@@ -1764,7 +1764,7 @@ export function addTableDecorationsForLineRange(builder, state, startLineNo, end
 }
 
 function addTableWidgetDecoration(builder, data) {
-  const { from, to, headerLine, dataLines, alignments, colCount } = data;
+  const { from, to, headerLine, dataLines, alignments, colCount, startLine, endLine } = data;
   if (colCount === 0 || !headerLine) return;
 
   const indent = /^(\s*)/.exec(headerLine.text)?.[1] ?? '';
@@ -1782,7 +1782,18 @@ function addTableWidgetDecoration(builder, data) {
     Decoration.replace({
       block: true,
       widget: new HtmlTableWidget(
-        { from, to, indent, colCount, alignments: normalizedAlignments, headerCells, rows, signature }
+        {
+          from,
+          to,
+          indent,
+          colCount,
+          alignments: normalizedAlignments,
+          headerCells,
+          rows,
+          signature,
+          startLine,
+          endLine
+        }
       )
     }).range(from, to)
   );

@@ -33,6 +33,7 @@ export interface FootnoteContinuationLine {
   to: number;
   hideIndentFrom: number | null;
   hideIndentTo: number | null;
+  extraIndentColumns: number;
 }
 
 export interface ParsedFootnotes {
@@ -198,14 +199,15 @@ function collectDefinitions(
           from: nextLine.from,
           to: nextLine.to,
           hideIndentFrom: null,
-          hideIndentTo: null
+          hideIndentTo: null,
+          extraIndentColumns: 0
         });
         endLineNo += 1;
         continue;
       }
 
-      const hideChars = countContinuationIndent(nextLine.text);
-      if (!hideChars) {
+      const continuationIndent = measureContinuationIndent(nextLine.text);
+      if (!continuationIndent) {
         break;
       }
 
@@ -213,7 +215,8 @@ function collectDefinitions(
         from: nextLine.from,
         to: nextLine.to,
         hideIndentFrom: nextLine.from,
-        hideIndentTo: nextLine.from + hideChars
+        hideIndentTo: nextLine.from + continuationIndent.chars,
+        extraIndentColumns: continuationIndent.extraIndentColumns
       });
       endLineNo += 1;
     }
@@ -302,7 +305,7 @@ function isDefinitionMarkerNode(from: number, to: number, definitionMarkerToByFr
   return markerTo !== undefined && to <= markerTo;
 }
 
-function countContinuationIndent(lineText: string): number {
+function measureContinuationIndent(lineText: string): { chars: number; extraIndentColumns: number } | null {
   let visibleIndent = 0;
   let chars = 0;
 
@@ -319,7 +322,14 @@ function countContinuationIndent(lineText: string): number {
     }
   }
 
-  return visibleIndent >= 2 ? chars : 0;
+  if (visibleIndent < 2) {
+    return null;
+  }
+
+  return {
+    chars,
+    extraIndentColumns: Math.max(0, visibleIndent - 2)
+  };
 }
 
 function isInsideProtectedRange(pos: number, ranges: ProtectedRange[]): boolean {
