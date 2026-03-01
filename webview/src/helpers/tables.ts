@@ -76,6 +76,10 @@ function isTableControlTarget(target) {
   return target instanceof Element && target.closest(tableControlSelector);
 }
 
+function isSelectionMenuTarget(target) {
+  return target instanceof Element && target.closest('.selection-inline-menu');
+}
+
 function targetElementFrom(target) {
   return target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
 }
@@ -509,6 +513,7 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         parent.appendChild(el);
       } else if (span.kind === 'strong') {
         const el = document.createElement('strong');
+        el.className = 'meo-md-strong';
         appendTableInlinePreviewNodes(el, span.content);
         parent.appendChild(el);
       } else if (span.kind === 'strike') {
@@ -862,6 +867,10 @@ class HtmlTableWidget extends WidgetType {
     const nextCaret = Math.min(Math.max(caret ?? input.value.length, 0), input.value.length);
     input.setSelectionRange(nextCaret, nextCaret);
     input.closest(tableCellSelector)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const container = input.closest('.meo-md-html-table-wrap');
+    if (container instanceof HTMLElement) {
+      this.emitTableSelectionChange(container);
+    }
     return true;
   }
 
@@ -968,6 +977,12 @@ class HtmlTableWidget extends WidgetType {
     const view = EditorView.findFromDOM(container);
     if (!view) return;
     view.dom.dispatchEvent(new CustomEvent('meo-table-interaction', { detail: { active } }));
+  }
+
+  emitTableSelectionChange(container) {
+    const view = EditorView.findFromDOM(container);
+    if (!view) return;
+    view.dom.dispatchEvent(new CustomEvent('meo-table-selection-change'));
   }
 
   hasFocusedTableInput(container) {
@@ -1125,6 +1140,9 @@ class HtmlTableWidget extends WidgetType {
     const onDocumentPointerDown = (event) => {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
+      if (isSelectionMenuTarget(event.target)) {
+        return;
+      }
       if (wrap.contains(event.target) && isModifierLinkActivationEvent(event)) return;
       if (!wrap.contains(event.target)) {
         this.setTableInteractionActive(wrap, false);
@@ -1285,6 +1303,9 @@ class HtmlTableWidget extends WidgetType {
     const refreshPreview = () => {
       this.renderCellPreview(preview, input.value);
     };
+    const notifySelectionChange = () => {
+      this.emitTableSelectionChange(container);
+    };
     const getCollapsedCaretLineInfo = () => {
       const start = input.selectionStart ?? 0;
       const end = input.selectionEnd ?? start;
@@ -1329,7 +1350,11 @@ class HtmlTableWidget extends WidgetType {
       // recreates inline image DOM and resets image load opacity, which causes flicker.
       this.resizeRow(rowEl, rowInputs);
       this.scheduleLayout();
+      notifySelectionChange();
     });
+    input.addEventListener('select', notifySelectionChange);
+    input.addEventListener('keyup', notifySelectionChange);
+    input.addEventListener('pointerup', notifySelectionChange);
     input.addEventListener('keydown', (event) => {
       const direction = event.key === 'ArrowUp' ? 'up' : event.key === 'ArrowDown' ? 'down' : null;
       if (direction) onArrowVertical(event, direction);
@@ -1338,10 +1363,12 @@ class HtmlTableWidget extends WidgetType {
       this.setCellEditingState(input, true);
       this.setTableInteractionActive(container, true);
       this.setSingleCellSelection({ row: rowIndex, col: colIndex });
+      notifySelectionChange();
     });
     input.addEventListener('blur', (event) => {
       refreshPreview();
       this.setCellEditingState(input, false);
+      notifySelectionChange();
       const nextTarget = event.relatedTarget;
       if (nextTarget instanceof Node && container.contains(nextTarget)) return;
       this.commit(container);

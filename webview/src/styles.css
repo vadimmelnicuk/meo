@@ -813,6 +813,7 @@ body {
 }
 
 .cm-editor .meo-md-strong {
+  color: var(--meo-color-base07);
   font-weight: 600;
 }
 

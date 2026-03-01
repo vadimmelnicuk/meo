@@ -143,6 +143,7 @@ export function createEditor({
   let tableInteractionActive = false;
   let onTableInteraction = null;
   let onTableOpenLink = null;
+  let onTableSelectionChange = null;
   let onScroll = null;
   let gitBlameHover = null;
   let gitDiffOverviewRuler = null;
@@ -355,8 +356,256 @@ export function createEditor({
     view.dom.classList.toggle('has-selection', hasSelection);
   };
 
+  const getActiveTableInput = () => {
+    if (!view) {
+      return null;
+    }
+    const active = document.activeElement;
+    if (!(active instanceof HTMLTextAreaElement)) {
+      return null;
+    }
+    if (!view.dom.contains(active)) {
+      return null;
+    }
+    return active.closest('.meo-md-html-table-wrap') ? active : null;
+  };
+
+  const measureTextareaSelectionStart = (input, index) => {
+    const doc = input.ownerDocument;
+    const mirror = doc.createElement('div');
+    const marker = doc.createElement('span');
+    const computed = window.getComputedStyle(input);
+
+    mirror.style.position = 'fixed';
+    mirror.style.left = '0';
+    mirror.style.top = '0';
+    mirror.style.visibility = 'hidden';
+    mirror.style.pointerEvents = 'none';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.overflowWrap = 'break-word';
+    mirror.style.wordBreak = 'break-word';
+    mirror.style.boxSizing = computed.boxSizing;
+    mirror.style.width = `${input.getBoundingClientRect().width}px`;
+    mirror.style.minHeight = computed.height;
+    mirror.style.padding = computed.padding;
+    mirror.style.border = computed.border;
+    mirror.style.font = computed.font;
+    mirror.style.fontFamily = computed.fontFamily;
+    mirror.style.fontSize = computed.fontSize;
+    mirror.style.fontWeight = computed.fontWeight;
+    mirror.style.fontStyle = computed.fontStyle;
+    mirror.style.letterSpacing = computed.letterSpacing;
+    mirror.style.lineHeight = computed.lineHeight;
+    mirror.style.textTransform = computed.textTransform;
+    mirror.style.textIndent = computed.textIndent;
+    mirror.style.tabSize = computed.tabSize;
+
+    mirror.textContent = input.value.slice(0, index);
+    marker.textContent = '\u200b';
+    mirror.appendChild(marker);
+    doc.body.appendChild(mirror);
+
+    const markerRect = marker.getBoundingClientRect();
+    const mirrorRect = mirror.getBoundingClientRect();
+    const inputRect = input.getBoundingClientRect();
+    const coords = {
+      left: inputRect.left + (markerRect.left - mirrorRect.left),
+      top: inputRect.top + (markerRect.top - mirrorRect.top)
+    };
+
+    mirror.remove();
+    return coords;
+  };
+
+  const getActiveTableSelectionState = (input) => {
+    const rawStart = input.selectionStart ?? 0;
+    const rawEnd = input.selectionEnd ?? rawStart;
+    if (rawStart === rawEnd) {
+      return null;
+    }
+    const selectionStart = Math.min(rawStart, rawEnd);
+    const coords = measureTextareaSelectionStart(input, selectionStart);
+    return {
+      visible: true,
+      anchorX: coords.left,
+      anchorY: coords.top
+    };
+  };
+
+  const updateActiveTableInput = (input, nextValue, anchor, head = anchor) => {
+    input.value = nextValue;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(
+      Math.min(anchor, head),
+      Math.max(anchor, head),
+      anchor <= head ? 'forward' : 'backward'
+    );
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    emitSelectionChange();
+    return true;
+  };
+
+  const editActiveTableInputWithSelection = (input, transform) => {
+    const rawStart = input.selectionStart ?? 0;
+    const rawEnd = input.selectionEnd ?? rawStart;
+    const start = Math.min(rawStart, rawEnd);
+    const end = Math.max(rawStart, rawEnd);
+    return transform(input.value, start, end);
+  };
+
+  const trimTrailingNewlines = (value, start, end) => {
+    let nextEnd = end;
+    while (nextEnd > start && value.slice(nextEnd - 1, nextEnd) === '\n') {
+      nextEnd -= 1;
+    }
+    return nextEnd;
+  };
+
+  const insertFormatInActiveTableInput = (input, action) => {
+    switch (action) {
+      case 'inlineCode':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          if (start === end) {
+            const insert = '``';
+            const nextValue = value.slice(0, start) + insert + value.slice(end);
+            return updateActiveTableInput(input, nextValue, start + 1);
+          }
+
+          const trimmedEnd = trimTrailingNewlines(value, start, end);
+          const selectedText = value.slice(start, trimmedEnd);
+          const insert = `\`${selectedText}\``;
+          const nextValue = value.slice(0, start) + insert + value.slice(trimmedEnd);
+          return updateActiveTableInput(input, nextValue, start + insert.length);
+        });
+      case 'bold':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          const marker = '**';
+          const markerLength = marker.length;
+          if (start === end) {
+            const insert = `${marker}${marker}`;
+            const nextValue = value.slice(0, start) + insert + value.slice(end);
+            return updateActiveTableInput(input, nextValue, start + markerLength);
+          }
+
+          const trimmedEnd = trimTrailingNewlines(value, start, end);
+          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
+          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
+          if (hasOpenMarker && hasCloseMarker) {
+            const nextValue =
+              value.slice(0, start - markerLength) +
+              value.slice(start, trimmedEnd) +
+              value.slice(trimmedEnd + markerLength);
+            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
+          }
+
+          const nextValue =
+            value.slice(0, start) +
+            marker +
+            value.slice(start, trimmedEnd) +
+            marker +
+            value.slice(trimmedEnd);
+          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
+        });
+      case 'italic':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          const marker = '*';
+          const markerLength = marker.length;
+          if (start === end) {
+            const insert = `${marker}${marker}`;
+            const nextValue = value.slice(0, start) + insert + value.slice(end);
+            return updateActiveTableInput(input, nextValue, start + markerLength);
+          }
+
+          const trimmedEnd = trimTrailingNewlines(value, start, end);
+          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
+          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
+          if (hasOpenMarker && hasCloseMarker) {
+            const nextValue =
+              value.slice(0, start - markerLength) +
+              value.slice(start, trimmedEnd) +
+              value.slice(trimmedEnd + markerLength);
+            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
+          }
+
+          const nextValue =
+            value.slice(0, start) +
+            marker +
+            value.slice(start, trimmedEnd) +
+            marker +
+            value.slice(trimmedEnd);
+          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
+        });
+      case 'lineover':
+      case 'strike':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          const marker = '~~';
+          const markerLength = marker.length;
+          if (start === end) {
+            const insert = `${marker}${marker}`;
+            const nextValue = value.slice(0, start) + insert + value.slice(end);
+            return updateActiveTableInput(input, nextValue, start + markerLength);
+          }
+
+          const trimmedEnd = trimTrailingNewlines(value, start, end);
+          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
+          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
+          if (hasOpenMarker && hasCloseMarker) {
+            const nextValue =
+              value.slice(0, start - markerLength) +
+              value.slice(start, trimmedEnd) +
+              value.slice(trimmedEnd + markerLength);
+            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
+          }
+
+          const nextValue =
+            value.slice(0, start) +
+            marker +
+            value.slice(start, trimmedEnd) +
+            marker +
+            value.slice(trimmedEnd);
+          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
+        });
+      case 'link':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          if (start !== end) {
+            const trimmedEnd = trimTrailingNewlines(value, start, end);
+            const selectedText = value.slice(start, trimmedEnd);
+            const insert = `[${selectedText}]()`;
+            const nextValue = value.slice(0, start) + insert + value.slice(trimmedEnd);
+            return updateActiveTableInput(input, nextValue, start + insert.length - 1);
+          }
+
+          const insert = '[]()';
+          const nextValue = value.slice(0, start) + insert + value.slice(end);
+          return updateActiveTableInput(input, nextValue, start + 3);
+        });
+      case 'wikiLink':
+        return editActiveTableInputWithSelection(input, (value, start, end) => {
+          if (start !== end) {
+            const trimmedEnd = trimTrailingNewlines(value, start, end);
+            const selectedText = value.slice(start, trimmedEnd);
+            const insert = `[[${selectedText}]]`;
+            const nextValue = value.slice(0, start) + insert + value.slice(trimmedEnd);
+            return updateActiveTableInput(input, nextValue, start + insert.length);
+          }
+
+          const insert = '[[]]';
+          const nextValue = value.slice(0, start) + insert + value.slice(end);
+          return updateActiveTableInput(input, nextValue, start + 2);
+        });
+      default:
+        return false;
+    }
+  };
+
   const emitSelectionChange = () => {
     if (!view || typeof onSelectionChange !== 'function') {
+      return;
+    }
+
+    const activeTableInput = getActiveTableInput();
+    if (activeTableInput) {
+      onSelectionChange(getActiveTableSelectionState(activeTableInput) ?? { visible: false });
       return;
     }
 
@@ -749,6 +998,10 @@ export function createEditor({
     onOpenLink?.(href);
   };
   view.dom.addEventListener('meo-open-link', onTableOpenLink);
+  onTableSelectionChange = () => {
+    emitSelectionChange();
+  };
+  view.dom.addEventListener('meo-table-selection-change', onTableSelectionChange);
   onScroll = () => {
     emitSelectionChange();
     gitBlameHover?.hide();
@@ -864,6 +1117,11 @@ export function createEditor({
       return view.hasFocus;
     },
     focus() {
+      const activeTableInput = getActiveTableInput();
+      if (activeTableInput) {
+        activeTableInput.focus({ preventScroll: true });
+        return;
+      }
       view.focus();
     },
     destroy() {
@@ -882,6 +1140,10 @@ export function createEditor({
       if (onTableOpenLink) {
         view.dom.removeEventListener('meo-open-link', onTableOpenLink);
         onTableOpenLink = null;
+      }
+      if (onTableSelectionChange) {
+        view.dom.removeEventListener('meo-table-selection-change', onTableSelectionChange);
+        onTableSelectionChange = null;
       }
       if (capturedPointerId !== null) {
         releasePointerCaptureIfHeld(capturedPointerId);
@@ -985,6 +1247,11 @@ export function createEditor({
       });
     },
     insertFormat(action, level) {
+      const activeTableInput = getActiveTableInput();
+      if (activeTableInput) {
+        return insertFormatInActiveTableInput(activeTableInput, action);
+      }
+
       const { state } = view;
       const selection = state.selection.main;
       const line = state.doc.lineAt(selection.from);
