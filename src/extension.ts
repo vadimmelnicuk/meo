@@ -103,6 +103,11 @@ type ApplyChangesMessage = {
   changes: Array<{ from: number; to: number; insert: string }>;
 };
 
+type DraftChangedMessage = {
+  type: 'draftChanged';
+  text: string | null;
+};
+
 type SetModeMessage = {
   type: 'setMode';
   mode: EditorMode;
@@ -245,6 +250,7 @@ type ToggleModeCommandMessage = {
 
 type WebviewMessage =
   | ApplyChangesMessage
+  | DraftChangedMessage
   | SetModeMessage
   | SetAutoSaveMessage
   | SetLineNumbersMessage
@@ -697,6 +703,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     let gitRefreshPendingForcePost = false;
     let lastSentRevealSelectionKey: string | null = null;
     let pendingRevealSelection: RevealSelectionPayload | null = null;
+    let pendingDraftText: string | null = null;
     const gitDocumentState = new GitDocumentState(documentUri.fsPath);
     const pendingExportSnapshots = new Map<string, {
       resolve: (value: { text: string; environment?: ExportStyleEnvironment }) => void;
@@ -707,6 +714,26 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     const enqueue = (task: () => Promise<void>): Promise<void> => {
       applyQueue = applyQueue.then(task, task);
       return applyQueue;
+    };
+
+    const applyPendingDraftIfNeeded = async (): Promise<void> => {
+      const draftText = pendingDraftText;
+      pendingDraftText = null;
+      if (draftText === null) {
+        return;
+      }
+
+      const currentText = document.getText();
+      const normalizedCurrent = currentText.replace(/\r\n/g, '\n');
+      const normalizedDraft = draftText.replace(/\r\n/g, '\n');
+      if (normalizedCurrent === normalizedDraft) {
+        return;
+      }
+
+      const edit = new vscode.WorkspaceEdit();
+      const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(currentText.length));
+      edit.replace(document.uri, fullRange, draftText);
+      await vscode.workspace.applyEdit(edit);
     };
 
     const sendInit = async (): Promise<boolean> => {
@@ -1071,6 +1098,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           await enqueue(() => applyDocumentChanges(document, raw, sendDocChanged, sendApplied));
           isApplyingOwnChange = false;
           return;
+        case 'draftChanged':
+          pendingDraftText = raw.text;
+          return;
         case 'saveDocument':
           isApplyingOwnChange = true;
           await enqueue(async () => {
@@ -1089,6 +1119,11 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     const documentChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document.uri.toString() !== document.uri.toString()) {
+        return;
+      }
+
+      // Save/dirty-state transitions can emit document events without text edits.
+      if (event.contentChanges.length === 0) {
         return;
       }
 
@@ -1141,6 +1176,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     });
 
     panel.onDidDispose(() => {
+      void enqueue(async () => {
+        try {
+          // Best-effort recovery for edits that never made it through the debounce/apply round-trip.
+          await applyPendingDraftIfNeeded();
+        } catch {
+          // Ignore dispose-time recovery failures to avoid surfacing noisy teardown errors.
+        }
+      });
       this.activePanels.delete(panel);
       this.panelSessions.delete(panel);
       if (this.lastActivePanel === panel) {
@@ -1340,7 +1383,7 @@ async function getGitBlameResponseForRequest(
 async function getHeadBlameForLineFallback(
   baseline: GitBaselinePayload | null | undefined,
   lineNumber: number
-): Promise<GitBlameLineResult | null> {
+): Promise<Extract<GitBlameLineResult, { kind: 'commit' }> | null> {
   if (!baseline?.repoRoot || !baseline.gitPath) {
     return null;
   }
@@ -1453,6 +1496,12 @@ async function resolveGitBlameForRequest(
   const mappingText = typeof request.text === 'string' ? request.text : currentDocumentText;
   if (typeof mappingText === 'string' && typeof baseline.baseText !== 'string') {
     baseline = await state.resolveBaseline({ includeText: true });
+    if (!baseline.available || !baseline.repoRoot || !baseline.gitPath || !baseline.tracked) {
+      return {
+        baseline,
+        result: snapshotBlame
+      };
+    }
   }
   const lineNumberForHistoricalMapping = isTrailingEofVisualLineRequest(request.lineNumber, lineResolutionText)
     ? normalizedRequestedLineNumber

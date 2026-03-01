@@ -434,6 +434,8 @@ let initialMountRecoveryAttempted = false;
 let modeToggleShouldRestoreEditorFocus = false;
 let gitClient: any = null;
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
+let lastSentDraftText: string | null = null;
+let hasSentDraftText = false;
 
 const editorNotice: EditorNotice = {
   setEditorNotice: (_message, _kind = 'info') => {},
@@ -465,6 +467,22 @@ const getCurrentEditorText = () => {
     return pendingInitialText;
   }
   return syncedText;
+};
+
+const syncPendingDraftState = () => {
+  const draftText = pendingText ?? inFlightText;
+  const nextDraftText =
+    draftText === null || (!inFlight && normalizeEol(draftText) === syncedText)
+      ? null
+      : draftText;
+
+  if (hasSentDraftText && nextDraftText === lastSentDraftText) {
+    return;
+  }
+
+  hasSentDraftText = true;
+  lastSentDraftText = nextDraftText;
+  vscode.postMessage({ type: 'draftChanged', text: nextDraftText });
 };
 
 const clampRevealOffset = (value: number, max: number): number => {
@@ -543,6 +561,7 @@ const flushChanges = () => {
   inFlightText = nextText;
   syncedText = normalizeEol(nextText);
   documentVersion++;
+  syncPendingDraftState();
   vscode.postMessage(message);
 };
 
@@ -645,6 +664,7 @@ const shortcutHandlerContext: ShortcutHandlerContext = {
 const queueChanges = (nextText: string) => {
   bumpLocalEditGeneration();
   pendingText = nextText;
+  syncPendingDraftState();
 
   if (pendingDebounce !== null) {
     window.clearTimeout(pendingDebounce);
@@ -894,6 +914,7 @@ window.addEventListener('message', (event) => {
     inFlight = false;
     inFlightText = null;
     saveAfterSync = false;
+    syncPendingDraftState();
 
     handleInit(message);
     if (hasLocalModePreference) {
@@ -959,6 +980,7 @@ window.addEventListener('message', (event) => {
 
       flushChanges();
       maybeSaveAfterSync();
+      syncPendingDraftState();
       return;
     }
 
@@ -968,6 +990,7 @@ window.addEventListener('message', (event) => {
       inFlightText = null;
       flushChanges();
       maybeSaveAfterSync();
+      syncPendingDraftState();
       return;
     }
 
@@ -978,6 +1001,7 @@ window.addEventListener('message', (event) => {
       inFlightText = null;
       flushChanges();
       maybeSaveAfterSync();
+      syncPendingDraftState();
       return;
     }
 
@@ -992,6 +1016,7 @@ window.addEventListener('message', (event) => {
       pendingDebounce = null;
     }
 
+    syncPendingDraftState();
     if (!setEditorTextSafely(message.text, 'docChanged')) {
       return;
     }
@@ -1009,6 +1034,7 @@ window.addEventListener('message', (event) => {
     inFlightText = null;
     flushChanges();
     maybeSaveAfterSync();
+    syncPendingDraftState();
     if (autoSaveEnabled && !inFlight && pendingText !== null && normalizeEol(pendingText) === syncedText) {
       vscode.postMessage({ type: 'saveDocument' });
     }

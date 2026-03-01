@@ -24,7 +24,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 - **Change visualisations** - See insertions and modifications inline
 - **Git blame** - View commit information for any line directly in the editor
-- **GitHub Syntax** - 
+- **GitHub Syntax** - Renders GitHub-specific markdown including collapsible details, footnotes, alerts, and emojis
 
 ### Customisation & Export
 
