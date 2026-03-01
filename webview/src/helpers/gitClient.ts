@@ -163,10 +163,15 @@ export function createGitClient({
 
   const openWorktreeForLine = ({ lineNumber }: { lineNumber: number }) => {
     const normalizedLine = normalizeLineNumber(lineNumber);
-    vscode.postMessage({
+    const currentText = getCurrentEditorText?.();
+    const message: any = {
       type: 'openGitWorktreeForLine',
       lineNumber: normalizedLine
-    });
+    };
+    if (shouldIncludeBlameSnapshotText(currentText, getSyncedText?.(), maxBlameSnapshotChars)) {
+      message.text = currentText;
+    }
+    vscode.postMessage(message);
   };
 
   const applyBaselineToEditor = (editor: any) => {

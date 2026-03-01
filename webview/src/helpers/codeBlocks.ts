@@ -438,7 +438,7 @@ export function addMermaidDiagram(builder: any[], state: EditorState, node: any)
   const copyWidget = new CopyCodeButtonWidget(fullBlockText);
   addTopLineWidget(builder, startLine.to, copyWidget);
 
-  const widget = new MermaidDiagramWidget(diagramText);
+  const widget = new MermaidDiagramWidget(diagramText, startLine.number, endLine.number);
   builder.push(
     Decoration.replace({
       widget,

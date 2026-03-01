@@ -1509,6 +1509,13 @@ class HtmlTableWidget extends WidgetType {
   toDOM() {
     const wrap = document.createElement('div');
     wrap.className = 'meo-md-html-table-wrap';
+    if (Number.isFinite(this.tableData.startLine)) {
+      wrap.dataset.meoRenderedBlockStartLine = String(this.tableData.startLine);
+    }
+    if (Number.isFinite(this.tableData.endLine)) {
+      wrap.dataset.meoRenderedBlockEndLine = String(this.tableData.endLine);
+    }
+    wrap.dataset.meoRenderedBlockKind = 'table';
 
     const table = document.createElement('table');
     table.className = 'meo-md-html-table';

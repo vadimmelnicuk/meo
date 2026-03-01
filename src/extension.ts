@@ -25,6 +25,7 @@ const ACTIVE_EDITOR_CONTEXT_KEY = 'markdownEditorOptimized.activeEditor';
 const AUTO_SAVE_SETTING_KEY = 'autoSave.enabled';
 const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
+const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
 const AUTO_SAVE_LEGACY_SETTING_KEY = 'autoSave.visibility';
 const LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY = 'lineNumbers.enabled';
@@ -56,6 +57,11 @@ type GitChangesGutterChangedMessage = {
   enabled: boolean;
 };
 
+type GitDiffLineHighlightsChangedMessage = {
+  type: 'gitDiffLineHighlightsChanged';
+  enabled: boolean;
+};
+
 type VimModeChangedMessage = {
   type: 'vimModeChanged';
   enabled: boolean;
@@ -69,6 +75,7 @@ type InitMessage = {
   autoSave: boolean;
   lineNumbers: boolean;
   gitChangesGutter: boolean;
+  gitDiffLineHighlights: boolean;
   vimMode: boolean;
   outlinePosition: OutlinePosition;
   theme: ThemeSettings;
@@ -90,6 +97,10 @@ type RevealSelectionMessage = {
   anchor: number;
   head: number;
   focus?: boolean;
+};
+
+type FocusEditorMessage = {
+  type: 'focusEditor';
 };
 
 type RevealSelectionPayload = {
@@ -213,6 +224,7 @@ type OpenGitRevisionForLineMessage = {
 type OpenGitWorktreeForLineMessage = {
   type: 'openGitWorktreeForLine';
   lineNumber: number;
+  text?: string;
 };
 
 type SaveImageFromClipboardMessage = {
@@ -451,6 +463,13 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
   }
 
+  private broadcastGitDiffLineHighlightsChanged(enabled: boolean): void {
+    const message: GitDiffLineHighlightsChangedMessage = { type: 'gitDiffLineHighlightsChanged', enabled };
+    for (const panel of this.activePanels) {
+      void panel.webview.postMessage(message);
+    }
+  }
+
   private broadcastVimModeChanged(enabled: boolean): void {
     const message: VimModeChangedMessage = { type: 'vimModeChanged', enabled };
     for (const panel of this.activePanels) {
@@ -495,6 +514,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       event.affectsConfiguration(`markdownEditorOptimized.${GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY}`)
     ) {
       this.broadcastGitChangesGutterChanged(getGitChangesGutterEnabled(this.context));
+    }
+
+    if (event.affectsConfiguration(`markdownEditorOptimized.${GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY}`)) {
+      this.broadcastGitDiffLineHighlightsChanged(getGitDiffLineHighlightsEnabled());
     }
 
     if (event.affectsConfiguration(`markdownEditorOptimized.${VIM_MODE_SETTING_KEY}`)) {
@@ -740,6 +763,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       const autoSave = getAutoSaveEnabled(this.context);
       const lineNumbers = getLineNumbersEnabled(this.context);
       const gitChangesGutter = getGitChangesGutterEnabled(this.context);
+      const gitDiffLineHighlights = getGitDiffLineHighlightsEnabled();
       const vimMode = getVimModeEnabled(this.context);
       const message: InitMessage = {
         type: 'init',
@@ -749,6 +773,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         autoSave,
         lineNumbers,
         gitChangesGutter,
+        gitDiffLineHighlights,
         vimMode,
         outlinePosition: getOutlinePosition(),
         theme: getThemeSettings()
@@ -941,6 +966,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       await postRevealSelection(selection);
     };
 
+    const postFocusEditor = async (): Promise<void> => {
+      await ensureInitDelivered();
+      const message: FocusEditorMessage = { type: 'focusEditor' };
+      await panel.webview.postMessage(message);
+    };
+
     const sendRevealSelectionForEditor = async (textEditor: vscode.TextEditor | undefined): Promise<void> => {
       if (!isTextEditorForDocument(textEditor)) {
         return;
@@ -1090,7 +1121,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
           return;
         }
         case 'openGitWorktreeForLine': {
-          await openGitWorktreeForLine(documentUri, raw);
+          await openGitWorktreeForLine(documentUri, raw, document.getText(), gitDocumentState);
           return;
         }
         case 'applyChanges':
@@ -1171,6 +1202,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         refreshGitBaseline(false);
         void flushPendingRevealSelection();
         void sendRevealSelectionForEditor(findEditorForDocumentReveal());
+        void postFocusEditor();
       }
       this.updateActiveEditorContext();
     });
@@ -1625,35 +1657,96 @@ async function openGitRevisionForLine(
   }
 }
 
+async function showWorktreeDocumentAtLine(worktreeUri: vscode.Uri, lineNumber: number): Promise<void> {
+  const line = Math.max(0, Math.floor(lineNumber) - 1);
+  const worktreeDoc = await vscode.workspace.openTextDocument(worktreeUri);
+  await vscode.window.showTextDocument(worktreeDoc, {
+    preview: false,
+    selection: new vscode.Range(line, 0, line, 0)
+  });
+}
+
+async function resolveHeadCommitBlameForWorktreeOpen(
+  documentUri: vscode.Uri,
+  request: OpenGitWorktreeForLineMessage,
+  currentDocumentText: string | undefined,
+  state: GitDocumentState,
+  baseline: GitBaselinePayload
+): Promise<Extract<GitBlameLineResult, { kind: 'commit' }> | null> {
+  const { result } = await resolveGitBlameForRequest(
+    documentUri,
+    {
+      lineNumber: request.lineNumber,
+      text: request.text
+    },
+    currentDocumentText,
+    state
+  );
+
+  if (result.kind === 'commit') {
+    return result;
+  }
+
+  const mappingText = typeof request.text === 'string' ? request.text : currentDocumentText;
+  let resolvedBaseline = baseline;
+  if (typeof mappingText === 'string' && typeof resolvedBaseline.baseText !== 'string') {
+    resolvedBaseline = await state.resolveBaseline({ includeText: true });
+    if (
+      !resolvedBaseline.available ||
+      !resolvedBaseline.repoRoot ||
+      !resolvedBaseline.gitPath ||
+      !resolvedBaseline.tracked
+    ) {
+      return null;
+    }
+  }
+
+  const normalizedRequestedLineNumber = Math.max(1, Math.floor(request.lineNumber));
+  const lineNumberForOpenFallback = normalizeTrailingEofVisualLineForGitBlame(
+    request.lineNumber,
+    mappingText
+  );
+  const lineNumberForHistoricalMapping = isTrailingEofVisualLineRequest(request.lineNumber, mappingText)
+    ? normalizedRequestedLineNumber
+    : lineNumberForOpenFallback;
+  const historicalLineNumber = (
+    typeof mappingText === 'string'
+      ? getMappedBaselineLineForRequest(resolvedBaseline, mappingText, lineNumberForHistoricalMapping)
+      : null
+  );
+
+  return historicalLineNumber
+    ? getHeadBlameForLineFallback(resolvedBaseline, historicalLineNumber)
+    : getHeadBlameForLineFallback(resolvedBaseline, lineNumberForOpenFallback);
+}
+
 async function openGitWorktreeForLine(
   documentUri: vscode.Uri,
-  request: OpenGitWorktreeForLineMessage
+  request: OpenGitWorktreeForLineMessage,
+  currentDocumentText?: string,
+  gitDocumentState?: GitDocumentState
 ): Promise<void> {
   const worktreeUri = documentUri.scheme === 'file' ? documentUri : resolveWorktreeUriFromGitUri(documentUri);
   if (!worktreeUri || worktreeUri.scheme !== 'file') {
     return;
   }
 
-  const gitDocumentState = new GitDocumentState(worktreeUri.fsPath);
-  const baseline = await gitDocumentState.resolveBaseline({ includeText: false });
+  const state = gitDocumentState ?? new GitDocumentState(worktreeUri.fsPath);
+  let baseline = await state.resolveBaseline({ includeText: false });
   if (!baseline.available || !baseline.repoRoot || !baseline.gitPath || !baseline.tracked) {
-    const line = Math.max(0, Math.floor(request.lineNumber) - 1);
-    const worktreeDoc = await vscode.workspace.openTextDocument(worktreeUri);
-    await vscode.window.showTextDocument(worktreeDoc, {
-      preview: false,
-      selection: new vscode.Range(line, 0, line, 0)
-    });
+    await showWorktreeDocumentAtLine(worktreeUri, request.lineNumber);
     return;
   }
 
-  const commitBlame = await getHeadBlameForLineFallback(baseline, request.lineNumber);
+  let commitBlame = await resolveHeadCommitBlameForWorktreeOpen(
+    documentUri,
+    request,
+    currentDocumentText,
+    state,
+    baseline
+  );
   if (!commitBlame) {
-    const line = Math.max(0, Math.floor(request.lineNumber) - 1);
-    const worktreeDoc = await vscode.workspace.openTextDocument(worktreeUri);
-    await vscode.window.showTextDocument(worktreeDoc, {
-      preview: false,
-      selection: new vscode.Range(line, 0, line, 0)
-    });
+    await showWorktreeDocumentAtLine(worktreeUri, request.lineNumber);
     return;
   }
 
@@ -2166,6 +2259,10 @@ function getGitChangesGutterEnabled(context: vscode.ExtensionContext): boolean {
     GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
     GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY
   ]);
+}
+
+function getGitDiffLineHighlightsEnabled(): boolean {
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY, true);
 }
 
 function getVimModeEnabled(context: vscode.ExtensionContext): boolean {

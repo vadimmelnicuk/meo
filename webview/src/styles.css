@@ -11,6 +11,8 @@
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
   --meo-task-checkbox-size: 17px;
+  --git-added: #4a9e82;
+  --git-changed: #317ae7;
 }
 
 html,
@@ -718,8 +720,6 @@ body {
   width: 3px !important;
   min-width: 3px !important;
   max-width: 3px !important;
-  visibility: hidden;
-  pointer-events: none;
 }
 
 .cm-editor.meo-mode-live .cm-gutter.meo-git-gutter .cm-gutterElement,
@@ -767,12 +767,8 @@ body {
   border-radius: 2px;
 }
 
-.cm-editor.cm-focused .cm-activeLine {
+.cm-editor .cm-activeLine {
   background-color: var(--meo-active-line-bg);
-}
-
-.cm-editor:not(.cm-focused) .cm-activeLine {
-  background-color: transparent;
 }
 
 .cm-editor.has-selection .cm-activeLine {
@@ -783,11 +779,11 @@ body {
   background-color: transparent;
 }
 
-.cm-editor.cm-focused .cm-activeLine.meo-md-code-block {
+.cm-editor .cm-activeLine.meo-md-code-block {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
-.cm-editor.cm-focused.meo-mode-live .cm-activeLine.meo-md-code-block {
+.cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
   background-color: var(--meo-code-block-active-line-bg-live);
 }
 
@@ -1495,9 +1491,9 @@ body {
 .cm-editor .meo-git-gutter-marker::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: -3px;
   top: 0;
-  width: calc(100% + 13px);
+  width: 13px;
   height: 100%;
   background: transparent;
 }
@@ -1510,18 +1506,19 @@ body {
   height: 100%;
   border-radius: 0;
   background: transparent;
-  transition: left 100ms ease, width 100ms ease;
 }
 
 .cm-editor .meo-git-gutter-marker.is-added .meo-git-gutter-stripe {
-  background: var(--vscode-editorGutter-addedBackground, #2ea043);
+  background: var(--git-added);
 }
 
 .cm-editor .meo-git-gutter-marker.is-modified .meo-git-gutter-stripe {
-  background: var(--vscode-editorGutter-modifiedBackground, #1f6feb);
+  background: var(--git-changed);
 }
 
-.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty {
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-empty,
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added,
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified {
   position: relative;
 }
 
@@ -1530,9 +1527,27 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 3px;
+  width: 2px;
   height: 100%;
   background: var(--meo-color-base03);
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added::before,
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 3px;
+  height: 100%;
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-added::before {
+  background: var(--git-added);
+}
+
+.cm-editor .cm-gutter.meo-git-gutter .cm-gutterElement.is-git-hover-modified::before {
+  background: var(--git-changed);
 }
 
 .cm-editor .meo-git-gutter-marker:hover .meo-git-gutter-stripe {
@@ -1546,19 +1561,19 @@ body {
 }
 
 .cm-editor .meo-diff-added-line {
-  background-color: color-mix(in srgb, var(--meo-color-base09) 15%, transparent 85%) !important;
+  background-color: color-mix(in srgb, var(--git-added) 10%, transparent) !important;
 }
 
 .cm-editor .meo-diff-changed-line {
-  background-color: color-mix(in srgb, var(--meo-color-base05) 15%, transparent 85%) !important;
+  background-color: color-mix(in srgb, var(--git-changed) 10%, transparent) !important;
 }
-Í
+
 .cm-editor .cm-activeLine.meo-diff-added-line {
-  background-color: color-mix(in srgb, var(--meo-color-base09) 50%, transparent 50%) !important;
+  background-color: color-mix(in srgb, var(--git-added) 20%, transparent) !important;
 }
 
 .cm-editor .cm-activeLine.meo-diff-changed-line {
-  background-color: color-mix(in srgb, var(--meo-color-base05) 25%, transparent 75%) !important;
+  background-color: color-mix(in srgb, var(--git-changed) 20%, transparent) !important;
 }
 
 .cm-editor.meo-git-hover-band .cm-gutters {
@@ -1590,17 +1605,11 @@ body {
 }
 
 .cm-editor .meo-git-overview-ruler-marker.is-added {
-  background: var(
-    --vscode-editorOverviewRuler-addedForeground,
-    var(--vscode-editorGutter-addedBackground, #2ea043)
-  );
+  background: color-mix(in srgb, var(--git-added) 50%, transparent);
 }
 
 .cm-editor .meo-git-overview-ruler-marker.is-modified {
-  background: var(
-    --vscode-editorOverviewRuler-modifiedForeground,
-    var(--vscode-editorGutter-modifiedBackground, #1f6feb)
-  );
+  background: color-mix(in srgb, var(--git-changed) 50%, transparent);
 }
 
 .cm-editor .meo-git-overview-ruler-file-end {

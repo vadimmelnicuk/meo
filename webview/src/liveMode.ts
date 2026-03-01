@@ -48,6 +48,7 @@ import {
   detectAlertInBlockquote
 } from './helpers/alerts';
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
+import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -1354,9 +1355,11 @@ function buildLiveLineNumberMarkers(state) {
       conflictLineNumbers.add(lineNo);
     }
   }
-  const tableBlocks = detectTableBlocks(state);
-  for (const block of tableBlocks) {
-    for (let lineNo = block.startLineNo; lineNo <= block.endLineNo; lineNo += 1) {
+  for (const block of getLiveRenderedBlocks(state)) {
+    if (block.lineNumberHiddenFrom < 1 || block.lineNumberHiddenTo < block.lineNumberHiddenFrom) {
+      continue;
+    }
+    for (let lineNo = block.lineNumberHiddenFrom; lineNo <= block.lineNumberHiddenTo; lineNo += 1) {
       if (conflictLineNumbers.has(lineNo)) {
         continue;
       }

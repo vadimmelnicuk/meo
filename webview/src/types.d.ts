@@ -24,14 +24,18 @@ type WebviewMessage =
   | { type: 'saveImageFromClipboard'; requestId: string; imageData: string; fileName: string };
 
 type ExtensionMessage =
-  | { type: 'init'; content: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; autoSaveEnabled: boolean; lineNumbersVisible: boolean }
-  | { type: 'docChanged'; content: string; version: number }
-  | { type: 'applied' }
+  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; autoSave: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean }
+  | { type: 'docChanged'; text: string; version: number }
+  | { type: 'applied'; version: number }
+  | { type: 'focusEditor' }
   | { type: 'revealSelection'; anchor: number; head: number; focus?: boolean }
   | { type: 'themeChanged'; theme: ThemeSettings }
   | { type: 'outlinePositionChanged'; position: 'left' | 'right' }
   | { type: 'autoSaveChanged'; enabled: boolean }
-  | { type: 'lineNumbersChanged'; visible: boolean }
+  | { type: 'lineNumbersChanged'; enabled: boolean }
+  | { type: 'gitChangesGutterChanged'; enabled: boolean }
+  | { type: 'gitDiffLineHighlightsChanged'; enabled: boolean }
+  | { type: 'vimModeChanged'; enabled: boolean }
   | { type: 'resolvedImageSrc'; requestId: string; resolvedUrl: string }
   | { type: 'resolvedWikiLinks'; requestId: string; statuses: Record<string, WikiLinkStatus> }
   | { type: 'savedImagePath'; requestId: string; success: boolean; path?: string; error?: string };

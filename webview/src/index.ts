@@ -103,6 +103,7 @@ autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
 let lineNumbersVisible = true;
 let gitChangesGutterVisible = true;
+let gitDiffLineHighlightsEnabled = true;
 
 const outlineBtn = document.createElement('button');
 outlineBtn.type = 'button';
@@ -142,6 +143,16 @@ const updateGitChangesGutterUI = () => {
   gitChangesGutterBtn.title = gitChangesGutterVisible ? 'Hide Git Changes' : 'Show Git Changes';
 };
 
+const syncGitDiffLineHighlights = () => {
+  if (!editor) {
+    return;
+  }
+  setGitDiffLineHighlightsEnabled(
+    editor,
+    currentMode === 'source' && gitChangesGutterVisible && gitDiffLineHighlightsEnabled
+  );
+};
+
 const toggleAutoSave = () => {
   autoSaveEnabled = !autoSaveEnabled;
   updateAutoSaveUI();
@@ -167,9 +178,7 @@ const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
   if (changed) {
     gitChangesGutterVisible = nextVisible;
     editor?.setGitGutterVisible(gitChangesGutterVisible);
-    if (editor) {
-    setGitDiffLineHighlightsEnabled(editor, false);
-    }
+    syncGitDiffLineHighlights();
   }
   updateGitChangesGutterUI();
   if (post && changed) {
@@ -433,6 +442,7 @@ let initialEditorMountQueued = false;
 let initialMountRecoveryAttempted = false;
 let modeToggleShouldRestoreEditorFocus = false;
 let gitClient: any = null;
+let pendingEditorFocus = false;
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
 let lastSentDraftText: string | null = null;
 let hasSentDraftText = false;
@@ -515,6 +525,16 @@ const applyRevealSelectionFromHost = (revealMessage: any) => {
     align: 'center'
   });
   pendingRevealSelection = null;
+};
+
+const focusEditorFromHost = () => {
+  if (!editor) {
+    pendingEditorFocus = true;
+    return;
+  }
+
+  editor.focus();
+  pendingEditorFocus = false;
 };
 
 gitClient = createGitClient({
@@ -711,6 +731,7 @@ const applyMode = (mode: 'live' | 'source', { post = true, persist = true, userT
   if (editor) {
     try {
       editor.setMode(mode);
+      syncGitDiffLineHighlights();
       if (shouldRestoreEditorFocus) {
         editor.focus();
       }
@@ -791,7 +812,7 @@ const mountInitialEditor = () => {
       onOpenGitWorktreeForLine: openGitWorktreeForLine
     });
     gitClient?.applyBaselineToEditor(editor);
-    setGitDiffLineHighlightsEnabled(editor, false);
+    syncGitDiffLineHighlights();
     editor.focus();
     pendingInitialText = null;
     initialMountRecoveryAttempted = false;
@@ -801,6 +822,9 @@ const mountInitialEditor = () => {
     requestWikiLinkStatuses(initialText);
     if (pendingRevealSelection) {
       applyRevealSelectionFromHost(pendingRevealSelection);
+    }
+    if (pendingEditorFocus) {
+      focusEditorFromHost();
     }
     failureNotice.updateEditorNotice();
     
@@ -868,6 +892,10 @@ const handleInit = (message: any) => {
   }
   if (typeof message.gitChangesGutter === 'boolean') {
     setGitChangesGutterVisible(message.gitChangesGutter, { post: false });
+  }
+  if (typeof message.gitDiffLineHighlights === 'boolean') {
+    gitDiffLineHighlightsEnabled = message.gitDiffLineHighlights;
+    syncGitDiffLineHighlights();
   }
   if (typeof message.vimMode === 'boolean') {
     setVimModeEnabled(message.vimMode);
@@ -941,6 +969,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'revealSelection') {
     applyRevealSelectionFromHost(message);
+    return;
+  }
+
+  if (message.type === 'focusEditor') {
+    focusEditorFromHost();
     return;
   }
 
@@ -1054,6 +1087,12 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'gitChangesGutterChanged') {
     setGitChangesGutterVisible(message.enabled, { post: false });
+    return;
+  }
+
+  if (message.type === 'gitDiffLineHighlightsChanged') {
+    gitDiffLineHighlightsEnabled = message.enabled;
+    syncGitDiffLineHighlights();
     return;
   }
 

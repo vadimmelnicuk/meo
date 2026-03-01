@@ -248,6 +248,8 @@ export function getFencedCodeContent(state: EditorState, node: any): string {
 
 export class MermaidDiagramWidget extends WidgetType {
   diagramText: string;
+  startLine: number;
+  endLine: number;
   isDisplayMath: boolean;
   zoom: number;
   panX: number;
@@ -264,9 +266,11 @@ export class MermaidDiagramWidget extends WidgetType {
   fullscreenCleanup: (() => void) | null;
   exitFullscreenHandler: ((e: KeyboardEvent) => void) | null;
 
-  constructor(diagramText: string) {
+  constructor(diagramText: string, startLine: number = 0, endLine: number = 0) {
     super();
     this.diagramText = diagramText;
+    this.startLine = startLine;
+    this.endLine = endLine;
     this.isDisplayMath = isDisplayMathDiagram(diagramText);
     this.zoom = 1;
     this.panX = 0;
@@ -285,12 +289,24 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   eq(other: WidgetType): boolean {
-    return other instanceof MermaidDiagramWidget && other.diagramText === this.diagramText;
+    return (
+      other instanceof MermaidDiagramWidget &&
+      other.diagramText === this.diagramText &&
+      other.startLine === this.startLine &&
+      other.endLine === this.endLine
+    );
   }
 
   toDOM() {
     const container = document.createElement('div');
     container.className = 'meo-mermaid-block';
+    if (this.startLine > 0) {
+      container.dataset.meoRenderedBlockStartLine = String(this.startLine);
+    }
+    if (this.endLine > 0) {
+      container.dataset.meoRenderedBlockEndLine = String(this.endLine);
+    }
+    container.dataset.meoRenderedBlockKind = 'mermaid';
     if (this.isDisplayMath) {
       container.classList.add('meo-mermaid-math-block');
     }

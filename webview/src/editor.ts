@@ -12,8 +12,8 @@ import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
 import {
   gitDiffGutterBaselineExtensions,
+  gitDiffGutterLiveRenderExtensions,
   gitDiffGutterRenderExtensions,
-  gitDiffGutterPlaceholderExtensions,
   setGitBaseline as applyGitBaseline
 } from './helpers/gitDiffGutter';
 import { gitDiffLineHighlightsField } from './helpers/gitDiffLineHighlights';
@@ -331,7 +331,7 @@ export function createEditor({
     if (!view) {
       return;
     }
-    const shouldShowGitGutter = gitGutterVisible && currentMode === 'source';
+    const shouldShowGitGutter = gitGutterVisible;
     view.dom.classList.toggle('meo-git-gutter-hidden', !shouldShowGitGutter);
     if (!shouldShowGitGutter) {
       gitBlameHover?.hide();
@@ -806,7 +806,7 @@ export function createEditor({
       history(),
       lineNumbers(),
       ...gitDiffGutterBaselineExtensions(),
-      gitGutterCompartment.of(startMode === 'live' ? gitDiffGutterPlaceholderExtensions() : gitDiffGutterRenderExtensions()),
+      gitGutterCompartment.of(startMode === 'live' ? gitDiffGutterLiveRenderExtensions() : gitDiffGutterRenderExtensions()),
       highlightActiveLineGutter(),
       highlightActiveLine(),
       EditorView.lineWrapping,
@@ -1190,7 +1190,7 @@ export function createEditor({
           effects: [
             modeCompartment.reconfigure(nextMode === 'live' ? liveModeExtensions() : sourceMode()),
             gitGutterCompartment.reconfigure(
-              nextMode === 'live' ? gitDiffGutterPlaceholderExtensions() : gitDiffGutterRenderExtensions()
+              nextMode === 'live' ? gitDiffGutterLiveRenderExtensions() : gitDiffGutterRenderExtensions()
             ),
             vimCompartment.reconfigure(vimExtensionsForState())
           ]

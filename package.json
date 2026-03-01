@@ -185,28 +185,34 @@
           "order": 4,
           "description": "Show Git change indicators in the editor."
         },
-        "markdownEditorOptimized.autoSave.enabled": {
+        "markdownEditorOptimized.gitChanges.lineHighlights": {
           "type": "boolean",
           "default": true,
           "order": 5,
+          "description": "Show subtle line coloring for modified lines in Source mode."
+        },
+        "markdownEditorOptimized.autoSave.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 6,
           "description": "Enable the auto-save while editing."
         },
         "markdownEditorOptimized.vimMode.enabled": {
           "type": "boolean",
           "default": false,
-          "order": 6,
+          "order": 7,
           "description": "Enable Vim keybindings in Source mode."
         },
         "markdownEditorOptimized.export.pdf.browserPath": {
           "type": "string",
           "default": "",
-          "order": 7,
+          "order": 8,
           "description": "Optional path to a Chrome/Edge executable used for direct PDF export. Leave empty to auto-detect."
         },
         "markdownEditorOptimized.imageFolder": {
           "type": "string",
           "default": "assets",
-          "order": 8,
+          "order": 9,
           "description": "Folder name to save pasted images (relative to workspace root)."
         },
         "markdownEditorOptimized.theme.base02": {

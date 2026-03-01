@@ -6,6 +6,7 @@ import {
   normalizeDiffLine,
   splitDiffLines
 } from '../../../src/shared/gitDiffCore';
+import { getLiveGitCollapsedBlockAtLine, getLiveGitCollapsedBlocks } from './liveRenderedBlocks';
 
 const MAX_DIFF_TEXT_CHARS = 1024 * 1024;
 const MAX_DIFF_LINES = 1200;
@@ -28,6 +29,8 @@ export interface MarkerFlags {
   eofProxy?: boolean;
   trailingEofProxyOnly?: boolean;
   trailingEofProxySource?: boolean;
+  liveBlockStartLine?: number;
+  liveBlockEndLine?: number;
 }
 
 const emptyBaseline: BaselineSnapshot = Object.freeze({
@@ -83,6 +86,12 @@ class GitGutterMarker extends GutterMarker {
   toDOM(): HTMLElement {
     const el = document.createElement('span');
     el.className = 'meo-git-gutter-marker';
+    if (Number.isInteger(this.flags.liveBlockStartLine)) {
+      el.dataset.meoLiveBlockStartLine = String(this.flags.liveBlockStartLine);
+    }
+    if (Number.isInteger(this.flags.liveBlockEndLine)) {
+      el.dataset.meoLiveBlockEndLine = String(this.flags.liveBlockEndLine);
+    }
     if (this.flags.eofProxy) {
       el.classList.add('is-eof-proxy');
     }
@@ -385,6 +394,98 @@ function buildGitGutterMarkersFromLineFlags(state: EditorState, lineFlags: (Mark
   return builder.finish();
 }
 
+function buildLiveGitGutterMarkersFromLineFlags(state: EditorState, lineFlags: (MarkerFlags | undefined)[] | null): any {
+  const builder = new RangeSetBuilder<any>();
+  if (!lineFlags) {
+    return builder.finish();
+  }
+
+  const collapsedBlocks = getLiveGitCollapsedBlocks(state, lineFlags);
+  let collapsedBlockIndex = 0;
+  let activeCollapsedBlock = collapsedBlocks[collapsedBlockIndex] ?? null;
+  let activeCollapsedFlags = activeCollapsedBlock ? liveCollapsedBlockMarkerFlags(activeCollapsedBlock) : null;
+
+  const trailingEofProxyFlags = (
+    isTrailingEofVisualLine(state.doc, state.doc.lines) && state.doc.lines > 1
+      ? (() => {
+          const prevFlags = lineFlags[state.doc.lines - 2];
+          if (!prevFlags || (!prevFlags.added && !prevFlags.modified)) {
+            if (!prevFlags?.trailingEofProxyOnly) {
+              return null;
+            }
+          }
+          if (!prevFlags.trailingEofProxySource && lineFlags[state.doc.lines - 1]) {
+            return null;
+          }
+          return {
+            added: prevFlags.trailingEofProxyOnly ? false : !!prevFlags.added,
+            modified: prevFlags.trailingEofProxyOnly ? true : !!prevFlags.modified,
+            eofProxy: true
+          };
+        })()
+      : null
+  );
+
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+
+    while (activeCollapsedBlock && lineNo > activeCollapsedBlock.endLine) {
+      collapsedBlockIndex += 1;
+      activeCollapsedBlock = collapsedBlocks[collapsedBlockIndex] ?? null;
+      activeCollapsedFlags = activeCollapsedBlock ? liveCollapsedBlockMarkerFlags(activeCollapsedBlock) : null;
+    }
+
+    if (activeCollapsedBlock && lineNo >= activeCollapsedBlock.startLine && activeCollapsedFlags) {
+      builder.add(line.from, line.from, gitMarker(activeCollapsedFlags));
+      continue;
+    }
+
+    if (isTrailingEofVisualLine(state.doc, lineNo)) {
+      if (trailingEofProxyFlags) {
+        builder.add(line.from, line.from, gitMarker(trailingEofProxyFlags));
+      }
+      continue;
+    }
+
+    const flags = lineFlags[lineNo - 1];
+    if (!flags || flags.trailingEofProxyOnly) {
+      continue;
+    }
+    builder.add(line.from, line.from, gitMarker(flags));
+  }
+
+  return builder.finish();
+}
+
+function liveCollapsedBlockMarkerFlags(block: { startLine: number; endLine: number; aggregateChangeKind: 'added' | 'modified' }): MarkerFlags {
+  return block.aggregateChangeKind === 'modified'
+    ? {
+        ...emptyMarkerFlags(),
+        modified: true,
+        liveBlockStartLine: block.startLine,
+        liveBlockEndLine: block.endLine
+      }
+    : {
+        ...emptyMarkerFlags(),
+        added: true,
+        liveBlockStartLine: block.startLine,
+        liveBlockEndLine: block.endLine
+      };
+}
+
+function liveCollapsedBlockMarkerAtPos(
+  state: EditorState,
+  lineFlags: (MarkerFlags | undefined)[] | null,
+  pos: number
+): GitGutterMarker | null {
+  if (!Array.isArray(lineFlags)) {
+    return null;
+  }
+  const lineNo = state.doc.lineAt(Math.max(0, Math.min(pos, state.doc.length))).number;
+  const block = getLiveGitCollapsedBlockAtLine(state, lineFlags, lineNo);
+  return block ? gitMarker(liveCollapsedBlockMarkerFlags(block)) : null;
+}
+
 export const gitDiffLineFlagsField = StateField.define<(MarkerFlags | undefined)[] | null>({
   create(state: EditorState): (MarkerFlags | undefined)[] | null {
     return buildCoalescedDiffLineFlags(state, state.field(gitBaselineField));
@@ -431,14 +532,24 @@ const gitDiffGutterExtension = gutter({
     return spacerMarker;
   },
   markers(view: EditorView) {
-    return view.state.field(gitDiffGutterField);
+    return (
+      view.state.field(gitDiffGutterField, false) ??
+      buildGitGutterMarkersFromLineFlags(view.state, view.state.field(gitDiffLineFlagsField, false))
+    );
   }
 });
 
-const gitGutterPlaceholderExtension = gutter({
+const gitDiffGutterLiveExtension = gutter({
   class: 'meo-git-gutter',
+  renderEmptyElements: true,
   initialSpacer() {
     return spacerMarker;
+  },
+  markers(view: EditorView) {
+    return buildLiveGitGutterMarkersFromLineFlags(view.state, view.state.field(gitDiffLineFlagsField, false));
+  },
+  widgetMarker(view: EditorView, _widget: any, block: any) {
+    return liveCollapsedBlockMarkerAtPos(view.state, view.state.field(gitDiffLineFlagsField, false), block.from);
   }
 });
 
@@ -450,12 +561,8 @@ export function gitDiffGutterRenderExtensions(): any[] {
   return [gitDiffGutterField, gitDiffGutterExtension];
 }
 
-export function gitDiffGutterPlaceholderExtensions(): any[] {
-  return [gitGutterPlaceholderExtension];
-}
-
-export function gitDiffGutterExtensions(): any[] {
-  return [...gitDiffGutterBaselineExtensions(), ...gitDiffGutterRenderExtensions()];
+export function gitDiffGutterLiveRenderExtensions(): any[] {
+  return [gitDiffGutterLiveExtension];
 }
 
 interface DiffSegment {
