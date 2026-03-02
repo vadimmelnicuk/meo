@@ -1153,10 +1153,16 @@ function buildDecorations(state) {
         ) {
           return;
         }
+        // For image links, check if the image node overlaps with selection to show markers
+        let useActiveDeco = activeLines.has(line.number);
         if (parentName === 'Image') {
           const { url } = getImageData(state, node.node.parent);
           if (!url) {
             return;
+          }
+          // Also show active markers if the image is selected
+          if (!useActiveDeco && overlapsSelection(state, node.node.parent.from, node.node.parent.to)) {
+            useActiveDeco = true;
           }
         } else if (parentName === 'Link') {
           if (isWikiLinkNode(state, node.node.parent)) {
@@ -1171,7 +1177,7 @@ function buildDecorations(state) {
             return;
           }
         }
-        addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, linkMarkerDeco, activeLinkMarkerDeco);
+        addRange(ranges, node.from, node.to, useActiveDeco ? activeLinkMarkerDeco : linkMarkerDeco);
       } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, activeLineMarkerDeco);
       } else {
