@@ -1,5 +1,18 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.14
+- Added .mdc/.mdx support
+- Added collapsible details blocks with summary widget and styling
+- Added GitHub alerts render
+- Added footnotes
+- Added emoji support
+- Added floating toolbar display for table cells
+- Added draft state synchronization and messaging
+- Added git blame support for tables and mermaid diagrams in live mode
+- Improved frontmatter HTML export
+- Enhanced git diff functionality with live mode renderer
+- Fixed z-index for row controls to get hover working
+
 ## 0.1.13
 - Refactored webview from JS to TS
 - Added image paste function with 'assets' as default folder
