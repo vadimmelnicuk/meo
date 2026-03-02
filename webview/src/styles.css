@@ -1935,7 +1935,7 @@ body {
   gap: 2px;
   opacity: 0;
   pointer-events: auto;
-  z-index: 6;
+  z-index: 210;
 }
 
 .cm-editor .meo-md-html-col-controls-left-insert {
@@ -1988,7 +1988,7 @@ body {
   gap: 2px;
   opacity: 0;
   pointer-events: auto;
-  z-index: 6;
+  z-index: 210;
 }
 
 .cm-editor .meo-md-html-row-controls-top-insert {
