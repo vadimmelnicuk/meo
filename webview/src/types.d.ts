@@ -14,6 +14,8 @@ type WebviewMessage =
   | { type: 'setAutoSave'; enabled: boolean }
   | { type: 'setLineNumbers'; visible: boolean }
   | { type: 'setGitChangesGutter'; visible: boolean }
+  | { type: 'setOutlineVisible'; visible: boolean }
+  | { type: 'setFindOptions'; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'openLink'; href: string }
   | { type: 'resolveImageSrc'; requestId: string; url: string }
   | { type: 'resolveWikiLinks'; requestId: string; targets: string[] }
@@ -24,20 +26,22 @@ type WebviewMessage =
   | { type: 'saveImageFromClipboard'; requestId: string; imageData: string; fileName: string };
 
 type ExtensionMessage =
-  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; autoSave: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean }
+  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; autoSave: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'docChanged'; text: string; version: number }
   | { type: 'applied'; version: number }
   | { type: 'focusEditor' }
   | { type: 'revealSelection'; anchor: number; head: number; focus?: boolean }
   | { type: 'themeChanged'; theme: ThemeSettings }
   | { type: 'outlinePositionChanged'; position: 'left' | 'right' }
+  | { type: 'outlineVisibilityChanged'; visible: boolean }
   | { type: 'autoSaveChanged'; enabled: boolean }
   | { type: 'lineNumbersChanged'; enabled: boolean }
   | { type: 'gitChangesGutterChanged'; enabled: boolean }
   | { type: 'gitDiffLineHighlightsChanged'; enabled: boolean }
   | { type: 'vimModeChanged'; enabled: boolean }
+  | { type: 'findOptionsChanged'; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'resolvedImageSrc'; requestId: string; resolvedUrl: string }
-  | { type: 'resolvedWikiLinks'; requestId: string; statuses: Record<string, WikiLinkStatus> }
+  | { type: 'resolvedWikiLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }
   | { type: 'savedImagePath'; requestId: string; success: boolean; path?: string; error?: string };
 
 interface ThemeSettings {

@@ -26,6 +26,7 @@ export const AUTO_SAVE_KEY = 'autoSaveEnabled';
 export const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 export const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 export const VIM_MODE_KEY = 'vimModeEnabled';
+export const OUTLINE_VISIBLE_KEY = 'outlineVisible';
 export const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
 
 export type OutlinePosition = 'left' | 'right';
@@ -80,6 +81,10 @@ export function getVimModeEnabled(context: vscode.ExtensionContext): boolean {
 export function getOutlinePosition(): OutlinePosition {
   const value = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<string>('outline.position', 'right');
   return value === 'left' ? 'left' : 'right';
+}
+
+export function getOutlineVisible(context: vscode.ExtensionContext): boolean {
+  return context.globalState.get<boolean>(OUTLINE_VISIBLE_KEY, false);
 }
 
 export function getExportPdfBrowserPath(): string | undefined {

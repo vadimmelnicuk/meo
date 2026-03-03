@@ -35,6 +35,7 @@ import {
   LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY,
   LINE_NUMBERS_LEGACY_SETTING_KEY,
   LINE_NUMBERS_SETTING_KEY,
+  OUTLINE_VISIBLE_KEY,
   VIM_MODE_SETTING_KEY,
   syncEditorAssociations,
   getAutoSaveEnabled,
@@ -44,6 +45,7 @@ import {
   getGitDiffLineHighlightsEnabled,
   getLineNumbersEnabled,
   getOutlinePosition,
+  getOutlineVisible,
   getThemeSettings,
   getVimModeEnabled,
   isMarkdownDocumentPath,
@@ -56,6 +58,12 @@ import type { ExportStyleEnvironment } from './export/runtime';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'markdownEditorOptimized.activeEditor';
+const FIND_OPTIONS_STATE_KEY = 'findOptions';
+
+type FindOptionsState = {
+  wholeWord: boolean;
+  caseSensitive: boolean;
+};
 
 type ExportRuntimeModule = {
   renderExportHtmlDocument: (options: {
@@ -416,6 +424,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       context: this.context,
       agentReviewHandoff: this.agentReviewHandoff,
       onExportDocument: (session, format) => this.exportSessionDocument(session, format),
+      getFindOptions: () => this.getFindOptions(),
+      setFindOptions: (options) => this.setFindOptions(options),
+      setOutlineVisible: (visible) => this.setOutlineVisible(visible),
       onPanelActivated: (activePanel) => {
         this.lastActivePanel = activePanel;
       },
@@ -443,6 +454,41 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     for (const panel of this.activePanels) {
       void panel.webview.postMessage(message);
     }
+  }
+
+  private getFindOptions(): FindOptionsState {
+    const stored = this.context.globalState.get<Partial<FindOptionsState> | undefined>(FIND_OPTIONS_STATE_KEY);
+    return {
+      wholeWord: stored?.wholeWord === true,
+      caseSensitive: stored?.caseSensitive === true
+    };
+  }
+
+  private async setFindOptions(options: FindOptionsState): Promise<void> {
+    const nextOptions: FindOptionsState = {
+      wholeWord: options.wholeWord === true,
+      caseSensitive: options.caseSensitive === true
+    };
+    const currentOptions = this.getFindOptions();
+    if (
+      currentOptions.wholeWord === nextOptions.wholeWord &&
+      currentOptions.caseSensitive === nextOptions.caseSensitive
+    ) {
+      return;
+    }
+
+    await this.context.globalState.update(FIND_OPTIONS_STATE_KEY, nextOptions);
+    this.broadcast({ type: 'findOptionsChanged', findOptions: nextOptions });
+  }
+
+  private async setOutlineVisible(visible: boolean): Promise<void> {
+    const nextVisible = visible === true;
+    if (getOutlineVisible(this.context) === nextVisible) {
+      return;
+    }
+
+    await this.context.globalState.update(OUTLINE_VISIBLE_KEY, nextVisible);
+    this.broadcast({ type: 'outlineVisibilityChanged', visible: nextVisible });
   }
 
   private updateActiveEditorContext(): void {
@@ -669,12 +715,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta http-equiv="Content-Security-Policy" content="${csp};" />
         <title>Markdown Editor Optimized</title>
+        <style>${getWebviewPreloadShellCss()}</style>
         <link href="${styleUri}" rel="stylesheet" />
       </head>
       <body data-meo-mermaid-src="${mermaidRuntimeUri}">
         <div id="app" class="editor-root">
+          ${getWebviewPreloadShellMarkup()}
         </div>
-        <script nonce="${nonce}" src="${scriptUri}"></script>
+        <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
       </body>
     </html>`;
   }
@@ -687,6 +735,49 @@ function getNonce(): string {
     nonce += chars[Math.floor(Math.random() * chars.length)];
   }
   return nonce;
+}
+
+function getWebviewPreloadShellCss(): string {
+  return `
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--vscode-editor-background);
+      }
+      #app {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      #app > .mode-toolbar.meo-preload-toolbar {
+        min-height: 40px;
+        box-sizing: border-box;
+        background: var(--vscode-sideBar-background);
+      }
+      #app > .editor-wrapper.meo-preload-editor-shell {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      #app > .editor-wrapper.meo-preload-editor-shell > .editor-host {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        background: var(--vscode-editor-background);
+      }
+    `;
+}
+
+function getWebviewPreloadShellMarkup(): string {
+  return `
+          <div class="mode-toolbar meo-preload-toolbar" role="presentation" aria-hidden="true"></div>
+          <div class="editor-wrapper meo-preload-editor-shell" role="presentation" aria-hidden="true">
+            <div class="editor-host"></div>
+          </div>
+        `;
 }
 
 async function loadExportRuntimeModule(extensionUri: vscode.Uri): Promise<ExportRuntimeModule> {

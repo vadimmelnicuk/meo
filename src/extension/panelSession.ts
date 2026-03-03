@@ -11,6 +11,7 @@ import {
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
   getOutlinePosition,
+  getOutlineVisible,
   getThemeSettings,
   getVimModeEnabled
 } from '../shared/extensionConfig';
@@ -25,6 +26,11 @@ import type { OutlinePosition } from '../shared/extensionConfig';
 export type EditorMode = 'live' | 'source';
 export type ExportFormat = 'html' | 'pdf';
 
+type FindOptions = {
+  wholeWord: boolean;
+  caseSensitive: boolean;
+};
+
 type InitMessage = {
   type: 'init';
   text: string;
@@ -35,7 +41,9 @@ type InitMessage = {
   gitChangesGutter: boolean;
   gitDiffLineHighlights: boolean;
   vimMode: boolean;
+  findOptions: FindOptions;
   outlinePosition: OutlinePosition;
+  outlineVisible: boolean;
   theme: ThemeSettings;
 };
 
@@ -138,6 +146,18 @@ type SetGitChangesGutterMessage = {
   enabled?: boolean;
 };
 
+type SetOutlineVisibleMessage = {
+  type: 'setOutlineVisible';
+  visible: boolean;
+};
+
+type SetFindOptionsMessage = {
+  type: 'setFindOptions';
+  wholeWord?: boolean;
+  caseSensitive?: boolean;
+  findOptions?: Partial<FindOptions>;
+};
+
 type ResolvedImageSrcMessage = {
   type: 'resolvedImageSrc';
   requestId: string;
@@ -211,6 +231,8 @@ type WebviewMessage =
   | SetAutoSaveMessage
   | SetLineNumbersMessage
   | SetGitChangesGutterMessage
+  | SetOutlineVisibleMessage
+  | SetFindOptionsMessage
   | OpenLinkMessage
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
@@ -242,6 +264,9 @@ type PanelSessionControllerParams = {
   context: vscode.ExtensionContext;
   agentReviewHandoff: AgentReviewHandoffController;
   onExportDocument: (session: PanelSession, format: ExportFormat) => Promise<void>;
+  getFindOptions: () => FindOptions;
+  setFindOptions: (options: FindOptions) => Promise<void>;
+  setOutlineVisible: (visible: boolean) => Promise<void>;
   onPanelActivated: (panel: vscode.WebviewPanel) => void;
   onPanelViewStateChanged: () => void;
   onPanelDisposed: (panel: vscode.WebviewPanel) => void;
@@ -274,6 +299,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     context,
     agentReviewHandoff,
     onExportDocument,
+    getFindOptions,
+    setFindOptions,
+    setOutlineVisible,
     onPanelActivated,
     onPanelViewStateChanged,
     onPanelDisposed
@@ -332,7 +360,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
       vimMode: getVimModeEnabled(context),
+      findOptions: getFindOptions(),
       outlinePosition: getOutlinePosition(),
+      outlineVisible: getOutlineVisible(context),
       theme: getThemeSettings()
     };
     return panel.webview.postMessage(message);
@@ -629,6 +659,18 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await vscode.workspace
           .getConfiguration(EXTENSION_CONFIG_SECTION)
           .update(GIT_CHANGES_GUTTER_SETTING_KEY, visible, vscode.ConfigurationTarget.Global);
+        return;
+      }
+      case 'setOutlineVisible':
+        await setOutlineVisible(raw.visible);
+        return;
+      case 'setFindOptions': {
+        const wholeWord = raw.findOptions?.wholeWord ?? raw.wholeWord;
+        const caseSensitive = raw.findOptions?.caseSensitive ?? raw.caseSensitive;
+        await setFindOptions({
+          wholeWord: wholeWord === true,
+          caseSensitive: caseSensitive === true
+        });
         return;
       }
       case 'exportDocument':

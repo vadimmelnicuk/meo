@@ -34,7 +34,7 @@ interface DropCandidate {
 
 interface OutlineController {
   sidebar: HTMLElement;
-  toggle: () => void;
+  setVisible: (nextVisible: boolean) => void;
   refresh: () => void;
   setPosition: (position: 'left' | 'right') => void;
   isVisible: () => boolean;
@@ -205,10 +205,12 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
     }
   };
 
-  const toggle = () => {
-    visible = !visible;
+  const setVisible = (nextVisible: boolean) => {
+    const normalizedVisible = nextVisible === true;
+    const changed = normalizedVisible !== visible;
+    visible = normalizedVisible;
     updateOutlineUI();
-    if (visible) {
+    if (visible && changed) {
       refresh();
     }
   };
@@ -343,7 +345,7 @@ export function createOutlineController({ root, editorWrapper, outlineButton, ge
 
   return {
     sidebar: outlineSidebar,
-    toggle,
+    setVisible,
     refresh,
     setPosition,
     isVisible() {

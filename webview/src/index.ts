@@ -1,4 +1,3 @@
-import { createEditor } from './editor';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -11,6 +10,8 @@ import { isPrimaryModifier, isShortcutKey, normalizeEol, handleEditorShortcut, t
 import { createFindPanel, createFindPanelController, type FindPanelController } from './helpers/findPanel';
 import { createSelectionMenu, createSelectionMenuController, type SelectionMenuController } from './helpers/selectionMenu';
 import { createExportHandler, type ExportHandlerContext } from './helpers/export';
+
+type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 
 const vscode = acquireVsCodeApi();
 initializeImageHandling(vscode);
@@ -27,8 +28,11 @@ if (!root) {
 
 root.classList.add('editor-root');
 
-const toolbar = document.createElement('div');
+const existingToolbar = root.querySelector('.mode-toolbar');
+const toolbar = existingToolbar instanceof HTMLElement ? existingToolbar : document.createElement('div');
 toolbar.className = 'mode-toolbar';
+toolbar.classList.remove('meo-preload-toolbar');
+toolbar.removeAttribute('aria-hidden');
 toolbar.setAttribute('role', 'toolbar');
 toolbar.setAttribute('aria-label', 'Editor toolbar');
 
@@ -183,6 +187,15 @@ const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
   updateGitChangesGutterUI();
   if (post && changed) {
     vscode.postMessage({ type: 'setGitChangesGutter', visible: gitChangesGutterVisible });
+  }
+};
+
+const setOutlineVisible = (visible, { post = true } = {}) => {
+  const nextVisible = visible === true;
+  const changed = nextVisible !== outlineController.isVisible();
+  outlineController.setVisible(nextVisible);
+  if (post && changed) {
+    vscode.postMessage({ type: 'setOutlineVisible', visible: nextVisible });
   }
 };
 
@@ -404,13 +417,17 @@ const findPanelController = createFindPanelController(findPanelElements, () => e
 const selectionMenuElements = createSelectionMenu();
 const selectionMenuController = createSelectionMenuController(selectionMenuElements, () => editor);
 
-toolbar.append(formatGroup, rightGroup, modeGroup, findPanelElements.panel);
+toolbar.replaceChildren(formatGroup, rightGroup, modeGroup, findPanelElements.panel);
 
-const editorHost = document.createElement('div');
-editorHost.className = 'editor-host';
-
-const editorWrapper = document.createElement('div');
+const existingEditorWrapper = root.querySelector('.editor-wrapper');
+const editorWrapper = existingEditorWrapper instanceof HTMLElement ? existingEditorWrapper : document.createElement('div');
 editorWrapper.className = 'editor-wrapper';
+editorWrapper.classList.remove('meo-preload-editor-shell');
+editorWrapper.removeAttribute('aria-hidden');
+
+const existingEditorHost = editorWrapper.querySelector('.editor-host');
+const editorHost = existingEditorHost instanceof HTMLElement ? existingEditorHost : document.createElement('div');
+editorHost.className = 'editor-host';
 
 let editor: any = null;
 const outlineController = createOutlineController({
@@ -420,13 +437,8 @@ const outlineController = createOutlineController({
   getEditor: () => editor
 });
 
-editorWrapper.append(editorHost, outlineController.sidebar, selectionMenuElements.menu);
-root.replaceChildren(toolbar);
-window.requestAnimationFrame(() => {
-  if (!root.contains(editorWrapper)) {
-    root.append(editorWrapper);
-  }
-});
+editorWrapper.replaceChildren(editorHost, outlineController.sidebar, selectionMenuElements.menu);
+root.replaceChildren(toolbar, editorWrapper);
 
 let documentVersion = 0;
 let pendingDebounce: number | null = null;
@@ -446,6 +458,8 @@ let pendingEditorFocus = false;
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
 let lastSentDraftText: string | null = null;
 let hasSentDraftText = false;
+let initialEditorMountInFlight = false;
+let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
 
 const editorNotice: EditorNotice = {
   setEditorNotice: (_message, _kind = 'info') => {},
@@ -462,8 +476,42 @@ const bumpLocalEditGeneration = () => {
   gitClient?.bumpLocalEditGeneration();
 };
 
+const loadCreateEditorFactory = async (): Promise<CreateEditorFactory> => {
+  if (!createEditorFactoryPromise) {
+    createEditorFactoryPromise = import('./editor')
+      .then((mod) => mod.createEditor)
+      .catch((error) => {
+        createEditorFactoryPromise = null;
+        throw error;
+      });
+  }
+
+  return createEditorFactoryPromise;
+};
+
+const warmEditorBundleAfterFirstPaint = () => {
+  // Let the preload shell paint first, then start fetching/parsing the heavy editor chunk.
+  window.requestAnimationFrame(() => {
+    void loadCreateEditorFactory();
+  });
+};
+
+type WebviewUiState = {
+  mode?: 'live' | 'source';
+};
+
 const persistModeState = () => {
-  vscode.setState({ mode: currentMode });
+  const state: WebviewUiState = {
+    mode: currentMode
+  };
+  vscode.setState(state);
+};
+
+const postFindOptions = () => {
+  vscode.postMessage({
+    type: 'setFindOptions',
+    findOptions: findPanelController.getSearchOptions()
+  });
 };
 
 const getCurrentEditorText = () => {
@@ -789,12 +837,17 @@ const applyMode = (mode: 'live' | 'source', { post = true, persist = true, userT
   return true;
 };
 
-const mountInitialEditor = () => {
-  if (editor || pendingInitialText === null) {
+const mountInitialEditor = async () => {
+  if (editor || pendingInitialText === null || initialEditorMountInFlight) {
     return;
   }
-  const initialText = pendingInitialText;
+  initialEditorMountInFlight = true;
   try {
+    const createEditor = await loadCreateEditorFactory();
+    const initialText = pendingInitialText;
+    if (editor || initialText === null) {
+      return;
+    }
     editor = createEditor({
       parent: editorHost,
       text: initialText,
@@ -826,6 +879,9 @@ const mountInitialEditor = () => {
     if (pendingEditorFocus) {
       focusEditorFromHost();
     }
+    if (outlineController.isVisible()) {
+      outlineController.refresh();
+    }
     failureNotice.updateEditorNotice();
     
     setWikiLinkRefreshContext({
@@ -856,6 +912,8 @@ const mountInitialEditor = () => {
     }
 
     failureNotice.setFailureNotice(failureNotice.editorUpdateFailureMessage, 'error');
+  } finally {
+    initialEditorMountInFlight = false;
   }
 };
 
@@ -865,14 +923,9 @@ const scheduleInitialEditorMount = () => {
   }
   initialEditorMountQueued = true;
   window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      initialEditorMountQueued = false;
-      mountInitialEditor();
-      if (outlineController.isVisible()) {
-        outlineController.refresh();
-      }
-      findPanelController.updateFindStatusSummary();
-    });
+    initialEditorMountQueued = false;
+    void mountInitialEditor();
+    findPanelController.updateFindStatusSummary();
   });
 };
 
@@ -900,7 +953,13 @@ const handleInit = (message: any) => {
   if (typeof message.vimMode === 'boolean') {
     setVimModeEnabled(message.vimMode);
   }
+  if (message.findOptions && typeof message.findOptions === 'object') {
+    findPanelController.setSearchOptions(message.findOptions);
+  }
   outlineController.setPosition(message.outlinePosition);
+  if (typeof message.outlineVisible === 'boolean') {
+    setOutlineVisible(message.outlineVisible, { post: false });
+  }
   if (editor && outlineController.isVisible()) {
     outlineController.refresh();
   }
@@ -1101,6 +1160,19 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'findOptionsChanged') {
+    if (message.findOptions && typeof message.findOptions === 'object') {
+      findPanelController.setSearchOptions(message.findOptions);
+      findPanelController.updateFindStatusSummary();
+    }
+    return;
+  }
+
+  if (message.type === 'outlineVisibilityChanged') {
+    setOutlineVisible(message.visible, { post: false });
+    return;
+  }
+
   if (message.type === 'gitBaselineChanged') {
     gitClient?.handleMessage(message, { editor });
     return;
@@ -1213,7 +1285,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-const state = vscode.getState() as { mode?: string } | undefined;
+const state = vscode.getState() as WebviewUiState | undefined;
 if (state && (state.mode === 'live' || state.mode === 'source')) {
   applyMode(state.mode, { post: false, persist: false });
   hasLocalModePreference = true;
@@ -1258,6 +1330,16 @@ findPanelElements.findInput.addEventListener('input', () => {
   findPanelController.updateFindStatusSummary();
 });
 
+findPanelElements.wholeWordBtn.addEventListener('click', () => {
+  findPanelController.toggleWholeWord();
+  postFindOptions();
+});
+
+findPanelElements.caseSensitiveBtn.addEventListener('click', () => {
+  findPanelController.toggleCaseSensitive();
+  postFindOptions();
+});
+
 findPanelElements.panel.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !findPanelController.isVisible()) {
     return;
@@ -1298,10 +1380,6 @@ findPanelElements.replaceBtn.addEventListener('click', () => {
 
 findPanelElements.replaceAllBtn.addEventListener('click', () => {
   findPanelController.runReplaceAll();
-});
-
-findPanelElements.closeFindBtn.addEventListener('click', () => {
-  findPanelController.close();
 });
 
 findToggleBtn.addEventListener('click', () => {
@@ -1349,7 +1427,7 @@ exportPdfOption.addEventListener('click', () => {
   exportHandler.requestExport('pdf');
 });
 outlineBtn.addEventListener('click', () => {
-  outlineController.toggle();
+  setOutlineVisible(!outlineController.isVisible());
 });
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
@@ -1357,3 +1435,4 @@ gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
 persistModeState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });
 vscode.postMessage({ type: 'ready' });
+warmEditorBundleAfterFirstPaint();
