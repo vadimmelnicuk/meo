@@ -1,5 +1,12 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.15
+- Added find functionality for whole word and case sensitivity options
+- Added GitHub Copilot native change review support
+- Fixed link decoration handling in live mode on text selection
+- Refactor extension entry point
+- Implemented load performance improvements
+
 ## 0.1.14
 - Added .mdc/.mdx support
 - Added collapsible details blocks with summary widget and styling
