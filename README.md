@@ -20,11 +20,12 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Contents outline sidebar** - Jump to and reorder sections in long documents with ease
 - **Table editing** - Insert and edit tables inline without writing raw syntax
 
-### Git Integration
+### Git and Agents Integration
 
 - **Change visualisations** - See insertions and modifications inline
 - **Git blame** - View commit information for any line directly in the editor
 - **GitHub syntax** - Renders GitHub-specific markdown including collapsible details, footnotes, alerts, and emojis
+- **GitHub Copilot** - Support of native changes review experience
 
 ### Customisation & Export
 
