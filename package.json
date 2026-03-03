@@ -121,16 +121,6 @@
           "command": "markdownEditorOptimized.open",
           "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
           "group": "navigation"
-        },
-        {
-          "command": "markdownEditorOptimized.exportHtml",
-          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
-          "group": "navigation@1"
-        },
-        {
-          "command": "markdownEditorOptimized.exportPdf",
-          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
-          "group": "navigation@2"
         }
       ]
     },
@@ -147,7 +137,15 @@
         "git:**/*.md": "default",
         "git:**/*.markdown": "default",
         "git:**/*.mdx": "default",
-        "git:**/*.mdc": "default"
+        "git:**/*.mdc": "default",
+        "chat-editing-text-model:/**/*.md": "default",
+        "chat-editing-text-model:/**/*.markdown": "default",
+        "chat-editing-text-model:/**/*.mdx": "default",
+        "chat-editing-text-model:/**/*.mdc": "default",
+        "chat-editing-text-model:**/*.md": "default",
+        "chat-editing-text-model:**/*.markdown": "default",
+        "chat-editing-text-model:**/*.mdx": "default",
+        "chat-editing-text-model:**/*.mdc": "default"
       }
     },
     "configuration": {

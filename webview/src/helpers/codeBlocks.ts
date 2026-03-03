@@ -220,7 +220,8 @@ export function insertCodeBlock(view: EditorView, selection: { from: number; to:
     return;
   }
 
-  const insert = `${leadingWhitespace}\`\`\`\n\n${leadingWhitespace}\`\`\`\n`;
+  const contentWithoutLeadingWhitespace = lineText.slice(leadingWhitespace.length);
+  const insert = `${leadingWhitespace}\`\`\`\n${contentWithoutLeadingWhitespace}\n${leadingWhitespace}\`\`\`\n`;
   const cursorPos = line.from + leadingWhitespace.length + 4;
   view.dispatch({
     changes: { from: line.from, to: line.to, insert },
