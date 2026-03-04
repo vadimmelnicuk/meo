@@ -11,6 +11,7 @@ import {
   addCodeLanguageLabel,
   addTopLinePillLabel,
   addMermaidDiagram,
+  addMermaidDiagramBlock,
   addCopyCodeButton
 } from './helpers/codeBlocks';
 import { ImageWidget, getImageData, isImageUrl } from './helpers/images';
@@ -49,6 +50,7 @@ import {
 } from './helpers/alerts';
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
+import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -969,11 +971,12 @@ function buildDecorations(state) {
   const activeLines = collectActiveLines(state);
   const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
+  const mermaidColonBlocks = getMermaidColonBlocks(state);
   const footnotes = parseFootnotes(state);
   const collapsedHeadingSections = getCollapsedHeadingSections(state);
   const detailsBlocks = getDetailsBlocks(state);
   const strikeRanges = collectStrikethroughRanges(tree);
-  const codeBlockLines = collectCodeBlockLines(state, tree);
+  const codeBlockLines = collectCodeBlockLines(state, tree, mermaidColonBlocks);
   const parsedTableRanges = [];
   let tableDepth = 0;
 
@@ -1191,10 +1194,11 @@ function buildDecorations(state) {
     },
   });
 
-  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges);
+  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
   addEmojiDecorations(ranges, state, codeBlockLines);
+  addMermaidColonFenceDecorations(ranges, state, mermaidColonBlocks, activeLines);
   addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines);
   addDetailsBlockDecorations(ranges, state, detailsBlocks, activeLines);
   for (const section of collapsedHeadingSections) {
@@ -1299,7 +1303,7 @@ function filterDecorationsOutsideMergeConflicts(state, decorations) {
   return Decoration.set(filtered, true);
 }
 
-function collectCodeBlockLines(state, tree) {
+function collectCodeBlockLines(state, tree, mermaidColonBlocks) {
   const lines = new Set();
   tree.iterate({
     enter(node) {
@@ -1315,7 +1319,47 @@ function collectCodeBlockLines(state, tree) {
       return false;
     }
   });
+
+  for (const block of mermaidColonBlocks) {
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo += 1) {
+      lines.add(lineNo);
+    }
+  }
+
   return lines;
+}
+
+function addMermaidColonFenceDecorations(builder, state, mermaidColonBlocks, activeLines) {
+  for (const block of mermaidColonBlocks) {
+    const startLine = state.doc.line(block.startLine);
+    const endLine = state.doc.line(block.endLine);
+
+    addLineClass(builder, state, startLine.from, endLine.to, lineStyleDecos.codeBlock);
+
+    addRange(
+      builder,
+      startLine.from,
+      startLine.to,
+      activeLines.has(startLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
+    );
+    if (!activeLines.has(startLine.number)) {
+      addTopLinePillLabel(builder, startLine.to, 'mermaid');
+    }
+
+    addRange(
+      builder,
+      endLine.from,
+      endLine.to,
+      activeLines.has(endLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
+    );
+
+    addMermaidDiagramBlock(builder, state, {
+      startLine: block.startLine,
+      endLine: block.endLine,
+      diagramText: block.diagramText,
+      fullBlockText: block.fullBlockText
+    });
+  }
 }
 
 const emojiWidgetCache = new Map<string, WidgetType>();
@@ -1435,13 +1479,14 @@ function detectTableBlocks(state) {
   return blocks;
 }
 
-function addFallbackTableDecorations(builder, state, tree, parsedTableRanges) {
+function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, mermaidColonBlocks) {
   const tableBlocks = detectTableBlocks(state);
   for (const block of tableBlocks) {
     const from = state.doc.line(block.startLineNo).from;
     const to = state.doc.line(block.endLineNo).to;
     if (overlapsParsedTableRange(from, to, parsedTableRanges)) continue;
     if (isInsideCodeBlock(tree, from)) continue;
+    if (rangeOverlapsMermaidColonBlock(mermaidColonBlocks, from, to)) continue;
     addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo);
   }
 }

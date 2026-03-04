@@ -184,7 +184,93 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
 }
 
 function normalizeMarkdownForExport(markdownText: string): string {
-  return ensureBlankLinesAroundTableBlocks(markdownText);
+  return ensureBlankLinesAroundTableBlocks(normalizeMermaidColonFences(markdownText));
+}
+
+function normalizeMermaidColonFences(markdownText: string): string {
+  const lines = String(markdownText ?? '').split(/\r?\n/);
+  const out: string[] = [];
+  let inFence = false;
+  let fenceChar = '';
+  let fenceLen = 0;
+  let pendingMermaidBlock: {
+    colonCount: number;
+    indent: string;
+    openingLine: string;
+    lines: string[];
+  } | null = null;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+
+    if (pendingMermaidBlock) {
+      if (isMermaidColonFenceCloseLine(line, pendingMermaidBlock.colonCount)) {
+        out.push(`${pendingMermaidBlock.indent}\`\`\`mermaid`);
+        out.push(...pendingMermaidBlock.lines);
+        out.push(`${pendingMermaidBlock.indent}\`\`\``);
+        pendingMermaidBlock = null;
+        continue;
+      }
+
+      pendingMermaidBlock.lines.push(line);
+      continue;
+    }
+
+    const fence = parseFenceLine(line);
+    if (fence) {
+      if (!inFence) {
+        inFence = true;
+        fenceChar = fence.char;
+        fenceLen = fence.length;
+      } else if (fence.char === fenceChar && fence.length >= fenceLen) {
+        inFence = false;
+        fenceChar = '';
+        fenceLen = 0;
+      }
+      out.push(line);
+      continue;
+    }
+
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+
+    const mermaidOpen = parseMermaidColonFenceOpenLine(line);
+    if (mermaidOpen) {
+      pendingMermaidBlock = {
+        colonCount: mermaidOpen.colonCount,
+        indent: mermaidOpen.indent,
+        openingLine: line,
+        lines: []
+      };
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  if (pendingMermaidBlock) {
+    out.push(pendingMermaidBlock.openingLine);
+    out.push(...pendingMermaidBlock.lines);
+  }
+
+  return out.join('\n');
+}
+
+function parseMermaidColonFenceOpenLine(line: string): { indent: string; colonCount: number } | null {
+  const match = /^([ \t]{0,3})(:{3,})\s*mermaid\s*$/i.exec(line.trimEnd());
+  if (!match) {
+    return null;
+  }
+  return { indent: match[1], colonCount: match[2].length };
+}
+
+function isMermaidColonFenceCloseLine(line: string, colonCount: number): boolean {
+  if (colonCount < 3) {
+    return false;
+  }
+  return new RegExp(`^[ \\t]{0,3}:{${colonCount},}\\s*$`).test(line.trimEnd());
 }
 
 function ensureBlankLinesAroundTableBlocks(markdownText: string): string {

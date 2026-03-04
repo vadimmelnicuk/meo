@@ -2,6 +2,7 @@ import { EditorState } from '@codemirror/state';
 import { getFencedCodeInfo } from './codeBlocks';
 import { isThematicBreakLine } from './frontmatter';
 import { resolvedSyntaxTree } from './markdownSyntax';
+import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './mermaidColonBlocks';
 import { isTableDelimiterLine, parseTableInfo } from './tables';
 
 type LineFlagLike = {
@@ -90,7 +91,8 @@ function isInsideCodeBlock(tree: any, pos: number): boolean {
 function detectFallbackTableBlocks(
   state: EditorState,
   tree: any,
-  parsedTableRanges: Array<{ from: number; to: number }>
+  parsedTableRanges: Array<{ from: number; to: number }>,
+  mermaidColonBlocks: ReadonlyArray<{ from: number; to: number }>
 ): LiveRenderedBlock[] {
   const blocks: LiveRenderedBlock[] = [];
 
@@ -123,6 +125,10 @@ function detectFallbackTableBlocks(
       lineNo = endLineNo;
       continue;
     }
+    if (rangeOverlapsMermaidColonBlock(mermaidColonBlocks, from, to)) {
+      lineNo = endLineNo;
+      continue;
+    }
 
     const block = createRenderedBlock('table', headerLineNo, endLineNo, lineNo);
     if (block) {
@@ -143,6 +149,7 @@ export function getLiveRenderedBlocks(state: EditorState): LiveRenderedBlock[] {
 
   const blocks: LiveRenderedBlock[] = [];
   const parsedTableRanges: Array<{ from: number; to: number }> = [];
+  const mermaidColonBlocks = getMermaidColonBlocks(state);
 
   tree.iterate({
     enter(node) {
@@ -178,7 +185,14 @@ export function getLiveRenderedBlocks(state: EditorState): LiveRenderedBlock[] {
     }
   });
 
-  blocks.push(...detectFallbackTableBlocks(state, tree, parsedTableRanges));
+  for (const block of mermaidColonBlocks) {
+    const renderedBlock = createRenderedBlock('mermaid', block.startLine, block.endLine, null);
+    if (renderedBlock) {
+      blocks.push(renderedBlock);
+    }
+  }
+
+  blocks.push(...detectFallbackTableBlocks(state, tree, parsedTableRanges, mermaidColonBlocks));
   blocks.sort((left, right) => (
     left.startLine - right.startLine ||
     left.endLine - right.endLine

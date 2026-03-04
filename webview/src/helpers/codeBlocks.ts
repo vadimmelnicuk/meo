@@ -9,6 +9,7 @@ import { json } from '@codemirror/lang-json';
 import { cpp } from '@codemirror/lang-cpp';
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
+import { getMermaidColonBlocks } from './mermaidColonBlocks';
 
 const shellLanguage = StreamLanguage.define({
   name: 'shell',
@@ -230,6 +231,8 @@ export function insertCodeBlock(view: EditorView, selection: { from: number; to:
 }
 
 const sourceCodeBlockLine = Decoration.line({ class: 'meo-src-code-block' });
+const mermaidColonFenceMarker = Decoration.mark({ class: 'meo-md-colon-fence-marker' });
+const mermaidColonFenceCode = Decoration.mark({ class: 'meo-md-colon-fence-code' });
 
 function computeSourceCodeBlockLines(state: EditorState): any {
   const ranges: any[] = [];
@@ -250,6 +253,23 @@ function computeSourceCodeBlockLines(state: EditorState): any {
       return false;
     }
   });
+
+  for (const block of getMermaidColonBlocks(state)) {
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo += 1) {
+      const line = state.doc.line(lineNo);
+      ranges.push(sourceCodeBlockLine.range(line.from));
+
+      if (lineNo === block.startLine || lineNo === block.endLine) {
+        ranges.push(mermaidColonFenceMarker.range(line.from, line.to));
+        continue;
+      }
+
+      if (line.from < line.to) {
+        ranges.push(mermaidColonFenceCode.range(line.from, line.to));
+      }
+    }
+  }
+
   return Decoration.set(ranges, true);
 }
 
@@ -376,6 +396,13 @@ function addTopLineWidget(builder: any[], lineEnd: number, widget: WidgetType): 
   );
 }
 
+export function addTopLineCopyButton(builder: any[], lineEnd: number, codeContent: string): void {
+  if (!codeContent) {
+    return;
+  }
+  addTopLineWidget(builder, lineEnd, new CopyCodeButtonWidget(codeContent));
+}
+
 export function addTopLinePillLabel(builder: any[], lineEnd: number, labelText: string | null): void {
   if (!labelText) {
     return;
@@ -416,13 +443,35 @@ export function addCodeLanguageLabel(builder: any[], state: EditorState, node: a
 }
 
 export function addMermaidDiagram(builder: any[], state: EditorState, node: any): void {
+  const startLine = state.doc.lineAt(node.from);
+  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
   const diagramText = getFencedCodeContent(state, node);
-  if (!diagramText.trim()) {
+  const fullBlockText = state.doc.sliceString(startLine.from, endLine.to);
+
+  addMermaidDiagramBlock(builder, state, {
+    startLine: startLine.number,
+    endLine: endLine.number,
+    diagramText,
+    fullBlockText
+  });
+}
+
+export function addMermaidDiagramBlock(
+  builder: any[],
+  state: EditorState,
+  block: {
+    startLine: number;
+    endLine: number;
+    diagramText: string;
+    fullBlockText: string;
+  }
+): void {
+  if (!block.diagramText.trim()) {
     return;
   }
 
-  const startLine = state.doc.lineAt(node.from);
-  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
+  const startLine = state.doc.line(block.startLine);
+  const endLine = state.doc.line(block.endLine);
 
   if (startLine.number >= endLine.number) {
     return;
@@ -435,11 +484,9 @@ export function addMermaidDiagram(builder: any[], state: EditorState, node: any)
     return;
   }
 
-  const fullBlockText = state.doc.sliceString(startLine.from, endLine.to);
-  const copyWidget = new CopyCodeButtonWidget(fullBlockText);
-  addTopLineWidget(builder, startLine.to, copyWidget);
+  addTopLineCopyButton(builder, startLine.to, block.fullBlockText);
 
-  const widget = new MermaidDiagramWidget(diagramText, startLine.number, endLine.number);
+  const widget = new MermaidDiagramWidget(block.diagramText, startLine.number, endLine.number);
   builder.push(
     Decoration.replace({
       widget,
@@ -472,6 +519,5 @@ export function addCopyCodeButton(builder: any[], state: EditorState, from: numb
     return;
   }
 
-  const widget = new CopyCodeButtonWidget(codeContent);
-  addTopLineWidget(builder, startLine.to, widget);
+  addTopLineCopyButton(builder, startLine.to, codeContent);
 }
