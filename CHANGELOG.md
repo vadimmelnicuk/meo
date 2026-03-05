@@ -1,5 +1,9 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.16
+- Added mermaid colon fences in markdown rendering
+- Fixed document offset mapping in applyDocumentChanges function (patch for issue 23)
+
 ## 0.1.15
 - Added find functionality for whole word and case sensitivity options
 - Added GitHub Copilot native change review support
