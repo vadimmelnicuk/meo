@@ -868,11 +868,27 @@ async function applyDocumentChanges(
 
   const edit = new vscode.WorkspaceEdit();
   const sortedChanges = [...message.changes].sort((a, b) => b.from - a.from);
+  const documentText = document.getText();
+  const mappedOffsetCache = new Map<number, number>();
+  const mapOffset = (offset: number): number => {
+    const cached = mappedOffsetCache.get(offset);
+    if (typeof cached === 'number') {
+      return cached;
+    }
+    const mapped = mapNormalizedOffsetToDocumentOffset(documentText, offset);
+    mappedOffsetCache.set(offset, mapped);
+    return mapped;
+  };
 
   for (const change of sortedChanges) {
+    // Webview offsets are LF-normalized; remap to real document offsets before applying edits.
+    const mappedFrom = mapOffset(change.from);
+    const mappedTo = mapOffset(change.to);
+    const startOffset = Math.min(mappedFrom, mappedTo);
+    const endOffset = Math.max(mappedFrom, mappedTo);
     const range = new vscode.Range(
-      document.positionAt(change.from),
-      document.positionAt(change.to)
+      document.positionAt(startOffset),
+      document.positionAt(endOffset)
     );
     edit.replace(document.uri, range, change.insert);
   }
@@ -885,6 +901,33 @@ async function applyDocumentChanges(
   }
 
   await sendApplied(document.version);
+}
+
+function mapNormalizedOffsetToDocumentOffset(documentText: string, normalizedOffset: number): number {
+  const target = Number.isFinite(normalizedOffset) ? Math.max(0, normalizedOffset) : documentText.length;
+  if (target === 0) {
+    return 0;
+  }
+
+  let normalizedIndex = 0;
+  let documentIndex = 0;
+
+  while (documentIndex < documentText.length && normalizedIndex < target) {
+    if (documentText.charCodeAt(documentIndex) === 13) {
+      if (documentText.charCodeAt(documentIndex + 1) === 10) {
+        documentIndex += 2;
+      } else {
+        documentIndex += 1;
+      }
+      normalizedIndex += 1;
+      continue;
+    }
+
+    documentIndex += 1;
+    normalizedIndex += 1;
+  }
+
+  return documentIndex;
 }
 
 async function handleSaveImageFromClipboard(

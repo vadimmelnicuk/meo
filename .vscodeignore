@@ -13,7 +13,7 @@ src/**
 **/.vscode-test.*
 scripts/**
 releases/**
+tests/**
 .claude/
 AGENTS.md
 features.md
-test.md

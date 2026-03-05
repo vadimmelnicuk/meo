@@ -7,7 +7,7 @@ webview/dist
 bun.lockb
 *.vsix
 releases/
+tests/
 .claude/
 AGENTS.md
 features.md
-test.md
