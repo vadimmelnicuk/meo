@@ -3,6 +3,7 @@ import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
 import { ImageWidget } from './images';
+import { parseKbdTagAt } from './kbd';
 import { wikiLinkScheme } from './wikiLinks';
 
 declare global {
@@ -466,6 +467,22 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
+    const kbd = text[i] === '<' && !isTableInlineEscaped(text, i) ? parseKbdTagAt(text, i) : null;
+    if (kbd) {
+      const keyText = decodeTableInlineEscapes(kbd.content).trim();
+      if (!keyText) {
+        buffer += text.slice(i, kbd.nextIndex);
+      } else {
+        flushBuffer();
+        const el = document.createElement('kbd');
+        el.className = 'meo-md-kbd';
+        el.textContent = keyText;
+        parent.appendChild(el);
+      }
+      i = kbd.nextIndex;
+      continue;
+    }
+
     const image = parseTableInlineMarkdownLink(text, i, { image: true });
     if (image) {
       flushBuffer();
@@ -552,6 +569,9 @@ function renderTableCellInlinePreview(previewEl, value) {
 function consumeTableInlineProtectedSpan(text, index, endIndex) {
   const code = parseTableInlineCodeSpan(text, index);
   if (code && code.nextIndex <= endIndex) return code.nextIndex;
+
+  const kbd = text[index] === '<' && !isTableInlineEscaped(text, index) ? parseKbdTagAt(text, index) : null;
+  if (kbd && kbd.nextIndex <= endIndex) return kbd.nextIndex;
 
   const wiki = parseTableInlineWikiLink(text, index);
   if (wiki && wiki.nextIndex <= endIndex) return wiki.nextIndex;

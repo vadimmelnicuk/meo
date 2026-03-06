@@ -18,6 +18,7 @@ import { ImageWidget, getImageData, isImageUrl } from './helpers/images';
 import { highlightStyle } from './theme';
 import { collectSingleTildeStrikePairs, collectStrikethroughRanges } from './helpers/strikeMarkers';
 import { collectEmojiRangesFromText } from './helpers/emoji';
+import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { headingLevelFromName, resolvedSyntaxTree } from './helpers/markdownSyntax';
 import {
   headingCollapseLiveExtensions,
@@ -49,7 +50,7 @@ import {
   detectAlertInBlockquote
 } from './helpers/alerts';
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
-import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
+import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
@@ -977,6 +978,10 @@ function buildDecorations(state) {
   const detailsBlocks = getDetailsBlocks(state);
   const strikeRanges = collectStrikethroughRanges(tree);
   const codeBlockLines = collectCodeBlockLines(state, tree, mermaidColonBlocks);
+  const renderedTableRanges = collectRenderedTableRanges(
+    state,
+    getLiveRenderedBlocks(state)
+  );
   const parsedTableRanges = [];
   let tableDepth = 0;
 
@@ -1197,6 +1202,7 @@ function buildDecorations(state) {
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
+  addKbdTagDecorations(ranges, state, activeLines, renderedTableRanges, frontmatter, codeBlockLines);
   addEmojiDecorations(ranges, state, codeBlockLines);
   addMermaidColonFenceDecorations(ranges, state, mermaidColonBlocks, activeLines);
   addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines);
@@ -1363,6 +1369,108 @@ function addMermaidColonFenceDecorations(builder, state, mermaidColonBlocks, act
 }
 
 const emojiWidgetCache = new Map<string, WidgetType>();
+
+class KbdTagWidget extends WidgetType {
+  keyText: string;
+
+  constructor(keyText: string) {
+    super();
+    this.keyText = keyText;
+  }
+
+  eq(other: WidgetType): boolean {
+    return other instanceof KbdTagWidget && other.keyText === this.keyText;
+  }
+
+  toDOM(): HTMLElement {
+    const el = document.createElement('kbd');
+    el.className = 'meo-md-kbd';
+    el.textContent = this.keyText;
+    return el;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const kbdWidgetCache = new Map<string, WidgetType>();
+
+function getKbdWidget(keyText: string): WidgetType {
+  let widget = kbdWidgetCache.get(keyText);
+  if (!widget) {
+    widget = new KbdTagWidget(keyText);
+    kbdWidgetCache.set(keyText, widget);
+  }
+  return widget;
+}
+
+function collectRenderedTableRanges(
+  state,
+  blocks: ReadonlyArray<LiveRenderedBlock>
+): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = [];
+  for (const block of blocks) {
+    if (block.kind !== 'table') {
+      continue;
+    }
+    ranges.push({
+      from: state.doc.line(block.startLine).from,
+      to: state.doc.line(block.endLine).to
+    });
+  }
+  return ranges;
+}
+
+function addKbdTagDecorations(
+  builder,
+  state,
+  activeLines,
+  renderedTableRanges,
+  frontmatter = null,
+  codeBlockLines = null
+) {
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    if (activeLines.has(lineNo) || codeBlockLines?.has(lineNo)) {
+      continue;
+    }
+
+    const line = state.doc.line(lineNo);
+    if (isInsideFrontmatterContent(frontmatter, line.from)) {
+      continue;
+    }
+    if (overlapsParsedTableRange(line.from, line.to, renderedTableRanges)) {
+      continue;
+    }
+
+    const lineText = state.doc.sliceString(line.from, line.to);
+    if (!hasKbdTagMarker(lineText)) {
+      continue;
+    }
+
+    const kbdRanges = collectKbdTagRangesFromText(lineText, line.from);
+    for (const kbdRange of kbdRanges) {
+      if (overlapsSelection(state, kbdRange.from, kbdRange.to)) {
+        continue;
+      }
+      if (overlapsParsedTableRange(kbdRange.from, kbdRange.to, renderedTableRanges)) {
+        continue;
+      }
+
+      const keyText = kbdRange.content.trim();
+      if (!keyText) {
+        continue;
+      }
+
+      builder.push(
+        Decoration.replace({
+          widget: getKbdWidget(keyText),
+          inclusive: false
+        }).range(kbdRange.from, kbdRange.to)
+      );
+    }
+  }
+}
 
 function getEmojiWidget(emoji: string): WidgetType {
   let widget = emojiWidgetCache.get(emoji);
