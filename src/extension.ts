@@ -78,9 +78,10 @@ type ExportRuntimeModule = {
       editorFontSizePx?: number;
     };
     mermaidRuntimeSrc: string;
+    katexStylesHref: string;
     baseHref: string;
     title: string;
-  }) => { htmlDocument: string; hasMermaid: boolean };
+  }) => { htmlDocument: string; hasMermaid: boolean; hasMath: boolean };
   writeFinalizedHtmlExport: (options: {
     htmlDocument: string;
     outputHtmlPath: string;
@@ -604,9 +605,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       target: ExportFormat;
       styleEnvironment?: ExportStyleEnvironment;
     }
-  ): Promise<{ htmlDocument: string; hasMermaid: boolean }> {
+  ): Promise<{ htmlDocument: string; hasMermaid: boolean; hasMath: boolean }> {
     const mermaidRuntimeSrc = pathToFileURL(
       vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'mermaid.min.js').fsPath
+    ).toString();
+    const katexStylesHref = pathToFileURL(
+      vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'katex', 'katex.min.css').fsPath
     ).toString();
     const baseHref = pathToFileURL(`${path.dirname(params.outputFileUri.fsPath)}${path.sep}`).toString();
     return exportRuntime.renderExportHtmlDocument({
@@ -618,6 +622,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       styleEnvironment: params.styleEnvironment,
       editorFontEnvironment: getExportEditorFontEnvironment(),
       mermaidRuntimeSrc,
+      katexStylesHref,
       baseHref,
       title: path.basename(params.outputFileUri.fsPath)
     });
@@ -696,6 +701,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     const styleUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'index.css'))
       .toString();
+    const katexStyleUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'katex', 'katex.min.css'))
+      .toString();
     const mermaidRuntimeUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'mermaid.min.js'))
       .toString();
@@ -716,6 +724,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <meta http-equiv="Content-Security-Policy" content="${csp};" />
         <title>Markdown Editor Optimized</title>
         <style>${getWebviewPreloadShellCss()}</style>
+        <link href="${katexStyleUri}" rel="stylesheet" />
         <link href="${styleUri}" rel="stylesheet" />
       </head>
       <body data-meo-mermaid-src="${mermaidRuntimeUri}">

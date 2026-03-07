@@ -37,6 +37,7 @@ import {
 } from './helpers/listMarkers';
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
+import { collectLatexMathRanges } from './helpers/math';
 
 declare module '@codemirror/view' {
   interface EditorView {
@@ -472,110 +473,65 @@ export function createEditor({
     return nextEnd;
   };
 
+  const wrapActiveTableInputSelection = (
+    input,
+    openMarker,
+    closeMarker = openMarker,
+    { toggle = true, selectWrapped = true } = {}
+  ) => {
+    return editActiveTableInputWithSelection(input, (value, start, end) => {
+      if (start === end) {
+        const insert = `${openMarker}${closeMarker}`;
+        const nextValue = value.slice(0, start) + insert + value.slice(end);
+        return updateActiveTableInput(input, nextValue, start + openMarker.length);
+      }
+
+      const trimmedEnd = trimTrailingNewlines(value, start, end);
+      if (toggle) {
+        const hasOpenMarker =
+          start >= openMarker.length && value.slice(start - openMarker.length, start) === openMarker;
+        const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + closeMarker.length) === closeMarker;
+        if (hasOpenMarker && hasCloseMarker) {
+          const nextValue =
+            value.slice(0, start - openMarker.length) +
+            value.slice(start, trimmedEnd) +
+            value.slice(trimmedEnd + closeMarker.length);
+          return updateActiveTableInput(
+            input,
+            nextValue,
+            start - openMarker.length,
+            trimmedEnd - openMarker.length
+          );
+        }
+      }
+
+      const nextValue =
+        value.slice(0, start) +
+        openMarker +
+        value.slice(start, trimmedEnd) +
+        closeMarker +
+        value.slice(trimmedEnd);
+      if (!selectWrapped) {
+        const cursor = start + openMarker.length + (trimmedEnd - start) + closeMarker.length;
+        return updateActiveTableInput(input, nextValue, cursor);
+      }
+      return updateActiveTableInput(input, nextValue, start + openMarker.length, trimmedEnd + openMarker.length);
+    });
+  };
+
   const insertFormatInActiveTableInput = (input, action) => {
     switch (action) {
       case 'inlineCode':
-        return editActiveTableInputWithSelection(input, (value, start, end) => {
-          if (start === end) {
-            const insert = '``';
-            const nextValue = value.slice(0, start) + insert + value.slice(end);
-            return updateActiveTableInput(input, nextValue, start + 1);
-          }
-
-          const trimmedEnd = trimTrailingNewlines(value, start, end);
-          const selectedText = value.slice(start, trimmedEnd);
-          const insert = `\`${selectedText}\``;
-          const nextValue = value.slice(0, start) + insert + value.slice(trimmedEnd);
-          return updateActiveTableInput(input, nextValue, start + insert.length);
-        });
+        return wrapActiveTableInputSelection(input, '`', '`', { toggle: false, selectWrapped: false });
+      case 'kbd':
+        return wrapActiveTableInputSelection(input, '<kbd>', '</kbd>');
       case 'bold':
-        return editActiveTableInputWithSelection(input, (value, start, end) => {
-          const marker = '**';
-          const markerLength = marker.length;
-          if (start === end) {
-            const insert = `${marker}${marker}`;
-            const nextValue = value.slice(0, start) + insert + value.slice(end);
-            return updateActiveTableInput(input, nextValue, start + markerLength);
-          }
-
-          const trimmedEnd = trimTrailingNewlines(value, start, end);
-          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
-          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
-          if (hasOpenMarker && hasCloseMarker) {
-            const nextValue =
-              value.slice(0, start - markerLength) +
-              value.slice(start, trimmedEnd) +
-              value.slice(trimmedEnd + markerLength);
-            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
-          }
-
-          const nextValue =
-            value.slice(0, start) +
-            marker +
-            value.slice(start, trimmedEnd) +
-            marker +
-            value.slice(trimmedEnd);
-          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
-        });
+        return wrapActiveTableInputSelection(input, '**');
       case 'italic':
-        return editActiveTableInputWithSelection(input, (value, start, end) => {
-          const marker = '*';
-          const markerLength = marker.length;
-          if (start === end) {
-            const insert = `${marker}${marker}`;
-            const nextValue = value.slice(0, start) + insert + value.slice(end);
-            return updateActiveTableInput(input, nextValue, start + markerLength);
-          }
-
-          const trimmedEnd = trimTrailingNewlines(value, start, end);
-          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
-          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
-          if (hasOpenMarker && hasCloseMarker) {
-            const nextValue =
-              value.slice(0, start - markerLength) +
-              value.slice(start, trimmedEnd) +
-              value.slice(trimmedEnd + markerLength);
-            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
-          }
-
-          const nextValue =
-            value.slice(0, start) +
-            marker +
-            value.slice(start, trimmedEnd) +
-            marker +
-            value.slice(trimmedEnd);
-          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
-        });
+        return wrapActiveTableInputSelection(input, '*');
       case 'lineover':
       case 'strike':
-        return editActiveTableInputWithSelection(input, (value, start, end) => {
-          const marker = '~~';
-          const markerLength = marker.length;
-          if (start === end) {
-            const insert = `${marker}${marker}`;
-            const nextValue = value.slice(0, start) + insert + value.slice(end);
-            return updateActiveTableInput(input, nextValue, start + markerLength);
-          }
-
-          const trimmedEnd = trimTrailingNewlines(value, start, end);
-          const hasOpenMarker = start >= markerLength && value.slice(start - markerLength, start) === marker;
-          const hasCloseMarker = value.slice(trimmedEnd, trimmedEnd + markerLength) === marker;
-          if (hasOpenMarker && hasCloseMarker) {
-            const nextValue =
-              value.slice(0, start - markerLength) +
-              value.slice(start, trimmedEnd) +
-              value.slice(trimmedEnd + markerLength);
-            return updateActiveTableInput(input, nextValue, start - markerLength, trimmedEnd - markerLength);
-          }
-
-          const nextValue =
-            value.slice(0, start) +
-            marker +
-            value.slice(start, trimmedEnd) +
-            marker +
-            value.slice(trimmedEnd);
-          return updateActiveTableInput(input, nextValue, start + markerLength, trimmedEnd + markerLength);
-        });
+        return wrapActiveTableInputSelection(input, '~~');
       case 'link':
         return editActiveTableInputWithSelection(input, (value, start, end) => {
           if (start !== end) {
@@ -968,7 +924,7 @@ export function createEditor({
           inlineCodeClick = null;
           return false;
         },
-        pointercancel(event, view) {
+        pointercancel(event, _view) {
           if (capturedPointerId !== event.pointerId) {
             if (frontmatterBoundaryClick?.pointerId === event.pointerId) {
               frontmatterBoundaryClick = null;
@@ -1341,6 +1297,8 @@ export function createEditor({
           return insertCodeBlock(view, selection);
         case 'inlineCode':
           return insertInlineCode(view, selection);
+        case 'kbd':
+          return insertKbd(view, selection);
         case 'bold':
           return insertInlineFence(view, selection, '**');
         case 'italic':
@@ -1647,15 +1605,14 @@ function insertInlineCode(view, selection) {
   });
 }
 
-function insertInlineFence(view, selection, marker) {
+function toggleInlineWrapper(view, selection, openMarker, closeMarker = openMarker) {
   const { state } = view;
-  const markerLength = marker.length;
 
   if (selection.empty) {
-    const insert = `${marker}${marker}`;
+    const insert = `${openMarker}${closeMarker}`;
     view.dispatch({
       changes: { from: selection.from, insert },
-      selection: { anchor: selection.from + markerLength }
+      selection: { anchor: selection.from + openMarker.length }
     });
     return;
   }
@@ -1665,19 +1622,20 @@ function insertInlineFence(view, selection, marker) {
   while (to > from && state.doc.sliceString(to - 1, to) === '\n') {
     to -= 1;
   }
+
   const hasOpenMarker =
-    from >= markerLength && state.doc.sliceString(from - markerLength, from) === marker;
-  const hasCloseMarker = state.doc.sliceString(to, to + markerLength) === marker;
+    from >= openMarker.length && state.doc.sliceString(from - openMarker.length, from) === openMarker;
+  const hasCloseMarker = state.doc.sliceString(to, to + closeMarker.length) === closeMarker;
 
   if (hasOpenMarker && hasCloseMarker) {
     view.dispatch({
       changes: [
-        { from: to, to: to + markerLength, insert: '' },
-        { from: from - markerLength, to: from, insert: '' }
+        { from: to, to: to + closeMarker.length, insert: '' },
+        { from: from - openMarker.length, to: from, insert: '' }
       ],
       selection: {
-        anchor: from - markerLength,
-        head: to - markerLength
+        anchor: from - openMarker.length,
+        head: to - openMarker.length
       }
     });
     return;
@@ -1685,14 +1643,22 @@ function insertInlineFence(view, selection, marker) {
 
   view.dispatch({
     changes: [
-      { from: to, insert: marker },
-      { from, insert: marker }
+      { from: to, insert: closeMarker },
+      { from, insert: openMarker }
     ],
     selection: {
-      anchor: from + markerLength,
-      head: to + markerLength
+      anchor: from + openMarker.length,
+      head: to + openMarker.length
     }
   });
+}
+
+function insertKbd(view, selection) {
+  return toggleInlineWrapper(view, selection, '<kbd>', '</kbd>');
+}
+
+function insertInlineFence(view, selection, marker) {
+  return toggleInlineWrapper(view, selection, marker);
 }
 
 function insertQuote(view, selection) {
@@ -1848,6 +1814,8 @@ const blockedInlineSelectionAncestors = new Set([
   'TableDelimiter'
 ]);
 
+const latexSelectionBlockCache = new WeakMap<object, Array<{ from: number; to: number }>>();
+
 function hasBlockedInlineAncestor(state, position) {
   let node = syntaxTree(state).resolveInner(position, 1);
   while (node) {
@@ -1855,6 +1823,37 @@ function hasBlockedInlineAncestor(state, position) {
       return true;
     }
     node = node.parent;
+  }
+  return false;
+}
+
+function getLatexSelectionBlockRanges(state) {
+  const docKey = state.doc as unknown as object;
+  const cached = latexSelectionBlockCache.get(docKey);
+  if (cached) {
+    return cached;
+  }
+
+  const text = state.doc.toString();
+  if (text.indexOf('$') === -1) {
+    latexSelectionBlockCache.set(docKey, []);
+    return [];
+  }
+
+  const ranges = collectLatexMathRanges(text).map((range) => ({ from: range.from, to: range.to }));
+  latexSelectionBlockCache.set(docKey, ranges);
+  return ranges;
+}
+
+function overlapsLatexMathSelection(state, from, to) {
+  if (to <= from) {
+    return false;
+  }
+  const ranges = getLatexSelectionBlockRanges(state);
+  for (const range of ranges) {
+    if (range.from < to && range.to > from) {
+      return true;
+    }
   }
   return false;
 }
@@ -1872,6 +1871,9 @@ function isRegularInlineSelection(state, from, to) {
     return false;
   }
   if (hasBlockedInlineAncestor(state, from) || hasBlockedInlineAncestor(state, to - 1)) {
+    return false;
+  }
+  if (overlapsLatexMathSelection(state, from, to)) {
     return false;
   }
   return true;

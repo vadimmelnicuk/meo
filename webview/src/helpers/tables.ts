@@ -1,9 +1,10 @@
-import { StateField, EditorState } from '@codemirror/state';
+import { StateField } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
 import { ImageWidget } from './images';
 import { parseKbdTagAt } from './kbd';
+import { createLatexMathElement, parseLatexMathAt } from './math';
 import { wikiLinkScheme } from './wikiLinks';
 
 declare global {
@@ -480,6 +481,19 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         parent.appendChild(el);
       }
       i = kbd.nextIndex;
+      continue;
+    }
+
+    const math = parseLatexMathAt(text, i);
+    if (math) {
+      const mathElement = createLatexMathElement(math.content, math.mode);
+      if (mathElement) {
+        flushBuffer();
+        parent.appendChild(mathElement);
+      } else {
+        buffer += text.slice(math.from, math.to);
+      }
+      i = math.to;
       continue;
     }
 

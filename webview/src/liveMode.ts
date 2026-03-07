@@ -9,6 +9,7 @@ import {
   getFencedCodeInfo,
   addFenceOpeningLineMarker,
   addCodeLanguageLabel,
+  addTopLineCopyButton,
   addTopLinePillLabel,
   addMermaidDiagram,
   addMermaidDiagramBlock,
@@ -52,6 +53,13 @@ import {
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
 import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
+import {
+  collectLatexMathRanges,
+  renderLatexMathToHtml,
+  resolveFencedDisplayMathInnerLineRange,
+  type LatexMathRange,
+  type LatexMathMode
+} from './helpers/math';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -366,7 +374,7 @@ class ClearLinkUrlWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return true;
+    return false;
   }
 }
 
@@ -995,6 +1003,7 @@ function buildDecorations(state) {
     frontmatter = null;
   }
   addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, codeBlockLines);
+  const mathRanges = collectMathRanges(state, tree, mermaidColonBlocks, renderedTableRanges, frontmatter);
 
   tree.iterate({
     enter: (node) => {
@@ -1202,8 +1211,9 @@ function buildDecorations(state) {
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
-  addKbdTagDecorations(ranges, state, activeLines, renderedTableRanges, frontmatter, codeBlockLines);
-  addEmojiDecorations(ranges, state, codeBlockLines);
+  addMathDecorations(ranges, state, mathRanges, activeLines);
+  addKbdTagDecorations(ranges, state, activeLines, renderedTableRanges, mathRanges, frontmatter, codeBlockLines);
+  addEmojiDecorationsWithMath(ranges, state, mathRanges, codeBlockLines);
   addMermaidColonFenceDecorations(ranges, state, mermaidColonBlocks, activeLines);
   addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines);
   addDetailsBlockDecorations(ranges, state, detailsBlocks, activeLines);
@@ -1405,6 +1415,113 @@ function getKbdWidget(keyText: string): WidgetType {
   return widget;
 }
 
+class LatexMathWidget extends WidgetType {
+  html: string;
+  mode: LatexMathMode;
+  fencedDisplay: boolean;
+  startLine: number;
+  endLine: number;
+
+  constructor(
+    html: string,
+    mode: LatexMathMode,
+    fencedDisplay = false,
+    startLine = 0,
+    endLine = 0
+  ) {
+    super();
+    this.html = html;
+    this.mode = mode;
+    this.fencedDisplay = fencedDisplay;
+    this.startLine = startLine;
+    this.endLine = endLine;
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof LatexMathWidget &&
+      other.html === this.html &&
+      other.mode === this.mode &&
+      other.fencedDisplay === this.fencedDisplay &&
+      other.startLine === this.startLine &&
+      other.endLine === this.endLine
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const wrapper = document.createElement(this.mode === 'display' ? 'div' : 'span');
+    wrapper.className = `meo-md-math meo-md-math-${this.mode}`;
+    if (this.startLine > 0) {
+      wrapper.dataset.meoRenderedBlockStartLine = String(this.startLine);
+    }
+    if (this.endLine > 0) {
+      wrapper.dataset.meoRenderedBlockEndLine = String(this.endLine);
+    }
+    if (this.fencedDisplay) {
+      wrapper.dataset.meoRenderedBlockKind = 'math';
+    }
+    if (this.fencedDisplay && this.mode === 'display') {
+      wrapper.classList.add('meo-md-math-fenced-display');
+      wrapper.addEventListener('pointerdown', (event: PointerEvent) => {
+        if (event.button !== 0) {
+          return;
+        }
+        const view = EditorView.findFromDOM(wrapper);
+        if (!view) {
+          return;
+        }
+
+        // Clicking rendered fenced math should move the caret inside the block so
+        // live mode reveals the original source lines for editing.
+        const lastContentLine = Math.max(this.startLine, this.endLine - 1);
+        const targetLineNo = Math.max(1, Math.min(this.startLine + 1, lastContentLine));
+        const targetPos = view.state.doc.line(targetLineNo).from;
+
+        event.preventDefault();
+        event.stopPropagation();
+        view.dispatch({ selection: { anchor: targetPos } });
+        view.focus();
+      });
+    }
+    wrapper.innerHTML = this.html;
+    return wrapper;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const MATH_WIDGET_CACHE_LIMIT = 300;
+const mathWidgetCache = new Map<string, WidgetType>();
+
+function getMathWidget(
+  html: string,
+  mode: LatexMathMode,
+  fencedDisplay = false,
+  startLine = 0,
+  endLine = 0
+): WidgetType {
+  const key = `${mode}:${fencedDisplay ? 1 : 0}:${startLine}:${endLine}:${html}`;
+  let widget = mathWidgetCache.get(key);
+  if (widget) {
+    mathWidgetCache.delete(key);
+    mathWidgetCache.set(key, widget);
+    return widget;
+  }
+
+  widget = new LatexMathWidget(html, mode, fencedDisplay, startLine, endLine);
+  mathWidgetCache.set(key, widget);
+  if (mathWidgetCache.size > MATH_WIDGET_CACHE_LIMIT) {
+    const oldestKey = mathWidgetCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      mathWidgetCache.delete(oldestKey);
+    }
+  }
+
+  return widget;
+}
+
 function collectRenderedTableRanges(
   state,
   blocks: ReadonlyArray<LiveRenderedBlock>
@@ -1422,11 +1539,208 @@ function collectRenderedTableRanges(
   return ranges;
 }
 
+function mergeSimpleRanges(ranges: Array<{ from: number; to: number }>): Array<{ from: number; to: number }> {
+  const filtered = ranges
+    .filter((range) => Number.isFinite(range.from) && Number.isFinite(range.to) && range.to > range.from)
+    .sort((left, right) => left.from - right.from || left.to - right.to);
+  if (!filtered.length) {
+    return [];
+  }
+
+  const merged = [filtered[0]];
+  for (let index = 1; index < filtered.length; index += 1) {
+    const current = filtered[index];
+    const previous = merged[merged.length - 1];
+    if (current.from <= previous.to) {
+      if (current.to > previous.to) {
+        previous.to = current.to;
+      }
+      continue;
+    }
+    merged.push({ from: current.from, to: current.to });
+  }
+  return merged;
+}
+
+function collectInlineCodeRanges(tree): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'InlineCode' || node.name === 'CodeText') {
+        ranges.push({ from: node.from, to: node.to });
+      }
+    }
+  });
+  return ranges;
+}
+
+function collectCodeBlockRanges(
+  state,
+  tree,
+  mermaidColonBlocks
+): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = [];
+
+  tree.iterate({
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
+        return;
+      }
+      ranges.push({ from: node.from, to: node.to });
+      return false;
+    }
+  });
+
+  for (const block of mermaidColonBlocks) {
+    ranges.push({
+      from: state.doc.line(block.startLine).from,
+      to: state.doc.line(block.endLine).to
+    });
+  }
+
+  return ranges;
+}
+
+function collectMathRanges(
+  state,
+  tree,
+  mermaidColonBlocks,
+  renderedTableRanges,
+  frontmatter = null
+): LatexMathRange[] {
+  const excludedRanges = [
+    ...collectInlineCodeRanges(tree),
+    ...collectCodeBlockRanges(state, tree, mermaidColonBlocks),
+    ...renderedTableRanges
+  ];
+
+  if (frontmatter) {
+    excludedRanges.push({ from: frontmatter.openingFrom, to: frontmatter.closingTo });
+  }
+
+  const text = state.doc.toString();
+  if (text.indexOf('$') === -1) {
+    return [];
+  }
+
+  return collectLatexMathRanges(text, {
+    excludedRanges: mergeSimpleRanges(excludedRanges)
+  });
+}
+
+function resolveFencedMathRenderSpan(
+  state,
+  startLineNo: number,
+  endLineNo: number
+): { innerFrom: number; innerTo: number } | null {
+  const innerLineRange = resolveFencedDisplayMathInnerLineRange(
+    startLineNo,
+    endLineNo
+  );
+  if (!innerLineRange) {
+    return null;
+  }
+
+  const innerStartLine = state.doc.line(innerLineRange.innerStartLine);
+  const innerEndLine = state.doc.line(innerLineRange.innerEndLine);
+  if (innerEndLine.to <= innerStartLine.from) {
+    return null;
+  }
+
+  return {
+    innerFrom: innerStartLine.from,
+    innerTo: innerEndLine.to
+  };
+}
+
+function addMathDecorations(builder, state, mathRanges: ReadonlyArray<LatexMathRange>, activeLines) {
+  for (const mathRange of mathRanges) {
+    if (mathRange.to <= mathRange.from) {
+      continue;
+    }
+    const fencedDisplay = mathRange.mode === 'display' && mathRange.fencedDisplay === true;
+    const editingBoundary =
+      rangeTouchesActiveLine(state, mathRange.from, mathRange.to, activeLines) ||
+      overlapsSelection(state, mathRange.from, mathRange.to);
+
+    if (fencedDisplay) {
+      const openingLine = state.doc.lineAt(mathRange.from);
+      const closingLine = state.doc.lineAt(Math.max(mathRange.to - 1, mathRange.from));
+      const startLineNo = openingLine.number;
+      const endLineNo = closingLine.number;
+      const renderSpan = resolveFencedMathRenderSpan(state, startLineNo, endLineNo);
+
+      addLineClass(builder, state, openingLine.from, closingLine.to, lineStyleDecos.codeBlock);
+
+      if (!activeLines.has(openingLine.number)) {
+        addTopLinePillLabel(builder, openingLine.to, 'latex');
+      }
+      const copyContent = renderSpan
+        ? state.doc.sliceString(renderSpan.innerFrom, renderSpan.innerTo)
+        : '';
+      if (copyContent) {
+        addTopLineCopyButton(builder, openingLine.to, copyContent);
+      }
+
+      addRange(
+        builder,
+        openingLine.from,
+        openingLine.to,
+        activeLines.has(openingLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
+      );
+      addRange(
+        builder,
+        closingLine.from,
+        closingLine.to,
+        activeLines.has(closingLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
+      );
+
+      if (editingBoundary) {
+        continue;
+      }
+
+      const html = renderLatexMathToHtml(mathRange.content, mathRange.mode);
+      if (!html) {
+        continue;
+      }
+
+      if (!renderSpan) {
+        continue;
+      }
+
+      builder.push(
+        Decoration.replace({
+          widget: getMathWidget(html, mathRange.mode, true, startLineNo, endLineNo),
+          block: true
+        }).range(renderSpan.innerFrom, renderSpan.innerTo)
+      );
+      continue;
+    }
+
+    if (editingBoundary) {
+      continue;
+    }
+
+    const html = renderLatexMathToHtml(mathRange.content, mathRange.mode);
+    if (!html) {
+      continue;
+    }
+
+    builder.push(
+      Decoration.replace({
+        widget: getMathWidget(html, mathRange.mode, false, 0, 0),
+        inclusive: false
+      }).range(mathRange.from, mathRange.to)
+    );
+  }
+}
+
 function addKbdTagDecorations(
   builder,
   state,
   activeLines,
   renderedTableRanges,
+  mathRanges = [],
   frontmatter = null,
   codeBlockLines = null
 ) {
@@ -1439,12 +1753,12 @@ function addKbdTagDecorations(
     if (isInsideFrontmatterContent(frontmatter, line.from)) {
       continue;
     }
-    if (overlapsParsedTableRange(line.from, line.to, renderedTableRanges)) {
-      continue;
-    }
 
     const lineText = state.doc.sliceString(line.from, line.to);
     if (!hasKbdTagMarker(lineText)) {
+      continue;
+    }
+    if (overlapsParsedTableRange(line.from, line.to, renderedTableRanges)) {
       continue;
     }
 
@@ -1454,6 +1768,9 @@ function addKbdTagDecorations(
         continue;
       }
       if (overlapsParsedTableRange(kbdRange.from, kbdRange.to, renderedTableRanges)) {
+        continue;
+      }
+      if (overlapsParsedTableRange(kbdRange.from, kbdRange.to, mathRanges)) {
         continue;
       }
 
@@ -1491,13 +1808,21 @@ function getEmojiWidget(emoji: string): WidgetType {
   return widget;
 }
 
-function addEmojiDecorations(builder, state, codeBlockLines = null) {
+function addEmojiDecorationsWithMath(
+  builder,
+  state,
+  mathRanges,
+  codeBlockLines = null
+) {
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (codeBlockLines?.has(lineNo)) {
       continue;
     }
     const line = state.doc.line(lineNo);
     const lineText = state.doc.sliceString(line.from, line.to);
+    if (overlapsParsedTableRange(line.from, line.to, mathRanges)) {
+      continue;
+    }
 
     if (lineText.indexOf(':') === -1) {
       continue;
@@ -1505,6 +1830,9 @@ function addEmojiDecorations(builder, state, codeBlockLines = null) {
 
     const emojiRanges = collectEmojiRangesFromText(lineText, line.from);
     for (const emojiRange of emojiRanges) {
+      if (overlapsParsedTableRange(emojiRange.from, emojiRange.to, mathRanges)) {
+        continue;
+      }
       builder.push(
         Decoration.replace({
           widget: getEmojiWidget(emojiRange.emoji),
@@ -1625,7 +1953,7 @@ const liveLineNumberMarkerField = StateField.define({
     return buildLiveLineNumberMarkers(state);
   },
   update(markers, transaction) {
-    if (!transaction.docChanged) {
+    if (!transaction.docChanged && transaction.startState.selection.eq(transaction.state.selection)) {
       return markers;
     }
     return buildLiveLineNumberMarkers(transaction.state);

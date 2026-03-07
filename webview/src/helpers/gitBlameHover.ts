@@ -150,6 +150,33 @@ function getRenderedBlockLineRangeAtClientY(view, clientY) {
     return range;
   }
 
+  const viewAny = /** @type {any} */ (view);
+  if (typeof viewAny.lineBlockAtHeight === 'function') {
+    const block = viewAny.lineBlockAtHeight(clientY - view.documentTop);
+    if (block && Number.isFinite(block.from)) {
+      const lineNo = view.state.doc.lineAt(block.from).number;
+      const renderedBlock = getLiveRenderedBlockAtLine(view.state, lineNo);
+      if (renderedBlock) {
+        return { startLine: renderedBlock.startLine, endLine: renderedBlock.endLine };
+      }
+    }
+  }
+
+  const contentRect = view.contentDOM.getBoundingClientRect();
+  const probeX = clamp(
+    contentRect.left + 4,
+    contentRect.left + 1,
+    Math.max(contentRect.left + 1, contentRect.right - 1)
+  );
+  const pos = view.posAtCoords({ x: probeX, y: clientY });
+  if (pos !== null) {
+    const lineNo = view.state.doc.lineAt(pos).number;
+    const renderedBlock = getLiveRenderedBlockAtLine(view.state, lineNo);
+    if (renderedBlock) {
+      return { startLine: renderedBlock.startLine, endLine: renderedBlock.endLine };
+    }
+  }
+
   return null;
 }
 
@@ -236,6 +263,48 @@ function getMarkerChangeKind(marker) {
 
 function isChangedMarker(marker) {
   return getMarkerChangeKind(marker) !== null;
+}
+
+function getLineFlagChangeKind(lineFlags, lineNumber) {
+  if (!Array.isArray(lineFlags) || !Number.isInteger(lineNumber) || lineNumber < 1) {
+    return null;
+  }
+  const flags = lineFlags[lineNumber - 1];
+  if (!flags) {
+    return null;
+  }
+  if (flags.modified || flags.trailingEofProxyOnly) {
+    return 'modified';
+  }
+  if (flags.added) {
+    return 'added';
+  }
+  return null;
+}
+
+function getLineRangeChangeKind(lineFlags, startLine, endLine) {
+  if (
+    !Array.isArray(lineFlags) ||
+    !Number.isInteger(startLine) ||
+    !Number.isInteger(endLine) ||
+    startLine < 1 ||
+    endLine < startLine
+  ) {
+    return null;
+  }
+
+  let hasAdded = false;
+  for (let lineNo = startLine; lineNo <= endLine; lineNo += 1) {
+    const lineKind = getLineFlagChangeKind(lineFlags, lineNo);
+    if (lineKind === 'modified') {
+      return 'modified';
+    }
+    if (lineKind === 'added') {
+      hasAdded = true;
+    }
+  }
+
+  return hasAdded ? 'added' : null;
 }
 
 function normalizeTrailingEofVisualLineHit(doc, lineNumber, gutterRowElement, markerElement = null) {
@@ -587,8 +656,13 @@ export function createGitBlameHoverController({
         : null
     );
 
+    const lineFlags = (
+      getMode?.() === 'live'
+        ? view.state.field(gitDiffLineFlagsField, false)
+        : null
+    );
+
     if (gutterRowElement instanceof HTMLElement && getMode?.() === 'live') {
-      const lineFlags = view.state.field(gitDiffLineFlagsField, false);
       if (rawLineNumber !== null && Array.isArray(lineFlags)) {
         const block = getLiveGitCollapsedBlockAtLine(view.state, lineFlags, rawLineNumber);
         if (block) {
@@ -623,7 +697,10 @@ export function createGitBlameHoverController({
       );
       if (fallbackBlock) {
         nextRenderedBlockRange = { startLine: fallbackBlock.startLine, endLine: fallbackBlock.endLine };
-        nextGutterRowHoverKind = 'empty';
+        nextGutterRowHoverKind = (
+          getLineRangeChangeKind(lineFlags, fallbackBlock.startLine, fallbackBlock.endLine) ??
+          'empty'
+        );
       }
     }
 
@@ -682,16 +759,33 @@ export function createGitBlameHoverController({
     }
 
     const block = getLiveGitCollapsedBlockAtLine(view.state, lineFlags, hit.lineNumber);
-    if (!block) {
+    if (block) {
+      return {
+        lineNumber: block.canonicalLine,
+        requestLineNumber: block.canonicalLine,
+        proxiedFromTrailingEof: false,
+        effectiveChangeKind: block.aggregateChangeKind,
+        collapsedBlock: block
+      };
+    }
+
+    const renderedBlock = getLiveRenderedBlockAtLine(view.state, hit.lineNumber);
+    if (!renderedBlock) {
+      return hit;
+    }
+
+    const aggregateChangeKind = getLineRangeChangeKind(
+      lineFlags,
+      renderedBlock.startLine,
+      renderedBlock.endLine
+    );
+    if (!aggregateChangeKind) {
       return hit;
     }
 
     return {
-      lineNumber: block.canonicalLine,
-      requestLineNumber: block.canonicalLine,
-      proxiedFromTrailingEof: false,
-      effectiveChangeKind: block.aggregateChangeKind,
-      collapsedBlock: block
+      ...hit,
+      effectiveChangeKind: aggregateChangeKind
     };
   };
 
@@ -964,7 +1058,10 @@ export function createGitBlameHoverController({
     );
     const effectiveChangeKind = (
       hit.effectiveChangeKind ??
-      getMarkerChangeKind(hoveredMarkerElement)
+      getMarkerChangeKind(hoveredMarkerElement) ??
+      (activeGutterRowHoverKind === 'added' || activeGutterRowHoverKind === 'modified'
+        ? activeGutterRowHoverKind
+        : null)
     );
     const proxiedFromTrailingEof = hit.proxiedFromTrailingEof === true;
     const renderedBlock = (

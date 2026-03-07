@@ -65,6 +65,9 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-hr: color-mix(in srgb, var(--meo-border) 70%, transparent);
   --meo-table-border: var(--meo-panel-border);
   --meo-table-header-bg: var(--meo-sidebar-bg);
+  --meo-kbd-bg: color-mix(in srgb, var(--meo-sidebar-bg) 88%, var(--meo-bg) 12%);
+  --meo-kbd-border: color-mix(in srgb, var(--meo-border) 85%, transparent);
+  --meo-kbd-shadow: color-mix(in srgb, var(--meo-border) 55%, transparent);
   --meo-mermaid-error-border: color-mix(in srgb, var(--meo-heading) 70%, var(--meo-border) 30%);
   --meo-mermaid-error-fg: color-mix(in srgb, var(--meo-heading) 75%, var(--meo-fg) 25%);
 }
@@ -369,6 +372,74 @@ th code {
   color: var(--meo-strong);
 }
 
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0.08em;
+  padding: 0.04em 0.42em 0.1em;
+  min-width: 1.3em;
+  border: 1px solid var(--meo-kbd-border);
+  border-bottom-width: 2px;
+  border-radius: 0.35em;
+  background: var(--meo-kbd-bg);
+  color: var(--meo-fg);
+  font-family: var(--meo-font-code);
+  font-size: 0.84em;
+  font-weight: 600;
+  line-height: 1.2;
+  vertical-align: baseline;
+  white-space: nowrap;
+  text-indent: 0;
+  box-shadow: inset 0 -1px 0 var(--meo-kbd-shadow);
+}
+
+.meo-export-math {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  vertical-align: baseline;
+}
+
+.meo-export-math-inline .katex {
+  font-size: 1em;
+}
+
+.meo-export-math-display {
+  display: block;
+  margin: 0.35em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.meo-export-math-display .katex-display {
+  margin: 0;
+}
+
+.meo-export-math-display.meo-export-math-fenced-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0 0 1em;
+  padding: 24px 16px;
+  border: 1px solid var(--meo-code-border);
+  border-radius: 0;
+  background: var(--meo-code-bg);
+  overflow-x: auto;
+  overflow-y: hidden;
+  line-height: 1;
+  text-align: center;
+}
+
+td .meo-export-math-display,
+th .meo-export-math-display {
+  margin: 0.2em 0;
+}
+
 pre.meo-export-code-block {
   padding: 24px 16px;
   overflow: auto;
@@ -648,7 +719,7 @@ th:empty::before {
   .meo-export-page {
     min-height: auto;
   }
-  pre, blockquote, table, img, .meo-export-mermaid {
+  pre, blockquote, table, img, .meo-export-mermaid, .meo-export-math-display {
     break-inside: avoid;
     page-break-inside: avoid;
   }

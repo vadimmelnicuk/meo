@@ -3,13 +3,18 @@ export type BuildExportHtmlDocumentOptions = {
   bodyHtml: string;
   stylesCss: string;
   hasMermaid: boolean;
+  hasMath: boolean;
   mermaidRuntimeSrc?: string;
+  katexStylesHref?: string;
   baseHref?: string;
 };
 
 export function buildExportHtmlDocument(options: BuildExportHtmlDocumentOptions): string {
   const title = escapeHtml(options.title || 'Markdown Export');
   const baseTag = options.baseHref ? `<base href="${escapeHtmlAttr(options.baseHref)}" />` : '';
+  const katexStylesTag = options.hasMath && options.katexStylesHref
+    ? `<link rel="stylesheet" href="${escapeHtmlAttr(options.katexStylesHref)}" />`
+    : '';
   const mermaidScriptTag = options.hasMermaid && options.mermaidRuntimeSrc
     ? `<script data-meo-export-mermaid-runtime src="${escapeHtmlAttr(options.mermaidRuntimeSrc)}"></script>`
     : '';
@@ -21,6 +26,7 @@ export function buildExportHtmlDocument(options: BuildExportHtmlDocumentOptions)
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
     ${baseTag}
+    ${katexStylesTag}
     <style>${options.stylesCss}</style>
   </head>
   <body>

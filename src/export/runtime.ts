@@ -17,12 +17,15 @@ export type ExportRuntimeBuildHtmlOptions = {
     editorFontSizePx?: number;
   };
   mermaidRuntimeSrc: string;
+  katexStylesHref?: string;
   baseHref: string;
   title: string;
 };
 
-function renderExportHtmlDocument(options: ExportRuntimeBuildHtmlOptions): { htmlDocument: string; hasMermaid: boolean } {
-  const { html: bodyHtml, hasMermaid } = renderMarkdownToHtml({
+function renderExportHtmlDocument(
+  options: ExportRuntimeBuildHtmlOptions
+): { htmlDocument: string; hasMermaid: boolean; hasMath: boolean } {
+  const { html: bodyHtml, hasMermaid, hasMath } = renderMarkdownToHtml({
     markdownText: options.markdownText,
     markdownFilePath: options.sourceDocumentPath,
     outputFilePath: options.outputFilePath,
@@ -42,11 +45,13 @@ function renderExportHtmlDocument(options: ExportRuntimeBuildHtmlOptions): { htm
     bodyHtml,
     stylesCss,
     hasMermaid,
+    hasMath,
     mermaidRuntimeSrc: options.mermaidRuntimeSrc,
+    katexStylesHref: options.katexStylesHref,
     baseHref: options.baseHref
   });
 
-  return { htmlDocument, hasMermaid };
+  return { htmlDocument, hasMermaid, hasMath };
 }
 
 const exportRuntime = {

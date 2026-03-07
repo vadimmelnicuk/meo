@@ -3,6 +3,7 @@ import { getFencedCodeInfo } from './codeBlocks';
 import { isThematicBreakLine } from './frontmatter';
 import { resolvedSyntaxTree } from './markdownSyntax';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './mermaidColonBlocks';
+import { collectLatexMathRanges, resolveFencedDisplayMathInnerLineRange } from './math';
 import { isTableDelimiterLine, parseTableInfo } from './tables';
 
 type LineFlagLike = {
@@ -11,7 +12,7 @@ type LineFlagLike = {
   trailingEofProxyOnly?: boolean;
 } | undefined;
 
-export type LiveRenderedBlockKind = 'table' | 'mermaid';
+export type LiveRenderedBlockKind = 'table' | 'mermaid' | 'math';
 export type LiveGitChangeKind = 'added' | 'modified';
 
 export interface LiveRenderedBlock {
@@ -140,6 +141,63 @@ function detectFallbackTableBlocks(
   return blocks;
 }
 
+function collectCodeLikeRanges(
+  tree: any,
+  mermaidColonBlocks: ReadonlyArray<{ from: number; to: number }>
+): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = [];
+
+  tree.iterate({
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
+        return;
+      }
+      ranges.push({ from: node.from, to: node.to });
+      return false;
+    }
+  });
+
+  for (const block of mermaidColonBlocks) {
+    ranges.push({
+      from: block.from,
+      to: block.to
+    });
+  }
+
+  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  return ranges;
+}
+
+function resolveMathHiddenLineRange(
+  startLine: number,
+  endLine: number
+): { from: number; to: number } | null {
+  const innerLineRange = resolveFencedDisplayMathInnerLineRange(
+    startLine,
+    endLine
+  );
+  if (!innerLineRange) {
+    return null;
+  }
+
+  return {
+    from: innerLineRange.innerStartLine,
+    to: innerLineRange.innerEndLine
+  };
+}
+
+function selectionTouchesLineRange(state: EditorState, startLine: number, endLine: number): boolean {
+  for (const range of state.selection.ranges) {
+    const rangeStartLine = state.doc.lineAt(range.from).number;
+    const rangeEndPos = range.to > range.from ? range.to - 1 : range.to;
+    const rangeEndLine = state.doc.lineAt(rangeEndPos).number;
+    if (rangeStartLine <= endLine && rangeEndLine >= startLine) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function getLiveRenderedBlocks(state: EditorState): LiveRenderedBlock[] {
   const tree = resolvedSyntaxTree(state);
   const cached = renderedBlockCache.get(state);
@@ -150,6 +208,7 @@ export function getLiveRenderedBlocks(state: EditorState): LiveRenderedBlock[] {
   const blocks: LiveRenderedBlock[] = [];
   const parsedTableRanges: Array<{ from: number; to: number }> = [];
   const mermaidColonBlocks = getMermaidColonBlocks(state);
+  const codeLikeRanges = collectCodeLikeRanges(tree, mermaidColonBlocks);
 
   tree.iterate({
     enter(node) {
@@ -189,6 +248,35 @@ export function getLiveRenderedBlocks(state: EditorState): LiveRenderedBlock[] {
     const renderedBlock = createRenderedBlock('mermaid', block.startLine, block.endLine, null);
     if (renderedBlock) {
       blocks.push(renderedBlock);
+    }
+  }
+
+  const mathRanges = collectLatexMathRanges(state.doc.toString(), {
+    excludedRanges: codeLikeRanges
+  });
+  for (const mathRange of mathRanges) {
+    if (mathRange.mode !== 'display' || mathRange.fencedDisplay !== true) {
+      continue;
+    }
+    const startLine = state.doc.lineAt(mathRange.from).number;
+    const endLine = state.doc.lineAt(Math.max(mathRange.to - 1, mathRange.from)).number;
+    if (endLine <= startLine) {
+      continue;
+    }
+    if (selectionTouchesLineRange(state, startLine, endLine)) {
+      continue;
+    }
+    const block = createRenderedBlock('math', startLine, endLine, null);
+    if (block) {
+      const hiddenRange = resolveMathHiddenLineRange(startLine, endLine);
+      if (hiddenRange) {
+        block.lineNumberHiddenFrom = hiddenRange.from;
+        block.lineNumberHiddenTo = hiddenRange.to;
+      } else {
+        block.lineNumberHiddenFrom = 1;
+        block.lineNumberHiddenTo = 0;
+      }
+      blocks.push(block);
     }
   }
 

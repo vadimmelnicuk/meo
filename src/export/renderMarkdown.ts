@@ -5,6 +5,7 @@ import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
 import { prepareMarkdownWithFootnotes } from './footnotes';
+import { installMathTransform } from './mathTransform';
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 
 const POWER_QUERY_KEYWORDS =
@@ -15,6 +16,8 @@ const FENCE_LANGUAGE_ALIASES: Record<string, string> = {
   m: 'powerquery',
   pq: 'powerquery'
 };
+const OPENING_KBD_TAG_RE = /^<kbd\b[^>]*>$/i;
+const CLOSING_KBD_TAG_RE = /^<\/kbd\s*>$/i;
 
 registerExportLanguages();
 
@@ -30,12 +33,15 @@ export type RenderMarkdownOptions = {
 export type RenderMarkdownResult = {
   html: string;
   hasMermaid: boolean;
+  hasMath: boolean;
 };
 
 export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMarkdownResult {
   let hasMermaid = false;
+  let hasMath = false;
   const normalizedMarkdown = normalizeMarkdownForExport(options.markdownText);
   const extractedFrontmatter = extractExportFrontmatter(normalizedMarkdown);
+  const shouldEnableMathTransform = extractedFrontmatter.bodyMarkdown.includes('$');
 
   const md = new MarkdownIt({
     html: true,
@@ -71,7 +77,15 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   });
   md.use(emoji);
   installTaskListTransform(md);
+  installKbdFallbackTransform(md);
   installAlertTransform(md);
+  if (shouldEnableMathTransform) {
+    installMathTransform(md, {
+      onRenderedMath: () => {
+        hasMath = true;
+      }
+    });
+  }
 
   const defaultImageRule = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts));
   md.renderer.rules.image = (tokens, idx, opts, env, self) => {
@@ -153,6 +167,20 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     allowedStyles: {
       '*': {
         'text-align': [/^left$/i, /^right$/i, /^center$/i, /^justify$/i]
+      },
+      span: {
+        position: [/^(?:static|relative|absolute)$/i],
+        top: [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        left: [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        width: [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        height: [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        'min-width': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        'margin-left': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        'margin-right': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        'padding-left': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        'vertical-align': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^baseline$/i, /^middle$/i],
+        'border-bottom-width': [/^-?\d*\.?\d+(?:px|em|rem|%)?$/i, /^0$/],
+        color: [/^[-#(),.%\w\s]+$/]
       }
     },
     transformTags: {
@@ -180,7 +208,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     }
   });
 
-  return { html, hasMermaid };
+  return { html, hasMermaid, hasMath };
 }
 
 function normalizeMarkdownForExport(markdownText: string): string {
@@ -344,7 +372,7 @@ function isTableRowLine(line: string): boolean {
 
 function isTableDelimiterLine(line: string): boolean {
   const trimmed = line.trim();
-  return /^\|?\s*:?[-]{3,}:?\s*(\|\s*:?[-]{3,}:?\s*)+\|?$/.test(trimmed);
+  return /^\|?\s*:?[-]{3,}:?\s*(?:\|\s*:?[-]{3,}:?\s*)*\|?$/.test(trimmed);
 }
 
 function parseFenceLine(line: string): { char: '`' | '~'; length: number } | null {
@@ -443,6 +471,52 @@ function removeTaskPrefixFromInlineToken(token: any, prefixLength: number): void
   }
 
   token.children = token.children.filter((child: any) => !(child.type === 'text' && !child.content));
+}
+
+function installKbdFallbackTransform(md: MarkdownIt): void {
+  md.core.ruler.after('inline', 'meo-kbd-fallback-transform', (state: any) => {
+    for (const token of state.tokens as any[]) {
+      if (token.type !== 'inline' || !Array.isArray(token.children) || token.children.length === 0) {
+        continue;
+      }
+
+      // markdown-it keeps malformed inline HTML tokens as raw HTML; convert unmatched
+      // <kbd> tags to text so export escapes them and preserves literal source.
+      const openStack: any[] = [];
+      for (const child of token.children) {
+        if (child.type !== 'html_inline') {
+          continue;
+        }
+
+        const content = String(child.content ?? '').trim();
+        if (OPENING_KBD_TAG_RE.test(content)) {
+          openStack.push(child);
+          continue;
+        }
+
+        if (!CLOSING_KBD_TAG_RE.test(content)) {
+          continue;
+        }
+
+        if (openStack.length > 0) {
+          openStack.pop();
+          continue;
+        }
+
+        convertHtmlInlineTagTokenToText(child);
+      }
+
+      for (const unmatchedOpen of openStack) {
+        convertHtmlInlineTagTokenToText(unmatchedOpen);
+      }
+    }
+  });
+}
+
+function convertHtmlInlineTagTokenToText(token: any): void {
+  token.type = 'text';
+  token.tag = '';
+  token.nesting = 0;
 }
 
 function normalizeFenceLanguage(info: string): string {
