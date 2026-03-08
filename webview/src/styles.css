@@ -107,6 +107,42 @@ body {
   background-color: var(--vscode-sideBar-background);
 }
 
+.editor-notice {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 14px;
+  right: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-panel-border));
+  border-radius: 6px;
+  color: var(--vscode-inputValidation-infoForeground, var(--vscode-editor-foreground));
+  background: var(
+    --vscode-inputValidation-infoBackground,
+    var(--vscode-editorWidget-background, var(--vscode-sideBar-background))
+  );
+  font-size: 12px;
+  line-height: 1.4;
+  z-index: 275;
+  pointer-events: none;
+}
+
+.editor-notice.is-visible {
+  display: block;
+}
+
+.editor-notice[data-kind='warning'] {
+  border-color: var(--vscode-inputValidation-warningBorder, #b89500);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  background: var(--vscode-inputValidation-warningBackground, rgba(184, 149, 0, 0.18));
+}
+
+.editor-notice[data-kind='error'] {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-inputValidation-errorForeground, #ffffff);
+  background: var(--vscode-inputValidation-errorBackground, rgba(190, 17, 0, 0.3));
+}
+
 .find-panel {
   display: none;
   position: absolute;

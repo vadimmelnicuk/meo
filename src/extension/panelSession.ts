@@ -328,25 +328,56 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     return applyQueue;
   };
 
-  const applyPendingDraftIfNeeded = async (): Promise<void> => {
+  const reportBackgroundError = (contextLabel: string, error: unknown): void => {
+    if (disposed) {
+      return;
+    }
+    console.error(`[MEO panelSession] ${contextLabel}`, error);
+  };
+
+  const runBackground = (promise: Promise<unknown>, contextLabel: string): void => {
+    void promise.catch((error) => {
+      reportBackgroundError(contextLabel, error);
+    });
+  };
+
+  const postToWebview = async (message: Record<string, unknown>): Promise<boolean> => {
+    if (disposed) {
+      return false;
+    }
+    try {
+      return await panel.webview.postMessage(message);
+    } catch {
+      return false;
+    }
+  };
+
+  const saveDocumentIfAutoSaveEnabled = async (): Promise<void> => {
+    if (!getAutoSaveEnabled(context) || !document.isDirty) {
+      return;
+    }
+    await document.save();
+  };
+
+  const applyPendingDraftIfNeeded = async (): Promise<boolean> => {
     const draftText = pendingDraftText;
     pendingDraftText = null;
     if (draftText === null) {
-      return;
+      return false;
     }
 
     const currentText = document.getText();
     const normalizedCurrent = currentText.replace(/\r\n/g, '\n');
     const normalizedDraft = draftText.replace(/\r\n/g, '\n');
     if (normalizedCurrent === normalizedDraft) {
-      return;
+      return false;
     }
 
     const edit = new vscode.WorkspaceEdit();
     const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(currentText.length));
     agentReviewHandoff.noteRecentMEOOwnedFileChangeForUri(document.uri);
     edit.replace(document.uri, fullRange, draftText);
-    await vscode.workspace.applyEdit(edit);
+    return vscode.workspace.applyEdit(edit);
   };
 
   const sendInit = async (): Promise<boolean> => {
@@ -365,7 +396,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       outlineVisible: getOutlineVisible(context),
       theme: getThemeSettings()
     };
-    return panel.webview.postMessage(message);
+    return postToWebview(message);
   };
 
   const sendDocChanged = async (): Promise<boolean> => {
@@ -374,7 +405,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       text: document.getText(),
       version: document.version
     };
-    return panel.webview.postMessage(message);
+    return postToWebview(message);
   };
 
   const sendApplied = async (version: number): Promise<boolean> => {
@@ -382,7 +413,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       type: 'applied',
       version
     };
-    return panel.webview.postMessage(message);
+    return postToWebview(message);
   };
 
   const sendGitBaselineChanged = async (options: RefreshGitBaselineOptions = {}): Promise<boolean> => {
@@ -405,7 +436,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       version: document.version,
       payload
     };
-    const posted = await panel.webview.postMessage(message);
+    const posted = await postToWebview(message);
     if (posted) {
       gitDocumentState.setLastSentBaselineHash(payloadHash);
     }
@@ -437,7 +468,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const ensureInitDelivered = async (): Promise<void> => {
-    if (initDelivered) {
+    if (disposed || initDelivered) {
       return;
     }
     const posted = await sendInit();
@@ -448,6 +479,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
 
   const requestExportSnapshot = async (): Promise<{ text: string; environment?: ExportStyleEnvironment }> => {
     await ensureInitDelivered();
+    if (disposed) {
+      throw new Error('The editor was closed before export completed.');
+    }
     const requestId = `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     const response = new Promise<{ text: string; environment?: ExportStyleEnvironment }>((resolve, reject) => {
@@ -463,7 +497,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       type: 'requestExportSnapshot',
       requestId
     };
-    const posted = await panel.webview.postMessage(message);
+    const posted = await postToWebview(message);
     if (!posted) {
       rejectPendingExportSnapshot(requestId, new Error('The editor webview is not ready to export.'));
     }
@@ -524,7 +558,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     } finally {
       gitRefreshRunning = false;
       if (gitRefreshPending) {
-        void runPendingGitRefreshes();
+        runBackground(runPendingGitRefreshes(), 'runPendingGitRefreshes.retry');
       }
     }
   };
@@ -536,7 +570,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     gitRefreshPending = true;
     gitRefreshPendingForcePost = gitRefreshPendingForcePost || options.forcePost === true;
     gitRefreshPendingForceReload = gitRefreshPendingForceReload || options.forceReload === true;
-    void runPendingGitRefreshes();
+    runBackground(runPendingGitRefreshes(), 'runPendingGitRefreshes');
   };
 
   const isTextEditorForDocument = (textEditor: vscode.TextEditor | undefined): textEditor is vscode.TextEditor => {
@@ -563,7 +597,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       anchor: selection.anchor,
       head: selection.head
     };
-    const posted = await panel.webview.postMessage(message);
+    const posted = await postToWebview(message);
     if (posted) {
       lastSentRevealSelectionKey = getRevealSelectionKey(selection);
       pendingRevealSelection = null;
@@ -582,7 +616,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   const postFocusEditor = async (): Promise<void> => {
     await ensureInitDelivered();
     const message: FocusEditorMessage = { type: 'focusEditor' };
-    await panel.webview.postMessage(message);
+    await postToWebview(message);
   };
 
   const sendRevealSelectionForEditor = async (textEditor: vscode.TextEditor | undefined): Promise<void> => {
@@ -627,6 +661,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const handleMessage = async (raw: WebviewMessage): Promise<void> => {
+    if (disposed) {
+      return;
+    }
     switch (raw.type) {
       case 'ready':
         await ensureInitDelivered();
@@ -685,7 +722,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           requestId: raw.requestId,
           resolvedUrl: resolveWebviewImageSrc(raw.url, documentUri, panel.webview)
         };
-        await panel.webview.postMessage(response);
+        await postToWebview(response);
         return;
       }
       case 'resolveWikiLinks': {
@@ -694,7 +731,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           requestId: raw.requestId,
           results: await resolveWikiLinkTargets(raw.targets, documentUri)
         };
-        await panel.webview.postMessage(response);
+        await postToWebview(response);
         return;
       }
       case 'exportSnapshot':
@@ -715,7 +752,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           localEditGeneration: raw.localEditGeneration,
           result: resolved.result
         };
-        await panel.webview.postMessage(response);
+        await postToWebview(response);
         return;
       }
       case 'openGitRevisionForLine':
@@ -728,7 +765,10 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         agentReviewHandoff.noteRecentMEOOwnedFileChangeForUri(document.uri);
         isApplyingOwnChange = true;
         try {
-          await enqueue(() => applyDocumentChanges(document, raw, sendDocChanged, sendApplied));
+          await enqueue(async () => {
+            await applyDocumentChanges(document, raw, sendDocChanged, sendApplied);
+            await saveDocumentIfAutoSaveEnabled();
+          });
         } finally {
           isApplyingOwnChange = false;
         }
@@ -748,14 +788,14 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'saveImageFromClipboard': {
         const response = await handleSaveImageFromClipboard(raw, documentUri);
-        await panel.webview.postMessage(response);
+        await postToWebview(response);
         return;
       }
     }
   };
 
   const messageSubscription = panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
-    void handleMessage(raw);
+    runBackground(handleMessage(raw), 'handleMessage');
   });
 
   const documentChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
@@ -772,9 +812,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
 
-    void enqueue(async () => {
+    runBackground(enqueue(async () => {
       await sendDocChanged();
-    });
+    }), 'sendDocChanged');
   });
 
   const documentSaveSubscription = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
@@ -788,27 +828,27 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     if (!isTextEditorForDocument(event.textEditor)) {
       return;
     }
-    void sendRevealSelectionForEditor(event.textEditor);
+    runBackground(sendRevealSelectionForEditor(event.textEditor), 'sendRevealSelectionForEditor.selection');
   });
 
   const activeTextEditorSubscription = vscode.window.onDidChangeActiveTextEditor((textEditor) => {
     if (!isTextEditorForDocument(textEditor)) {
       return;
     }
-    void sendRevealSelectionForEditor(textEditor);
+    runBackground(sendRevealSelectionForEditor(textEditor), 'sendRevealSelectionForEditor.activeEditor');
   });
 
   const visibleTextEditorsSubscription = vscode.window.onDidChangeVisibleTextEditors(() => {
-    void sendRevealSelectionForEditor(findEditorForDocumentReveal());
+    runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.visibleEditors');
   });
 
   const viewStateSubscription = panel.onDidChangeViewState((event) => {
     if (event.webviewPanel.active) {
       onPanelActivated(event.webviewPanel);
       refreshGitBaseline({ forcePost: true });
-      void flushPendingRevealSelection();
-      void sendRevealSelectionForEditor(findEditorForDocumentReveal());
-      void postFocusEditor();
+      runBackground(flushPendingRevealSelection(), 'flushPendingRevealSelection');
+      runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.viewState');
+      runBackground(postFocusEditor(), 'postFocusEditor');
     }
     onPanelViewStateChanged();
   });
@@ -817,9 +857,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     dispose();
   });
 
-  void ensureInitDelivered();
+  runBackground(ensureInitDelivered(), 'ensureInitDelivered.startup');
   refreshGitBaseline({ forcePost: true });
-  void sendRevealSelectionForEditor(findEditorForDocumentReveal());
+  runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.startup');
 
   const dispose = (): void => {
     if (disposed) {
@@ -827,14 +867,17 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }
     disposed = true;
 
-    void enqueue(async () => {
+    runBackground(enqueue(async () => {
       try {
         // Best-effort recovery for edits that never made it through the debounce/apply round-trip.
-        await applyPendingDraftIfNeeded();
+        const recovered = await applyPendingDraftIfNeeded();
+        if (recovered) {
+          await saveDocumentIfAutoSaveEnabled();
+        }
       } catch {
         // Ignore dispose-time recovery failures to avoid surfacing noisy teardown errors.
       }
-    });
+    }), 'disposeDraftRecovery');
 
     rejectPendingExportSnapshots(new Error('The editor was closed before export completed.'));
     messageSubscription.dispose();

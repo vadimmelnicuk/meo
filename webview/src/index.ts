@@ -417,7 +417,13 @@ const findPanelController = createFindPanelController(findPanelElements, () => e
 const selectionMenuElements = createSelectionMenu();
 const selectionMenuController = createSelectionMenuController(selectionMenuElements, () => editor);
 
-toolbar.replaceChildren(formatGroup, rightGroup, modeGroup, findPanelElements.panel);
+const editorNoticeBanner = document.createElement('div');
+editorNoticeBanner.className = 'editor-notice';
+editorNoticeBanner.setAttribute('role', 'status');
+editorNoticeBanner.setAttribute('aria-live', 'polite');
+editorNoticeBanner.hidden = true;
+
+toolbar.replaceChildren(formatGroup, rightGroup, modeGroup, findPanelElements.panel, editorNoticeBanner);
 
 const existingEditorWrapper = root.querySelector('.editor-wrapper');
 const editorWrapper = existingEditorWrapper instanceof HTMLElement ? existingEditorWrapper : document.createElement('div');
@@ -461,9 +467,28 @@ let hasSentDraftText = false;
 let initialEditorMountInFlight = false;
 let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
 
+const setEditorNotice = (message: string, kind = 'info') => {
+  const normalizedMessage = `${message ?? ''}`.trim();
+  if (!normalizedMessage) {
+    clearEditorNotice();
+    return;
+  }
+  editorNoticeBanner.textContent = normalizedMessage;
+  editorNoticeBanner.dataset.kind = kind;
+  editorNoticeBanner.hidden = false;
+  editorNoticeBanner.classList.add('is-visible');
+};
+
+const clearEditorNotice = () => {
+  editorNoticeBanner.textContent = '';
+  delete editorNoticeBanner.dataset.kind;
+  editorNoticeBanner.hidden = true;
+  editorNoticeBanner.classList.remove('is-visible');
+};
+
 const editorNotice: EditorNotice = {
-  setEditorNotice: (_message, _kind = 'info') => {},
-  clearEditorNotice: () => {}
+  setEditorNotice,
+  clearEditorNotice
 };
 
 const failureNotice = createFailureNoticeManager(editorNotice);
@@ -1127,9 +1152,6 @@ window.addEventListener('message', (event) => {
     flushChanges();
     maybeSaveAfterSync();
     syncPendingDraftState();
-    if (autoSaveEnabled && !inFlight && pendingText !== null && normalizeEol(pendingText) === syncedText) {
-      vscode.postMessage({ type: 'saveDocument' });
-    }
     return;
   }
 
@@ -1245,25 +1267,7 @@ window.addEventListener('visibilitychange', () => {
 });
 
 const forceFlushChanges = () => {
-  if (!editor || pendingText === null) {
-    return;
-  }
-
-  const nextText = pendingText;
-  const message: WebviewMessage = {
-    type: 'applyChanges',
-    baseVersion: documentVersion,
-    changes: [
-      {
-        from: 0,
-        to: syncedText.length,
-        insert: nextText
-      }
-    ]
-  };
-
-  documentVersion++;
-  vscode.postMessage(message);
+  flushChanges();
 };
 
 window.addEventListener('beforeunload', () => {
