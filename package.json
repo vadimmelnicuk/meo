@@ -28,15 +28,7 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCustomEditor:markdownEditorOptimized.editor",
-    "onStartupFinished",
-    "onLanguage:markdown",
-    "onCommand:markdownEditorOptimized.open",
-    "onCommand:markdownEditorOptimized.setDefaultEditor",
-    "onCommand:markdownEditorOptimized.resetThemeToDefaults",
-    "onCommand:markdownEditorOptimized.toggleMode",
-    "onCommand:markdownEditorOptimized.exportHtml",
-    "onCommand:markdownEditorOptimized.exportPdf"
+    "onStartupFinished"
   ],
   "contributes": {
     "languages": [
