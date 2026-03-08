@@ -1,5 +1,12 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.17
+- Added latex math rendering
+- Added kbd tag parsing and rendering
+- Improved auto save stability
+- Improved table inline parsing
+- Updated demo gif and enhance feature descriptions
+
 ## 0.1.16
 - Added mermaid colon fences in markdown rendering
 - Fixed document offset mapping in applyDocumentChanges function (patch for issue 23)
