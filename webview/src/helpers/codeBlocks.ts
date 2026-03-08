@@ -171,11 +171,22 @@ const csharpBuiltinTypes = new Set([
   "nint", "nuint"
 ]);
 
+const csharpTypeKeywords = new Set([
+  "class", "struct", "interface", "enum", "record", "new", "as", "is",
+  "typeof", "sizeof", "nameof", "delegate", "event", "where"
+]);
+
+const csharpNamespaceKeywords = new Set(["namespace", "using"]);
+
 type CSharpState = {
   inBlockComment: boolean;
   inVerbatimString: boolean;
   inRawString: boolean;
   rawQuoteCount: number;
+  expectTypeName: boolean;
+  expectNamespace: boolean;
+  afterDot: boolean;
+  inAttribute: boolean;
 };
 
 const csharpLanguage = StreamLanguage.define({
@@ -185,7 +196,11 @@ const csharpLanguage = StreamLanguage.define({
     inBlockComment: false,
     inVerbatimString: false,
     inRawString: false,
-    rawQuoteCount: 0
+    rawQuoteCount: 0,
+    expectTypeName: false,
+    expectNamespace: false,
+    afterDot: false,
+    inAttribute: false
   }),
 
   token: (stream: any, state: CSharpState) => {
@@ -292,19 +307,122 @@ const csharpLanguage = StreamLanguage.define({
       return "number";
     }
 
+    // Attribute brackets: [Serializable], [HttpGet("...")]
+    if (stream.match("[")) {
+      state.inAttribute = true;
+      return "squareBracket";
+    }
+    if (stream.match("]")) {
+      state.inAttribute = false;
+      return "squareBracket";
+    }
+
     // Identifiers, including escaped identifiers like @class
     if (stream.match(/^@?[A-Za-z_]\w*/)) {
-      const word = stream.current().startsWith("@")
-        ? stream.current().slice(1)
-        : stream.current();
+      const raw = stream.current();
+      const word = raw.startsWith("@") ? raw.slice(1) : raw;
+      const next = stream.peek();
+      const wasDot = state.afterDot;
+      state.afterDot = false;
 
-      if (csharpKeywords.has(word)) return "keyword";
-      if (csharpBuiltinTypes.has(word)) return "typeName";
-      if (word === "true" || word === "false") return "bool";
-      if (word === "null") return "atom";
+      if (csharpKeywords.has(word)) {
+        state.expectTypeName = csharpTypeKeywords.has(word);
+        state.expectNamespace = csharpNamespaceKeywords.has(word);
+        return "keyword";
+      }
+      if (csharpBuiltinTypes.has(word)) {
+        state.expectTypeName = false;
+        state.expectNamespace = false;
+        return "typeName";
+      }
+      if (word === "true" || word === "false") {
+        state.expectTypeName = false;
+        return "bool";
+      }
+      if (word === "null") {
+        state.expectTypeName = false;
+        return "atom";
+      }
 
+      // Namespace: using System.Collections.Generic
+      if (state.expectNamespace) {
+        return "namespace";
+      }
+
+      // Attribute name: [Serializable], [HttpGet]
+      if (state.inAttribute) {
+        return "attributeName";
+      }
+
+      // After a type-introducing keyword: new Foo, class Bar
+      if (state.expectTypeName) {
+        state.expectTypeName = false;
+        // new Foo() — type followed by '(' is still a type (constructor)
+        return "typeName";
+      }
+
+      const isUpperStart = word[0] >= "A" && word[0] <= "Z";
+
+      // Member access: obj.Method() or obj.Property
+      if (wasDot) {
+        if (next === "(") return "variableName.function";
+        if (next === "<") return "typeName";
+        return "propertyName";
+      }
+
+      // PascalCase followed by '<' — generic type: List<T>
+      if (isUpperStart && next === "<") {
+        return "typeName";
+      }
+
+      // Function call: Method(...)
+      if (next === "(") {
+        return "variableName.function";
+      }
+
+      state.expectTypeName = false;
       return "variableName";
     }
+
+    // Dot — member access
+    if (stream.match(".")) {
+      state.afterDot = true;
+      return "punctuation";
+    }
+
+    // Colon — expect type name after ':' (inheritance, type constraints)
+    if (stream.match(":")) {
+      state.expectTypeName = true;
+      return "punctuation";
+    }
+
+    // Angle brackets — '<' expects type arg, '>' does not
+    if (stream.match("<")) {
+      state.expectTypeName = true;
+      return "angleBracket";
+    }
+    if (stream.match(">")) {
+      return "angleBracket";
+    }
+
+    // Comma inside generic args or after base types keeps expecting types
+    if (stream.match(",")) {
+      return "punctuation";
+    }
+
+    // Parentheses and braces
+    if (stream.match(/^[()]/)) return "paren";
+    if (stream.match(/^[{}]/)) return "brace";
+
+    // Semicolon
+    if (stream.match(";")) {
+      state.expectNamespace = false;
+      return "punctuation";
+    }
+
+    // Lambda and other operators
+    if (stream.match("=>")) return "operator";
+    if (stream.match(/^[+\-*/%&|^!~?=<>]+/)) return "operator";
 
     stream.next();
     return null;
