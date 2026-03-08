@@ -150,33 +150,162 @@ const powerQueryLanguage = StreamLanguage.define({
   }
 });
 
-const csharpLanguage = StreamLanguage.define({
-  name: 'csharp',
-  startState: () => ({ inBlockComment: false }),
-  token: (stream: any, state: { inBlockComment: boolean }) => {
-    if (stream.eatSpace()) return null;
+const csharpKeywords = new Set([
+  "abstract", "as", "base", "break", "case", "catch", "checked", "class",
+  "const", "continue", "default", "delegate", "do", "else", "enum", "event",
+  "explicit", "extern", "finally", "fixed", "for", "foreach", "goto", "if",
+  "implicit", "in", "interface", "internal", "is", "lock", "namespace", "new",
+  "operator", "out", "override", "params", "private", "protected", "public",
+  "readonly", "ref", "return", "sealed", "sizeof", "stackalloc", "static",
+  "struct", "switch", "this", "throw", "try", "typeof", "unchecked", "unsafe",
+  "using", "virtual", "void", "volatile", "while",
+  "async", "await", "var", "dynamic", "yield", "when", "record", "init",
+  "required", "file", "scoped", "partial", "where", "select", "group", "into",
+  "let", "orderby", "join", "on", "equals", "by", "ascending", "descending",
+  "from", "global", "not", "and", "or", "with"
+]);
 
+const csharpBuiltinTypes = new Set([
+  "bool", "byte", "char", "decimal", "double", "float", "int", "long",
+  "object", "sbyte", "short", "string", "uint", "ulong", "ushort",
+  "nint", "nuint"
+]);
+
+type CSharpState = {
+  inBlockComment: boolean;
+  inVerbatimString: boolean;
+  inRawString: boolean;
+  rawQuoteCount: number;
+};
+
+const csharpLanguage = StreamLanguage.define({
+  name: "csharp",
+
+  startState: (): CSharpState => ({
+    inBlockComment: false,
+    inVerbatimString: false,
+    inRawString: false,
+    rawQuoteCount: 0
+  }),
+
+  token: (stream: any, state: CSharpState) => {
+    // Handle multiline block comment
     if (state.inBlockComment) {
       while (!stream.eol()) {
-        if (stream.match('*/')) { state.inBlockComment = false; return 'comment'; }
+        if (stream.match("*/")) {
+          state.inBlockComment = false;
+          break;
+        }
         stream.next();
       }
-      return 'comment';
+      return "comment";
     }
 
-    if (stream.match('//')) { stream.skipToEnd(); return 'comment'; }
-    if (stream.match('/*')) { state.inBlockComment = true; return 'comment'; }
-    if (stream.match(/^@"(?:[^"]|"")*"/)) return 'string';
-    if (stream.match(/^\$"(?:[^"\\]|\\.)*"/)) return 'string';
-    if (stream.match(/^"(?:[^"\\]|\\.)*"/)) return 'string';
-    if (stream.match(/^'(?:[^'\\]|\\.)*'/)) return 'string';
-    if (stream.match(/^(abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|this|throw|try|typeof|unchecked|unsafe|using|virtual|void|volatile|while|async|await|var|dynamic|yield|when|record|init|required|file|scoped)\b/)) return 'keyword';
-    if (stream.match(/^(bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|nint|nuint)\b/)) return 'typeName';
-    if (stream.match(/^(true|false)\b/)) return 'bool';
-    if (stream.match(/^null\b/)) return 'atom';
-    if (stream.match(/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[fFdDmMuUlL]*/)) return 'number';
-    if (stream.match(/^0x[0-9a-fA-F]+[uUlL]*/)) return 'number';
-    if (stream.match(/^[a-zA-Z_]\w*/)) return 'variableName';
+    // Handle multiline verbatim string: @"..."
+    if (state.inVerbatimString) {
+      while (!stream.eol()) {
+        if (stream.match('""')) continue; // escaped quote in verbatim string
+        if (stream.match('"')) {
+          state.inVerbatimString = false;
+          break;
+        }
+        stream.next();
+      }
+      return "string";
+    }
+
+    // Handle multiline raw string: """ ... """
+    if (state.inRawString) {
+      const end = '"'.repeat(state.rawQuoteCount);
+      while (!stream.eol()) {
+        if (stream.match(end)) {
+          state.inRawString = false;
+          break;
+        }
+        stream.next();
+      }
+      return "string";
+    }
+
+    if (stream.eatSpace()) return null;
+
+    // Preprocessor directives
+    if (stream.sol() && stream.match(/^#\s*[A-Za-z_]\w*/)) {
+      stream.skipToEnd();
+      return "meta";
+    }
+
+    // Comments
+    if (stream.match("//")) {
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.match("/*")) {
+      state.inBlockComment = true;
+      return "comment";
+    }
+
+    // Raw strings: """ ... """ or more quotes
+    if (stream.match(/^"{3,}/)) {
+      state.inRawString = true;
+      state.rawQuoteCount = stream.current().length;
+      return "string";
+    }
+
+    // Verbatim interpolated strings: $@"..." or @$"..."
+    if (stream.match(/^\$@"/) || stream.match(/^@\$"/)) {
+      state.inVerbatimString = true;
+      return "string";
+    }
+
+    // Verbatim strings: @"..."
+    if (stream.match(/^@"/)) {
+      state.inVerbatimString = true;
+      return "string";
+    }
+
+    // Interpolated regular string
+    if (stream.match(/^\$"(?:[^"\\]|\\.)*"/)) return "string";
+
+    // Regular string
+    if (stream.match(/^"(?:[^"\\\r\n]|\\.)*"/)) return "string";
+
+    // Char literal: one char or one escape
+    if (stream.match(/^'(?:[^'\\\r\n]|\\.)'/)) return "string";
+
+    // Hex before decimal
+    if (stream.match(/^0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?[uUlL]*/)) {
+      return "number";
+    }
+
+    // Binary
+    if (stream.match(/^0[bB][01](?:[01_]*[01])?[uUlL]*/)) {
+      return "number";
+    }
+
+    // Decimal / float
+    if (
+      stream.match(
+        /^(?:\d(?:[\d_]*\d)?)(?:\.(?:\d(?:[\d_]*\d)?)?)?(?:[eE][+-]?\d(?:[\d_]*\d)?)?[fFdDmM]?/
+      )
+    ) {
+      return "number";
+    }
+
+    // Identifiers, including escaped identifiers like @class
+    if (stream.match(/^@?[A-Za-z_]\w*/)) {
+      const word = stream.current().startsWith("@")
+        ? stream.current().slice(1)
+        : stream.current();
+
+      if (csharpKeywords.has(word)) return "keyword";
+      if (csharpBuiltinTypes.has(word)) return "typeName";
+      if (word === "true" || word === "false") return "bool";
+      if (word === "null") return "atom";
+
+      return "variableName";
+    }
+
     stream.next();
     return null;
   }
