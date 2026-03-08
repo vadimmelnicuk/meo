@@ -13,7 +13,11 @@ const POWER_QUERY_HASH_KEYWORDS =
   '#date #time #datetime #datetimezone #duration #table #binary #sections #shared';
 const FENCE_LANGUAGE_ALIASES: Record<string, string> = {
   m: 'powerquery',
-  pq: 'powerquery'
+  pq: 'powerquery',
+  rs: 'rust',
+  golang: 'go',
+  cs: 'csharp',
+  'c#': 'csharp'
 };
 
 registerExportLanguages();

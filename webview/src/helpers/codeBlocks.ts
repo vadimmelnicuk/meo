@@ -7,6 +7,10 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { json } from '@codemirror/lang-json';
 import { cpp } from '@codemirror/lang-cpp';
+import { rust } from '@codemirror/lang-rust';
+import { go } from '@codemirror/lang-go';
+import { java } from '@codemirror/lang-java';
+import { sql } from '@codemirror/lang-sql';
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
 import { getMermaidColonBlocks } from './mermaidColonBlocks';
@@ -146,6 +150,38 @@ const powerQueryLanguage = StreamLanguage.define({
   }
 });
 
+const csharpLanguage = StreamLanguage.define({
+  name: 'csharp',
+  startState: () => ({ inBlockComment: false }),
+  token: (stream: any, state: { inBlockComment: boolean }) => {
+    if (stream.eatSpace()) return null;
+
+    if (state.inBlockComment) {
+      while (!stream.eol()) {
+        if (stream.match('*/')) { state.inBlockComment = false; return 'comment'; }
+        stream.next();
+      }
+      return 'comment';
+    }
+
+    if (stream.match('//')) { stream.skipToEnd(); return 'comment'; }
+    if (stream.match('/*')) { state.inBlockComment = true; return 'comment'; }
+    if (stream.match(/^@"(?:[^"]|"")*"/)) return 'string';
+    if (stream.match(/^\$"(?:[^"\\]|\\.)*"/)) return 'string';
+    if (stream.match(/^"(?:[^"\\]|\\.)*"/)) return 'string';
+    if (stream.match(/^'(?:[^'\\]|\\.)*'/)) return 'string';
+    if (stream.match(/^(abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|this|throw|try|typeof|unchecked|unsafe|using|virtual|void|volatile|while|async|await|var|dynamic|yield|when|record|init|required|file|scoped)\b/)) return 'keyword';
+    if (stream.match(/^(bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|nint|nuint)\b/)) return 'typeName';
+    if (stream.match(/^(true|false)\b/)) return 'bool';
+    if (stream.match(/^null\b/)) return 'atom';
+    if (stream.match(/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[fFdDmMuUlL]*/)) return 'number';
+    if (stream.match(/^0x[0-9a-fA-F]+[uUlL]*/)) return 'number';
+    if (stream.match(/^[a-zA-Z_]\w*/)) return 'variableName';
+    stream.next();
+    return null;
+  }
+});
+
 const jsLanguage = javascript().language;
 const jsxLanguage = javascript({ jsx: true }).language;
 const tsLanguage = javascript({ typescript: true }).language;
@@ -155,6 +191,10 @@ const cssLanguage = css().language;
 const htmlLanguage = html().language;
 const jsonLanguage = json().language;
 const swiftLanguage = cpp().language;
+const rustLanguage = rust().language;
+const goLanguage = go().language;
+const javaLanguage = java().language;
+const sqlLanguage = sql().language;
 const markdownCodeLanguage = markdownLanguage;
 
 const languageMap: Record<string, any> = {
@@ -173,6 +213,15 @@ const languageMap: Record<string, any> = {
   markdown: markdownCodeLanguage,
   md: markdownCodeLanguage,
   swift: swiftLanguage,
+  rust: rustLanguage,
+  rs: rustLanguage,
+  go: goLanguage,
+  golang: goLanguage,
+  java: javaLanguage,
+  sql: sqlLanguage,
+  csharp: csharpLanguage,
+  cs: csharpLanguage,
+  'c#': csharpLanguage,
   shell: shellLanguage,
   bash: shellLanguage,
   sh: shellLanguage,
