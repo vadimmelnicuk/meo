@@ -4,7 +4,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 [![](https://vsmarketplacebadges.dev/version-short/vadimmelnicuk.meo.svg)](https://marketplace.visualstudio.com/items?itemName=vadimmelnicuk.meo)
 
-![demo](https://github.com/vadimmelnicuk/meo/blob/ed165a91abd5338ad940487e59325c3331bec21b/demo.gif?raw=1)
+![demo](docs/demo.gif)
 
 ## Features
 ### Writing & Editing
@@ -12,7 +12,7 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Live/Source modes** - Switch between clean writing and raw markdown in a single tab
 - **Toolbar formatting** - Insert headings, lists, tasks, tables, code blocks, links, images, and quotes in one click
 - **Floating selection menu** - Instantly apply bold, italic, strikethrough, inline code, or links on any text selection
-- **Interactive editing** - Toggle tasks, open links, find/replace, render full-screen Mermaid diagrams
+- **Interactive editing** - Toggle tasks, open links, find/replace, render full-screen Mermaid diagrams, and LaTeX syntax
 - **Images** - Paste images for inline rendering with automatic path resolution
 
 ### Navigation & Organisation
@@ -24,7 +24,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 - **Change visualisations** - See insertions and modifications inline
 - **Git blame** - View commit information for any line directly in the editor
-- **GitHub syntax** - Renders GitHub-specific markdown including collapsible details, footnotes, alerts, and emojis
+- **GitHub syntax** - Renders GitHub-specific markdown including collapsible details, footnotes, alerts, kbd, and emojis
 - **GitHub Copilot** - Support of native changes review experience
 
 ### Customisation & Export
