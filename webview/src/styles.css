@@ -1102,9 +1102,10 @@ body {
   padding: 0.04em 0.42em 0.1em;
   min-width: 1.3em;
   border: 1px solid var(--meo-color-base03);
-  border-bottom-width: 2px;
   border-radius: 0.35em;
   background: var(--vscode-sideBar-background);
+  /* Keep fill out of the border area so the bottom edge stays crisp. */
+  background-clip: padding-box;
   color: var(--vscode-editor-foreground);
   font-size: 0.84em;
   font-weight: 600;
@@ -1112,7 +1113,8 @@ body {
   vertical-align: baseline;
   white-space: nowrap;
   text-indent: 0;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--meo-color-base03) 50%, transparent);
+  /* Extra 1px inside stroke -> visual 2px bottom edge without changing line height. */
+  box-shadow: inset 0 -1px 0 var(--meo-color-base03);
 }
 
 .cm-editor .meo-md-math {

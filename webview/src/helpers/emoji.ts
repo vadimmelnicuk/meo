@@ -5,7 +5,7 @@ export const emojiData: Record<string, string> = {
   orange_heart: '🧡', yellow_heart: '💛', green_heart: '💚',
   blue_heart: '💙', purple_heart: '💜', black_heart: '🖤',
   white_heart: '🤍', brown_heart: '🤎',
-  star: '⭐', stars: '🌟', sparkles: '✨', zap: '⚡', fire: '🔥',
+  star: '⭐', stars: '🌟', sparkles: '✨', rocket: '🚀', zap: '⚡', fire: '🔥',
   hundred: '💯', check: '✅', x: '❌', warning: '⚠️',
   plus: '➕', minus: '➖', divided: '➗', multiply: '✖️',
   arrow_right: '➡️', arrow_left: '⬅️', arrow_up: '⬆️', arrow_down: '⬇️',

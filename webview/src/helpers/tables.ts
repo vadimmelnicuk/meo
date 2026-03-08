@@ -3,6 +3,7 @@ import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
 import { ImageWidget } from './images';
+import { emojiData } from './emoji';
 import { parseKbdTagAt } from './kbd';
 import { createLatexMathElement, parseLatexMathAt } from './math';
 import { wikiLinkScheme } from './wikiLinks';
@@ -123,6 +124,7 @@ function isRedoShortcut(event) {
 // live here to keep all HTML-table behavior in one helper module.
 const tableInlineSchemeRe = /^[a-z][a-z0-9+.-]*:/i;
 const tableInlineRawUrlRe = /^(?:[a-z][a-z0-9+.-]*:\/\/|mailto:|file:|www\.)[^\s<]+/i;
+const tableInlineEmojiShortcodeRe = /^:([a-zA-Z0-9_+-]+):/;
 const tableInlineEscapableChars = new Set(['\\', '*', '_', '~', '`', '[', ']', '(', ')', '!', '|', '<', '>']);
 
 function isTableInlineWhitespaceOnly(text) {
@@ -421,6 +423,18 @@ function parseTableInlineRawUrl(text, index) {
   };
 }
 
+function parseTableInlineEmojiShortcode(text, index) {
+  if (text[index] !== ':' || isTableInlineEscaped(text, index)) return null;
+  const match = tableInlineEmojiShortcodeRe.exec(text.slice(index));
+  if (!match) return null;
+  const emoji = emojiData[match[1]];
+  if (!emoji) return null;
+  return {
+    emoji,
+    nextIndex: index + match[0].length
+  };
+}
+
 function appendTableInlinePreviewLink(parent, label, href) {
   const el = document.createElement('span');
   el.className = 'meo-md-link';
@@ -565,6 +579,17 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         i = rawUrl.nextIndex;
         continue;
       }
+    }
+
+    const emoji = parseTableInlineEmojiShortcode(text, i);
+    if (emoji) {
+      flushBuffer();
+      const el = document.createElement('span');
+      el.className = 'meo-md-emoji';
+      el.textContent = emoji.emoji;
+      parent.appendChild(el);
+      i = emoji.nextIndex;
+      continue;
     }
 
     buffer += text[i];

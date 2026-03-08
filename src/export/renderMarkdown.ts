@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { light as emoji } from 'markdown-it-emoji';
+import { full as emoji } from 'markdown-it-emoji';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc } from './assetPaths';
