@@ -162,7 +162,7 @@ const csharpKeywords = new Set([
   "async", "await", "var", "dynamic", "yield", "when", "record", "init",
   "required", "file", "scoped", "partial", "where", "select", "group", "into",
   "let", "orderby", "join", "on", "equals", "by", "ascending", "descending",
-  "from", "global", "not", "and", "or", "with"
+  "from", "global", "not", "and", "or", "with", "nameof"
 ]);
 
 const csharpBuiltinTypes = new Set([
