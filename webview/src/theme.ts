@@ -33,7 +33,7 @@ export const highlightStyle = HighlightStyle.define([
   { tag: t.brace, color: base01 },
   { tag: t.punctuation, color: base01 },
   { tag: t.function(t.variableName), color: base06 },
-  { tag: t.labelName, color: base05, fontStyle: 'italic' },
+  { tag: t.labelName, color: base02 },
   { tag: [t.definition(t.function(t.variableName))], color: base06 },
   { tag: t.definition(t.variableName), color: base05 },
   { tag: t.number, color: base08 },
