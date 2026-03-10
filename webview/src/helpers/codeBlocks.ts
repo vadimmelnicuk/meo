@@ -7,6 +7,10 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { json } from '@codemirror/lang-json';
 import { cpp } from '@codemirror/lang-cpp';
+import { rust } from '@codemirror/lang-rust';
+import { go } from '@codemirror/lang-go';
+import { java } from '@codemirror/lang-java';
+import { sql } from '@codemirror/lang-sql';
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
 import { getMermaidColonBlocks } from './mermaidColonBlocks';
@@ -146,6 +150,285 @@ const powerQueryLanguage = StreamLanguage.define({
   }
 });
 
+const csharpKeywords = new Set([
+  "abstract", "as", "base", "break", "case", "catch", "checked", "class",
+  "const", "continue", "default", "delegate", "do", "else", "enum", "event",
+  "explicit", "extern", "finally", "fixed", "for", "foreach", "goto", "if",
+  "implicit", "in", "interface", "internal", "is", "lock", "namespace", "new",
+  "operator", "out", "override", "params", "private", "protected", "public",
+  "readonly", "ref", "return", "sealed", "sizeof", "stackalloc", "static",
+  "struct", "switch", "this", "throw", "try", "typeof", "unchecked", "unsafe",
+  "using", "virtual", "void", "volatile", "while",
+  "async", "await", "var", "dynamic", "yield", "when", "record", "init",
+  "required", "file", "scoped", "partial", "where", "select", "group", "into",
+  "let", "orderby", "join", "on", "equals", "by", "ascending", "descending",
+  "from", "global", "not", "and", "or", "with", "nameof"
+]);
+
+const csharpBuiltinTypes = new Set([
+  "bool", "byte", "char", "decimal", "double", "float", "int", "long",
+  "object", "sbyte", "short", "string", "uint", "ulong", "ushort",
+  "nint", "nuint"
+]);
+
+const csharpTypeKeywords = new Set([
+  "class", "struct", "interface", "enum", "record", "new", "as", "is",
+  "typeof", "sizeof", "nameof", "delegate", "event", "where"
+]);
+
+const csharpNamespaceKeywords = new Set(["namespace", "using"]);
+
+type CSharpState = {
+  inBlockComment: boolean;
+  inVerbatimString: boolean;
+  inRawString: boolean;
+  rawQuoteCount: number;
+  expectTypeName: boolean;
+  expectNamespace: boolean;
+  afterDot: boolean;
+  inAttribute: boolean;
+};
+
+const csharpLanguage = StreamLanguage.define({
+  name: "csharp",
+
+  startState: (): CSharpState => ({
+    inBlockComment: false,
+    inVerbatimString: false,
+    inRawString: false,
+    rawQuoteCount: 0,
+    expectTypeName: false,
+    expectNamespace: false,
+    afterDot: false,
+    inAttribute: false
+  }),
+
+  token: (stream: any, state: CSharpState) => {
+    // Handle multiline block comment
+    if (state.inBlockComment) {
+      while (!stream.eol()) {
+        if (stream.match("*/")) {
+          state.inBlockComment = false;
+          break;
+        }
+        stream.next();
+      }
+      return "comment";
+    }
+
+    // Handle multiline verbatim string: @"..."
+    if (state.inVerbatimString) {
+      while (!stream.eol()) {
+        if (stream.match('""')) continue; // escaped quote in verbatim string
+        if (stream.match('"')) {
+          state.inVerbatimString = false;
+          break;
+        }
+        stream.next();
+      }
+      return "string";
+    }
+
+    // Handle multiline raw string: """ ... """
+    if (state.inRawString) {
+      const end = '"'.repeat(state.rawQuoteCount);
+      while (!stream.eol()) {
+        if (stream.match(end)) {
+          state.inRawString = false;
+          break;
+        }
+        stream.next();
+      }
+      return "string";
+    }
+
+    if (stream.eatSpace()) return null;
+
+    // Preprocessor directives
+    if (stream.sol() && stream.match(/^#\s*[A-Za-z_]\w*/)) {
+      stream.skipToEnd();
+      return "meta";
+    }
+
+    // Comments
+    if (stream.match("//")) {
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.match("/*")) {
+      state.inBlockComment = true;
+      return "comment";
+    }
+
+    // Raw strings: """ ... """ or more quotes
+    if (stream.match(/^"{3,}/)) {
+      state.inRawString = true;
+      state.rawQuoteCount = stream.current().length;
+      return "string";
+    }
+
+    // Verbatim interpolated strings: $@"..." or @$"..."
+    if (stream.match(/^\$@"/) || stream.match(/^@\$"/)) {
+      state.inVerbatimString = true;
+      return "string";
+    }
+
+    // Verbatim strings: @"..."
+    if (stream.match(/^@"/)) {
+      state.inVerbatimString = true;
+      return "string";
+    }
+
+    // Interpolated regular string
+    if (stream.match(/^\$"(?:[^"\\]|\\.)*"/)) return "string";
+
+    // Regular string
+    if (stream.match(/^"(?:[^"\\\r\n]|\\.)*"/)) return "string";
+
+    // Char literal: one char or one escape
+    if (stream.match(/^'(?:[^'\\\r\n]|\\.)'/)) return "string";
+
+    // Hex before decimal
+    if (stream.match(/^0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?[uUlL]*/)) {
+      return "number";
+    }
+
+    // Binary
+    if (stream.match(/^0[bB][01](?:[01_]*[01])?[uUlL]*/)) {
+      return "number";
+    }
+
+    // Decimal / float
+    if (
+      stream.match(
+        /^(?:\d(?:[\d_]*\d)?)(?:\.(?:\d(?:[\d_]*\d)?)?)?(?:[eE][+-]?\d(?:[\d_]*\d)?)?[fFdDmM]?/
+      )
+    ) {
+      return "number";
+    }
+
+    // Attribute brackets: [Serializable], [HttpGet("...")]
+    if (stream.match("[")) {
+      state.inAttribute = true;
+      return "squareBracket";
+    }
+    if (stream.match("]")) {
+      state.inAttribute = false;
+      return "squareBracket";
+    }
+
+    // Identifiers, including escaped identifiers like @class
+    if (stream.match(/^@?[A-Za-z_]\w*/)) {
+      const raw = stream.current();
+      const word = raw.startsWith("@") ? raw.slice(1) : raw;
+      const next = stream.peek();
+      const wasDot = state.afterDot;
+      state.afterDot = false;
+
+      if (csharpKeywords.has(word)) {
+        state.expectTypeName = csharpTypeKeywords.has(word);
+        state.expectNamespace = csharpNamespaceKeywords.has(word);
+        return "keyword";
+      }
+      if (csharpBuiltinTypes.has(word)) {
+        state.expectTypeName = false;
+        state.expectNamespace = false;
+        return "typeName";
+      }
+      if (word === "true" || word === "false") {
+        state.expectTypeName = false;
+        return "bool";
+      }
+      if (word === "null") {
+        state.expectTypeName = false;
+        return "atom";
+      }
+
+      // Namespace: using System.Collections.Generic
+      if (state.expectNamespace) {
+        return "namespace";
+      }
+
+      // Attribute name: [Serializable], [HttpGet]
+      if (state.inAttribute) {
+        return "attributeName";
+      }
+
+      // After a type-introducing keyword: new Foo, class Bar
+      if (state.expectTypeName) {
+        state.expectTypeName = false;
+        // new Foo() — type followed by '(' is still a type (constructor)
+        return "typeName";
+      }
+
+      const isUpperStart = word[0] >= "A" && word[0] <= "Z";
+
+      // Member access: obj.Method() or obj.Property
+      if (wasDot) {
+        if (next === "(") return "variableName.function";
+        if (next === "<") return "typeName";
+        return "propertyName";
+      }
+
+      // PascalCase followed by '<' — generic type: List<T>
+      if (isUpperStart && next === "<") {
+        return "typeName";
+      }
+
+      // Function call: Method(...)
+      if (next === "(") {
+        return "variableName.function";
+      }
+
+      state.expectTypeName = false;
+      return "variableName";
+    }
+
+    // Dot — member access
+    if (stream.match(".")) {
+      state.afterDot = true;
+      return "punctuation";
+    }
+
+    // Colon — expect type name after ':' (inheritance, type constraints)
+    if (stream.match(":")) {
+      state.expectTypeName = true;
+      return "punctuation";
+    }
+
+    // Angle brackets — '<' expects type arg, '>' does not
+    if (stream.match("<")) {
+      state.expectTypeName = true;
+      return "angleBracket";
+    }
+    if (stream.match(">")) {
+      return "angleBracket";
+    }
+
+    // Comma inside generic args or after base types keeps expecting types
+    if (stream.match(",")) {
+      return "punctuation";
+    }
+
+    // Parentheses and braces
+    if (stream.match(/^[()]/)) return "paren";
+    if (stream.match(/^[{}]/)) return "brace";
+
+    // Semicolon
+    if (stream.match(";")) {
+      state.expectNamespace = false;
+      return "punctuation";
+    }
+
+    // Lambda and other operators
+    if (stream.match("=>")) return "operator";
+    if (stream.match(/^[+\-*/%&|^!~?=<>]+/)) return "operator";
+
+    stream.next();
+    return null;
+  }
+});
+
 const jsLanguage = javascript().language;
 const jsxLanguage = javascript({ jsx: true }).language;
 const tsLanguage = javascript({ typescript: true }).language;
@@ -155,6 +438,10 @@ const cssLanguage = css().language;
 const htmlLanguage = html().language;
 const jsonLanguage = json().language;
 const swiftLanguage = cpp().language;
+const rustLanguage = rust().language;
+const goLanguage = go().language;
+const javaLanguage = java().language;
+const sqlLanguage = sql().language;
 const markdownCodeLanguage = markdownLanguage;
 
 const languageMap: Record<string, any> = {
@@ -173,6 +460,15 @@ const languageMap: Record<string, any> = {
   markdown: markdownCodeLanguage,
   md: markdownCodeLanguage,
   swift: swiftLanguage,
+  rust: rustLanguage,
+  rs: rustLanguage,
+  go: goLanguage,
+  golang: goLanguage,
+  java: javaLanguage,
+  sql: sqlLanguage,
+  csharp: csharpLanguage,
+  cs: csharpLanguage,
+  'c#': csharpLanguage,
   shell: shellLanguage,
   bash: shellLanguage,
   sh: shellLanguage,
