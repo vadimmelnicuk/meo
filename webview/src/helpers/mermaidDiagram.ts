@@ -29,15 +29,23 @@ const MERMAID_MATH_CLASS = 'meoMath';
 const MERMAID_DIAGRAM_START_RE =
   /^(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|c4Context|xychart(?:-beta)?|sankey-beta|block-beta|packet-beta|radar-beta)\b/i;
 const MERMAID_DISPLAY_MATH_RE = /^\$\$[\s\S]*\$\$$/;
-const DISPLAY_MATH_VIEWBOX_PADDING = 2;
+const DISPLAY_MATH_VIEWBOX_PADDING = {
+  left: 22,
+  top: 20,
+  right: 12,
+  bottom: 12
+} as const;
 const DISPLAY_MATH_TRIM_RETRY_DELAYS_MS = [80, 220];
 const DISPLAY_MATH_LABEL_SELECTORS = [
   '.nodeLabel .katex-mathml math',
+  '.nodeLabel .katex-html',
   '.nodeLabel .katex-display',
   '.nodeLabel'
 ];
+const DISPLAY_MATH_LABEL_SELECTOR = DISPLAY_MATH_LABEL_SELECTORS.join(', ');
 const MERMAID_DISPLAY_MATH_THEME_CSS =
   '.nodeLabel > div{line-height:1 !important;margin:0 !important;padding:0 !important;}' +
+  '.nodeLabel foreignObject{overflow:visible !important;}' +
   '.katex-display{margin:0 !important;}' +
   '.katex{line-height:1 !important;}';
 
@@ -213,7 +221,7 @@ function normalizeMermaidDiagramText(diagramText) {
     'flowchart LR',
     `  MATH["${escapedMath}"]`,
     '  style MATH fill:transparent,stroke:transparent,stroke-width:0px',
-    `  classDef ${MERMAID_MATH_CLASS} font-size:22px,padding:0px;`,
+    `  classDef ${MERMAID_MATH_CLASS} padding:0px;`,
     `  class MATH ${MERMAID_MATH_CLASS}`
   ].join('\n');
 }
@@ -360,6 +368,8 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   trimDisplayMathSvg(svgWrapper) {
+    let originalViewBox = null;
+
     const applyTrim = () => {
       const svg = svgWrapper.querySelector('svg');
       if (!(svg instanceof SVGSVGElement)) {
@@ -371,11 +381,24 @@ export class MermaidDiagramWidget extends WidgetType {
         return;
       }
 
-      const pad = DISPLAY_MATH_VIEWBOX_PADDING;
-      const x = bbox.x - pad;
-      const y = bbox.y - pad;
-      const width = bbox.width + pad * 2;
-      const height = bbox.height + pad * 2;
+      let x = bbox.x - DISPLAY_MATH_VIEWBOX_PADDING.left;
+      let y = bbox.y - DISPLAY_MATH_VIEWBOX_PADDING.top;
+      let width = bbox.width + DISPLAY_MATH_VIEWBOX_PADDING.left + DISPLAY_MATH_VIEWBOX_PADDING.right;
+      let height = bbox.height + DISPLAY_MATH_VIEWBOX_PADDING.top + DISPLAY_MATH_VIEWBOX_PADDING.bottom;
+
+      if (!originalViewBox) {
+        originalViewBox = this.getSvgViewBox(svg);
+      }
+      if (originalViewBox) {
+        if (x > originalViewBox.x) {
+          width += x - originalViewBox.x;
+          x = originalViewBox.x;
+        }
+        if (y > originalViewBox.y) {
+          height += y - originalViewBox.y;
+          y = originalViewBox.y;
+        }
+      }
 
       svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
       svg.setAttribute('width', `${width}`);
@@ -401,21 +424,23 @@ export class MermaidDiagramWidget extends WidgetType {
       return null;
     }
 
-    const points = DISPLAY_MATH_LABEL_SELECTORS
-      .map((selector) => svg.querySelector(selector))
-      .filter((node) => node instanceof Element)
-      .flatMap((node) => {
-        const rect = node.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) {
-          return [];
-        }
-        return [
-          this.transformClientPointToSvg(svg, inverse, rect.left, rect.top),
-          this.transformClientPointToSvg(svg, inverse, rect.right, rect.top),
-          this.transformClientPointToSvg(svg, inverse, rect.right, rect.bottom),
-          this.transformClientPointToSvg(svg, inverse, rect.left, rect.bottom)
-        ];
-      });
+    const labelNodes = svg.querySelectorAll(DISPLAY_MATH_LABEL_SELECTOR);
+    const points = [];
+    for (const node of labelNodes) {
+      if (!(node instanceof Element)) {
+        continue;
+      }
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+      points.push(
+        this.transformClientPointToSvg(svg, inverse, rect.left, rect.top),
+        this.transformClientPointToSvg(svg, inverse, rect.right, rect.top),
+        this.transformClientPointToSvg(svg, inverse, rect.right, rect.bottom),
+        this.transformClientPointToSvg(svg, inverse, rect.left, rect.bottom)
+      );
+    }
     if (!points.length) {
       return null;
     }
@@ -455,6 +480,46 @@ export class MermaidDiagramWidget extends WidgetType {
     } catch {
       return null;
     }
+  }
+
+  getSvgViewBox(svg) {
+    const rawViewBox = svg.getAttribute('viewBox');
+    if (rawViewBox) {
+      const parts = rawViewBox
+        .trim()
+        .split(/[\s,]+/)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        return {
+          x: parts[0],
+          y: parts[1],
+          width: parts[2],
+          height: parts[3]
+        };
+      }
+    }
+
+    const width = this.parseSvgLength(svg.getAttribute('width'));
+    const height = this.parseSvgLength(svg.getAttribute('height'));
+    if (width !== null && height !== null && width > 0 && height > 0) {
+      return {
+        x: 0,
+        y: 0,
+        width,
+        height
+      };
+    }
+
+    return null;
+  }
+
+  parseSvgLength(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return null;
+    }
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   createZoomControls(svgContainer) {

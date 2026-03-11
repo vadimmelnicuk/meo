@@ -7,6 +7,7 @@ import { GitDocumentState } from './documentState';
 import type { GitBaselinePayload, GitBlameLineResult } from './types';
 import { buildCurrentToBaselineLineMap as buildCurrentToBaselineLineMapShared } from '../shared/gitDiffCore';
 import { resolveWorktreeUriFromGitUri } from '../agents/resourceMatching';
+import { showTimedWarningMessage } from '../shared/timedUi';
 
 type RequestWithLineNumber = {
   lineNumber: number;
@@ -241,7 +242,7 @@ export async function openGitRevisionForLine(
       selection: new vscode.Range(line, 0, line, 0)
     });
   } catch {
-    void vscode.window.showWarningMessage(`Unable to open commit ${blame.shortCommit} for this line.`);
+    void showTimedWarningMessage(`Unable to open commit ${blame.shortCommit} for this line.`);
   }
 }
 

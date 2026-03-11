@@ -30,8 +30,10 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
     return value || fallback;
   };
 
-  const fontSizeRaw = (editorStyles?.fontSize || bodyStyles.fontSize || '').trim();
+  const editorFontSizeRaw = rootStyles.getPropertyValue('--vscode-editor-font-size').trim();
+  const fontSizeRaw = editorFontSizeRaw || (editorStyles?.fontSize || bodyStyles.fontSize || '').trim();
   const parsedFontSize = Number.parseFloat(fontSizeRaw);
+  const editorFontFamilyRaw = rootStyles.getPropertyValue('--vscode-editor-font-family').trim();
   const lineHeightLiveRaw = rootStyles.getPropertyValue('--meo-line-height-live').trim();
   const lineHeightSourceRaw = rootStyles.getPropertyValue('--meo-line-height-source').trim();
   const parsedLiveLineHeight = Number.parseFloat(lineHeightLiveRaw);
@@ -50,7 +52,7 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
     codeBlockBackgroundColor: colorVar('--vscode-textCodeBlock-background', ''),
     sideBarBackgroundColor: colorVar('--vscode-sideBar-background', ''),
     panelBorderColor: colorVar('--vscode-panel-border', ''),
-    editorFontFamily: (editorStyles?.fontFamily || bodyStyles.fontFamily || '').trim(),
+    editorFontFamily: editorFontFamilyRaw || (editorStyles?.fontFamily || bodyStyles.fontFamily || '').trim(),
     editorFontSizePx: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
     liveFontFamily: colorVar('--meo-font-live', ''),
     sourceFontFamily: colorVar('--meo-font-source', ''),

@@ -1007,6 +1007,14 @@ const exportHandlerContext: ExportHandlerContext = {
 
 const exportHandler = createExportHandler(exportHandlerContext);
 
+const withMessageErrorBoundary = (context: string, action: () => void): void => {
+  try {
+    action();
+  } catch (error) {
+    console.error(`[MEO webview] ${context}`, error);
+  }
+};
+
 window.addEventListener('message', (event) => {
   const message = event.data;
 
@@ -1015,39 +1023,43 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'init') {
-    applyThemeSettings(message.theme);
-    initialMountRecoveryAttempted = false;
-    failureNotice.clearFailureNotice();
-    gitClient?.resetForInit({ hideTooltip: false });
-    const nextMode = hasLocalModePreference ? currentMode : message.mode;
-    documentVersion = message.version;
-    syncedText = normalizeEol(message.text);
-    pendingText = null;
-    inFlight = false;
-    inFlightText = null;
-    saveAfterSync = false;
-    syncPendingDraftState();
+    withMessageErrorBoundary('init handler', () => {
+      applyThemeSettings(message.theme);
+      initialMountRecoveryAttempted = false;
+      failureNotice.clearFailureNotice();
+      gitClient?.resetForInit({ hideTooltip: false });
+      const nextMode = hasLocalModePreference ? currentMode : message.mode;
+      documentVersion = message.version;
+      syncedText = normalizeEol(message.text);
+      pendingText = null;
+      inFlight = false;
+      inFlightText = null;
+      saveAfterSync = false;
+      syncPendingDraftState();
 
-    handleInit(message);
-    if (hasLocalModePreference) {
-      applyMode(nextMode, {
-        post: true,
-        persist: true,
-        reason: 'init'
-      });
-    } else {
-      applyMode(nextMode, {
-        post: false,
-        persist: false,
-        reason: 'init'
-      });
-    }
-    failureNotice.updateEditorNotice();
+      handleInit(message);
+      if (hasLocalModePreference) {
+        applyMode(nextMode, {
+          post: true,
+          persist: true,
+          reason: 'init'
+        });
+      } else {
+        applyMode(nextMode, {
+          post: false,
+          persist: false,
+          reason: 'init'
+        });
+      }
+      failureNotice.updateEditorNotice();
+    });
     return;
   }
 
   if (message.type === 'themeChanged') {
-    applyThemeSettings(message.theme);
+    withMessageErrorBoundary('themeChanged handler', () => {
+      applyThemeSettings(message.theme);
+    });
     return;
   }
 

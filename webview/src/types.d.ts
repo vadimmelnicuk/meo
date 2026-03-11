@@ -45,11 +45,21 @@ type ExtensionMessage =
   | { type: 'savedImagePath'; requestId: string; success: boolean; path?: string; error?: string };
 
 interface ThemeSettings {
-  colors?: Partial<Record<string, string>>;
-  fonts?: {
-    live?: string;
-    source?: string;
-    fontSize?: number | null;
+  id: string;
+  name: string;
+  colors: Record<string, string>;
+  syntaxTokens: Record<string, string>;
+  fonts: {
+    liveFont?: string;
+    sourceFont?: string;
+    liveFontSize?: number | null;
+    sourceFontSize?: number | null;
+    h1FontSize?: number | null;
+    h2FontSize?: number | null;
+    h3FontSize?: number | null;
+    h4FontSize?: number | null;
+    h5FontSize?: number | null;
+    h6FontSize?: number | null;
     liveLineHeight?: number;
     sourceLineHeight?: number;
   };

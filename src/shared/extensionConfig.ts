@@ -1,13 +1,10 @@
 import * as vscode from 'vscode';
-import { AGENT_REVIEW_MODEL_SCHEMES } from '../agents/reviewState';
 import {
-  defaultThemeColors,
-  defaultThemeFonts,
-  maxThemeLineHeight,
-  minThemeLineHeight,
-  themeColorKeys,
-  type ThemeColors,
-  type ThemeSettings
+  defaultThemeSettings,
+  resolveTheme,
+  serializeThemeSettings,
+  type ThemeSettings,
+  validateThemePayload
 } from './themeDefaults';
 
 export const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
@@ -17,8 +14,8 @@ export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
 export const AUTO_SAVE_LEGACY_SETTING_KEY = 'autoSave.visibility';
-export const LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY = 'lineNumbers.enabled';
-export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.visibility';
+export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.enabled';
+export const LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY = 'lineNumbers.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY = 'gitChangesGutter.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY = 'gitChangesGutter.enabled';
@@ -33,22 +30,18 @@ export type OutlinePosition = 'left' | 'right';
 
 export function getThemeSettings(): ThemeSettings {
   const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
-  const colors = {} as ThemeColors;
+  const themeValue = config.get<unknown>('theme');
 
-  for (const key of themeColorKeys) {
-    colors[key] = readThemeColor(config, `theme.${key}`, defaultThemeColors[key]);
+  if (!themeValue) {
+    return defaultThemeSettings;
   }
 
-  return {
-    colors,
-    fonts: {
-      live: readThemeFont(config, 'fonts.live', defaultThemeFonts.live),
-      source: readThemeFont(config, 'fonts.source', defaultThemeFonts.source),
-      fontSize: readThemeFontSize(config, 'fonts.fontSize', defaultThemeFonts.fontSize),
-      liveLineHeight: readThemeLineHeight(config, 'fonts.liveLineHeight', defaultThemeFonts.liveLineHeight),
-      sourceLineHeight: readThemeLineHeight(config, 'fonts.sourceLineHeight', defaultThemeFonts.sourceLineHeight)
-    }
-  };
+  const result = validateThemePayload(themeValue);
+  if (!result.success) {
+    return resolveTheme(themeValue as Partial<ThemeSettings>);
+  }
+
+  return result.theme;
 }
 
 export function getAutoSaveEnabled(context: vscode.ExtensionContext): boolean {
@@ -57,8 +50,8 @@ export function getAutoSaveEnabled(context: vscode.ExtensionContext): boolean {
 
 export function getLineNumbersEnabled(context: vscode.ExtensionContext): boolean {
   return getToggleSettingValue(context, LINE_NUMBERS_SETTING_KEY, LINE_NUMBERS_KEY, [
-    LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY,
-    LINE_NUMBERS_LEGACY_SETTING_KEY
+    LINE_NUMBERS_LEGACY_SETTING_KEY,
+    LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY
   ]);
 }
 
@@ -118,26 +111,26 @@ export async function migrateLegacyToggleSettings(context: vscode.ExtensionConte
   await migrateLegacyToggleSetting(context, GIT_CHANGES_GUTTER_SETTING_KEY, GIT_CHANGES_GUTTER_KEY);
 }
 
-export async function resetThemeSettingsToDefaults(): Promise<void> {
+export async function resetThemeSettingsToDefault(): Promise<void> {
   const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
-  const keys = [
-    ...themeColorKeys.map((key) => `theme.${key}`),
-    'fonts.live',
-    'fonts.source',
-    'fonts.fontSize',
-    'fonts.liveLineHeight',
-    'fonts.sourceLineHeight'
-  ];
+  const key = 'theme';
 
-  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Global);
-  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.Workspace);
-  await clearThemeKeysForTarget(config, keys, vscode.ConfigurationTarget.WorkspaceFolder);
+  await clearThemeKeysForTarget(config, [key], vscode.ConfigurationTarget.Workspace);
+  await clearThemeKeysForTarget(config, [key], vscode.ConfigurationTarget.WorkspaceFolder);
+
+  try {
+    await config.update(key, serializeThemeSettings(defaultThemeSettings), vscode.ConfigurationTarget.Global);
+  } catch {
+    // Fall back to clearing global values if writing default payload fails.
+    await clearThemeKeysForTarget(config, [key], vscode.ConfigurationTarget.Global);
+  }
 }
 
 export async function syncEditorAssociations(useAsDefault: boolean): Promise<void> {
   const config = vscode.workspace.getConfiguration('workbench');
   const inspected = config.inspect<Record<string, string>>('editorAssociations');
   const markdownAssociation = useAsDefault ? 'markdownEditorOptimized.editor' : 'default';
+
   await syncEditorAssociationsForTarget(
     config,
     inspected?.globalValue,
@@ -222,98 +215,49 @@ function hasExplicitConfigurationValue<T>(config: vscode.WorkspaceConfiguration,
   );
 }
 
-function readThemeColor(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
-  const value = config.get<string>(key, fallback);
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const normalized = value.trim();
-  return normalized || fallback;
-}
-
-function readThemeFont(config: vscode.WorkspaceConfiguration, key: string, fallback: string): string {
-  const value = config.get<string>(key, fallback);
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  return value.trim() || fallback;
-}
-
-function readThemeFontSize(config: vscode.WorkspaceConfiguration, key: string, fallback: number | null): number | null {
-  const value = config.get<number | null>(key, fallback);
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return fallback;
-  }
-  return value;
-}
-
-function readThemeLineHeight(config: vscode.WorkspaceConfiguration, key: string, fallback: number): number {
-  const value = config.get<number>(key, fallback);
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
-}
-
 async function clearThemeKeysForTarget(
   config: vscode.WorkspaceConfiguration,
   keys: string[],
   target: vscode.ConfigurationTarget
 ): Promise<void> {
   for (const key of keys) {
-    if (!hasThemeKeyValueAtTarget(config, key, target)) {
-      continue;
+    try {
+      await config.update(key, undefined, target);
+    } catch {
+      // Ignore failures so editor startup is not blocked by unsupported target writes.
     }
-    await config.update(key, undefined, target);
   }
-}
-
-function hasThemeKeyValueAtTarget(
-  config: vscode.WorkspaceConfiguration,
-  key: string,
-  target: vscode.ConfigurationTarget
-): boolean {
-  const inspected = config.inspect(key);
-  if (!inspected) {
-    return false;
-  }
-  if (target === vscode.ConfigurationTarget.Global) {
-    return inspected.globalValue !== undefined;
-  }
-  if (target === vscode.ConfigurationTarget.Workspace) {
-    return inspected.workspaceValue !== undefined;
-  }
-  if (target === vscode.ConfigurationTarget.WorkspaceFolder) {
-    return inspected.workspaceFolderValue !== undefined;
-  }
-  return false;
 }
 
 async function syncEditorAssociationsForTarget(
   config: vscode.WorkspaceConfiguration,
-  associations: Record<string, string> | undefined,
-  target: vscode.ConfigurationTarget.Global | vscode.ConfigurationTarget.Workspace,
+  inspectedValue: Record<string, string> | undefined,
+  target: vscode.ConfigurationTarget,
   markdownAssociation: string
 ): Promise<void> {
-  const current = { ...(associations || {}) };
-  const next = { ...current };
+  const markdownAssociations = {
+    ...inspectedValue,
+    '*.md': markdownAssociation,
+    '*.markdown': markdownAssociation,
+    '*.mdx': markdownAssociation,
+    '*.mdc': markdownAssociation,
+    'git:/**/*.md': 'default',
+    'git:/**/*.markdown': 'default',
+    'git:/**/*.mdx': 'default',
+    'git:/**/*.mdc': 'default',
+    'git:**/*.md': 'default',
+    'git:**/*.markdown': 'default',
+    'git:**/*.mdx': 'default',
+    'git:**/*.mdc': 'default',
+    'chat-editing-text-model:/**/*.md': 'default',
+    'chat-editing-text-model:/**/*.markdown': 'default',
+    'chat-editing-text-model:/**/*.mdx': 'default',
+    'chat-editing-text-model:/**/*.mdc': 'default',
+    'chat-editing-text-model:**/*.md': 'default',
+    'chat-editing-text-model:**/*.markdown': 'default',
+    'chat-editing-text-model:**/*.mdx': 'default',
+    'chat-editing-text-model:**/*.mdc': 'default'
+  };
 
-  for (const extension of MARKDOWN_FILE_EXTENSIONS) {
-    next[`*${extension}`] = markdownAssociation;
-    next[`git:**/*${extension}`] = 'default';
-    next[`git:/**/*${extension}`] = 'default';
-    for (const scheme of AGENT_REVIEW_MODEL_SCHEMES) {
-      next[`${scheme}:**/*${extension}`] = 'default';
-      next[`${scheme}:/**/*${extension}`] = 'default';
-    }
-  }
-
-  if (JSON.stringify(current) === JSON.stringify(next)) {
-    return;
-  }
-
-  await config.update('editorAssociations', next, target);
+  await config.update('editorAssociations', markdownAssociations, target);
 }

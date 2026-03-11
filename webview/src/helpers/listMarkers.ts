@@ -1,6 +1,5 @@
 import { StateField, RangeSetBuilder, EditorState, Transaction } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
-import { base02 } from '../theme';
 import { parseFrontmatter, isInsideFrontmatterContent } from './frontmatter';
 
 interface ListMarkerData {
@@ -422,7 +421,7 @@ class ListMarkerWidget extends WidgetType {
   toDOM(): HTMLElement {
     const marker = document.createElement('span');
     marker.className = `meo-md-list-marker ${this.classes}`;
-    marker.style.color = base02;
+    marker.style.color = 'var(--meo-color-base02)';
     marker.textContent = this.text;
     return marker;
   }

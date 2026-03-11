@@ -32,8 +32,8 @@ import {
   GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
   GIT_CHANGES_GUTTER_SETTING_KEY,
   GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY,
-  LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY,
   LINE_NUMBERS_LEGACY_SETTING_KEY,
+  LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY,
   LINE_NUMBERS_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
   VIM_MODE_SETTING_KEY,
@@ -50,19 +50,39 @@ import {
   getVimModeEnabled,
   isMarkdownDocumentPath,
   migrateLegacyToggleSettings,
-  resetThemeSettingsToDefaults
+  resetThemeSettingsToDefault
 } from './shared/extensionConfig';
 import { createPanelSessionController, type ExportFormat, type PanelSession } from './extension/panelSession';
-import type { ThemeSettings } from './shared/themeDefaults';
+import { serializeThemeSettings, themePresets, type ThemeSettings, validateThemePayload } from './shared/themeDefaults';
+import {
+  runWithTimedUiTimeout,
+  showTimedErrorMessage,
+  showTimedInformationMessage,
+  showTimedQuickPick,
+  showTimedWarningMessage,
+  showTimedWarningMessageWithItems
+} from './shared/timedUi';
 import type { ExportStyleEnvironment } from './export/runtime';
 
 const VIEW_TYPE = 'markdownEditorOptimized.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'markdownEditorOptimized.activeEditor';
 const FIND_OPTIONS_STATE_KEY = 'findOptions';
+const CUSTOM_THEMES_STATE_KEY = 'customThemes';
 
 type FindOptionsState = {
   wholeWord: boolean;
   caseSensitive: boolean;
+};
+
+type ThemeSource = 'built-in' | 'imported';
+
+type ThemeQuickPickItem = vscode.QuickPickItem & {
+  theme: ThemeSettings;
+  source: ThemeSource;
+};
+
+type ImportedThemeQuickPickItem = vscode.QuickPickItem & {
+  theme: ThemeSettings;
 };
 
 type ExportRuntimeModule = {
@@ -224,15 +244,155 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('markdownEditorOptimized.setDefaultEditor', async () => {
       await syncEditorAssociations(true);
-      void vscode.window.showInformationMessage('Markdown Editor Optimized is now set as the default editor for Markdown files.');
+      void showTimedInformationMessage('Markdown Editor Optimized is now set as the default editor for Markdown files.');
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('markdownEditorOptimized.resetThemeToDefaults', async () => {
-      await resetThemeSettingsToDefaults();
+    vscode.commands.registerCommand('markdownEditorOptimized.resetThemeToDefault', async () => {
+      await resetThemeSettingsToDefault();
       provider.notifyThemeChanged();
-      void vscode.window.showInformationMessage('Markdown Editor Optimized theme and font settings were reset to defaults.');
+      void showTimedInformationMessage('Markdown Editor Optimized theme was reset to default.');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.selectTheme', async () => {
+      const themeItems = buildThemeQuickPickItems(context);
+      const selectedTheme = await showTimedQuickPick(
+        themeItems,
+        { title: 'Select Theme', placeHolder: 'Select & apply a theme preset.' }
+      );
+
+      if (!selectedTheme) {
+        return;
+      }
+
+      const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+      try {
+        await config.update('theme', serializeThemeSettings(selectedTheme.theme), vscode.ConfigurationTarget.Global);
+      } catch {
+        void showTimedErrorMessage('Failed to apply theme preset.');
+        return;
+      }
+
+      provider.notifyThemeChanged();
+      const sourceSuffix = selectedTheme.source === 'imported' ? ' (imported)' : '';
+      void showTimedInformationMessage(`Selected theme: ${selectedTheme.theme.name}${sourceSuffix}`);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.importTheme', async () => {
+      const openFiles = await vscode.window.showOpenDialog({
+        title: 'Import Theme JSON',
+        filters: { 'Theme JSON': ['json'] },
+        canSelectMany: false
+      });
+
+      if (!openFiles?.length) {
+        return;
+      }
+
+      const fileUri = openFiles[0];
+      try {
+        const fileContent = await vscode.workspace.fs.readFile(fileUri);
+        const payload = JSON.parse(new TextDecoder().decode(fileContent));
+        const validated = validateThemePayload(payload);
+        if (!validated.success) {
+          void showTimedErrorMessage(
+            `Invalid theme file: ${validated.errors[0] || 'payload does not match schema.'}`
+          );
+          return;
+        }
+
+        const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+        await config.update('theme', serializeThemeSettings(validated.theme), vscode.ConfigurationTarget.Global);
+        await upsertImportedTheme(context, validated.theme);
+        provider.notifyThemeChanged();
+        void showTimedInformationMessage(`Imported theme: ${validated.theme.name}`);
+      } catch (error) {
+        void showTimedErrorMessage(`Failed to import theme: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.exportTheme', async () => {
+      const uri = await vscode.window.showSaveDialog({
+        title: 'Export Theme JSON',
+        filters: { 'Theme JSON': ['json'] },
+        defaultUri: vscode.Uri.file('meo-theme.json'),
+        saveLabel: 'Export Theme'
+      });
+
+      if (!uri) {
+        return;
+      }
+
+      const theme = getThemeSettings();
+      try {
+        await vscode.workspace.fs.writeFile(
+          uri,
+          new TextEncoder().encode(`${JSON.stringify(theme, null, 2)}\n`)
+        );
+        void showTimedInformationMessage(`Theme exported to ${uri.fsPath}`);
+      } catch (error) {
+        void showTimedErrorMessage(`Failed to export theme: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownEditorOptimized.deleteImportedTheme', async () => {
+      const importedThemes = getImportedThemes(context);
+      if (!importedThemes.length) {
+        void showTimedInformationMessage('No imported themes to delete.');
+        return;
+      }
+
+      const selected = await showTimedQuickPick(
+        importedThemes.map((theme) => ({
+          label: theme.name,
+          description: theme.id,
+          theme
+        } satisfies ImportedThemeQuickPickItem)),
+        {
+          title: 'Delete Imported Theme',
+          placeHolder: 'Select an imported theme to delete'
+        }
+      );
+      if (!selected) {
+        return;
+      }
+
+      const confirm = await showTimedWarningMessageWithItems(
+        `Delete imported theme "${selected.theme.name}"?`,
+        { modal: true },
+        ['Delete'] as const
+      );
+      if (confirm !== 'Delete') {
+        return;
+      }
+
+      const deleted = await deleteImportedThemeById(context, selected.theme.id);
+      if (!deleted) {
+        void showTimedWarningMessage(`Could not find imported theme "${selected.theme.name}" to delete.`);
+        return;
+      }
+
+      const currentTheme = getThemeSettings();
+      const deletingActiveTheme = normalizeThemeId(currentTheme.id) === normalizeThemeId(selected.theme.id);
+      const collidesWithBuiltIn = isBuiltInThemeId(selected.theme.id);
+      if (deletingActiveTheme && !collidesWithBuiltIn) {
+        const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+        await config.update('theme', serializeThemeSettings(themePresets[0] as ThemeSettings), vscode.ConfigurationTarget.Global);
+        provider.notifyThemeChanged();
+        void showTimedInformationMessage(`Deleted imported theme: ${selected.theme.name}. Active theme reset to ${themePresets[0].name}.`);
+        return;
+      }
+
+      void showTimedInformationMessage(`Deleted imported theme: ${selected.theme.name}`);
     })
   );
 
@@ -282,7 +442,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   async exportActiveDocument(format: ExportFormat): Promise<void> {
     const session = this.getActiveSession();
     if (!session) {
-      void vscode.window.showWarningMessage('Open a Markdown file in Markdown Editor Optimized before exporting.');
+      void showTimedWarningMessage('Open a Markdown file in Markdown Editor Optimized before exporting.');
       return;
     }
 
@@ -336,8 +496,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     if (
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_SETTING_KEY}`) ||
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_LEGACY_ENABLED_SETTING_KEY}`) ||
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_LEGACY_SETTING_KEY}`)
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_LEGACY_SETTING_KEY}`) ||
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY}`)
     ) {
       this.broadcast({ type: 'lineNumbersChanged', enabled: getLineNumbersEnabled(this.context) });
     }
@@ -364,8 +524,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
 
     if (
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.theme`) ||
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.fonts`)
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.theme`)
     ) {
       this.broadcast({ type: 'themeChanged', theme: getThemeSettings() });
     }
@@ -517,7 +676,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     this.lastActivePanel = session.panel;
 
     if (session.documentUri.scheme !== 'file') {
-      void vscode.window.showWarningMessage('Export is only supported for local Markdown files in the current version.');
+      void showTimedWarningMessage('Export is only supported for local Markdown files in the current version.');
       return;
     }
 
@@ -527,52 +686,54 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
 
     try {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          cancellable: false,
-          title: format === 'html' ? 'Exporting Markdown to HTML' : 'Exporting Markdown to PDF'
-        },
-        async (progress) => {
-          progress.report({ message: 'Collecting editor content…' });
-          const snapshot = await session.requestExportSnapshot();
+      await runWithTimedUiTimeout(() =>
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            cancellable: false,
+            title: format === 'html' ? 'Exporting Markdown to HTML' : 'Exporting Markdown to PDF'
+          },
+          async (progress) => {
+            progress.report({ message: 'Collecting editor content…' });
+            const snapshot = await session.requestExportSnapshot();
 
-          progress.report({ message: 'Rendering export document…' });
-          const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
-          const exportRender = await this.buildExportHtmlDocument(exportRuntime, {
-            markdownText: snapshot.text,
-            sourceDocumentUri: session.documentUri,
-            outputFileUri: saveUri,
-            target: format,
-            styleEnvironment: snapshot.environment
-          });
-
-          const browserExecutablePath = getExportPdfBrowserPath();
-          const puppeteerRuntimeModulePath = vscode.Uri.joinPath(
-            this.context.extensionUri,
-            'dist',
-            'puppeteer-runtime.js'
-          ).fsPath;
-          progress.report({ message: format === 'html' ? 'Finalizing HTML…' : 'Rendering PDF in headless browser…' });
-
-          if (format === 'html') {
-            await exportRuntime.writeFinalizedHtmlExport({
-              htmlDocument: exportRender.htmlDocument,
-              outputHtmlPath: saveUri.fsPath,
-              browserExecutablePath,
-              puppeteerRuntimeModulePath,
-              skipHeadlessFinalize: !exportRender.hasMermaid
+            progress.report({ message: 'Rendering export document…' });
+            const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
+            const exportRender = await this.buildExportHtmlDocument(exportRuntime, {
+              markdownText: snapshot.text,
+              sourceDocumentUri: session.documentUri,
+              outputFileUri: saveUri,
+              target: format,
+              styleEnvironment: snapshot.environment
             });
-            return;
-          }
 
-          await exportRuntime.renderPdfFromHtmlExport({
-            htmlDocument: exportRender.htmlDocument,
-            outputPdfPath: saveUri.fsPath,
-            browserExecutablePath,
-            puppeteerRuntimeModulePath
-          });
-        }
+            const browserExecutablePath = getExportPdfBrowserPath();
+            const puppeteerRuntimeModulePath = vscode.Uri.joinPath(
+              this.context.extensionUri,
+              'dist',
+              'puppeteer-runtime.js'
+            ).fsPath;
+            progress.report({ message: format === 'html' ? 'Finalizing HTML…' : 'Rendering PDF in headless browser…' });
+
+            if (format === 'html') {
+              await exportRuntime.writeFinalizedHtmlExport({
+                htmlDocument: exportRender.htmlDocument,
+                outputHtmlPath: saveUri.fsPath,
+                browserExecutablePath,
+                puppeteerRuntimeModulePath,
+                skipHeadlessFinalize: !exportRender.hasMermaid
+              });
+              return;
+            }
+
+            await exportRuntime.renderPdfFromHtmlExport({
+              htmlDocument: exportRender.htmlDocument,
+              outputPdfPath: saveUri.fsPath,
+              browserExecutablePath,
+              puppeteerRuntimeModulePath
+            });
+          }
+        )
       );
 
       void vscode.window.setStatusBarMessage(
@@ -581,7 +742,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Export failed';
-      void vscode.window.showErrorMessage(`${format.toUpperCase()} export failed: ${message}`);
+      void showTimedErrorMessage(`${format.toUpperCase()} export failed: ${message}`);
     }
   }
 
@@ -903,6 +1064,85 @@ function getNativeWorkingTreeTitle(gitUri: vscode.Uri, fileUri: vscode.Uri): str
   }
 
   return fileName;
+}
+
+function buildThemeQuickPickItems(context: vscode.ExtensionContext): ThemeQuickPickItem[] {
+  const builtInItems: ThemeQuickPickItem[] = themePresets.map((theme) => ({
+    label: theme.name,
+    description: theme.id,
+    detail: 'Built-in',
+    theme,
+    source: 'built-in'
+  }));
+  const importedItems: ThemeQuickPickItem[] = getImportedThemes(context).map((theme) => ({
+    label: theme.name,
+    description: theme.id,
+    detail: 'Imported',
+    theme,
+    source: 'imported'
+  }));
+
+  return [...builtInItems, ...importedItems];
+}
+
+function getImportedThemes(context: vscode.ExtensionContext): ThemeSettings[] {
+  const raw = context.globalState.get<unknown>(CUSTOM_THEMES_STATE_KEY);
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const themesById = new Map<string, ThemeSettings>();
+  for (const item of raw) {
+    const validated = validateThemePayload(item);
+    if (!validated.success) {
+      continue;
+    }
+    themesById.set(normalizeThemeId(validated.theme.id), validated.theme);
+  }
+
+  return Array.from(themesById.values())
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function upsertImportedTheme(context: vscode.ExtensionContext, theme: ThemeSettings): Promise<void> {
+  const importedThemes = getImportedThemes(context);
+  const existingIndex = importedThemes.findIndex((item) => normalizeThemeId(item.id) === normalizeThemeId(theme.id));
+  if (existingIndex >= 0) {
+    importedThemes[existingIndex] = theme;
+  } else {
+    importedThemes.push(theme);
+  }
+
+  importedThemes.sort((a, b) => a.name.localeCompare(b.name));
+  await context.globalState.update(
+    CUSTOM_THEMES_STATE_KEY,
+    importedThemes.map((item) => serializeThemeSettings(item))
+  );
+}
+
+async function deleteImportedThemeById(context: vscode.ExtensionContext, themeId: string): Promise<boolean> {
+  const normalizedThemeId = normalizeThemeId(themeId);
+  const importedThemes = getImportedThemes(context);
+  const nextImportedThemes = importedThemes.filter((item) => normalizeThemeId(item.id) !== normalizedThemeId);
+
+  if (nextImportedThemes.length === importedThemes.length) {
+    return false;
+  }
+
+  await context.globalState.update(
+    CUSTOM_THEMES_STATE_KEY,
+    nextImportedThemes.map((item) => serializeThemeSettings(item))
+  );
+  return true;
+}
+
+function isBuiltInThemeId(themeId: string): boolean {
+  const normalizedThemeId = normalizeThemeId(themeId);
+  return themePresets.some((item) => normalizeThemeId(item.id) === normalizedThemeId);
+}
+
+function normalizeThemeId(id: string): string {
+  return id.trim().toLowerCase();
 }
 
 export function deactivate(): void {}

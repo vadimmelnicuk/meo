@@ -5,8 +5,16 @@
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent 50%);
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
-  --meo-font-size: var(--vscode-editor-font-size, 13px);
+  --meo-font-live-size: var(--vscode-editor-font-size, 13px);
+  --meo-font-source-size: var(--vscode-editor-font-size, 13px);
+  --meo-heading-1-size: 1.6em;
+  --meo-heading-2-size: 1.5em;
+  --meo-heading-3-size: 1.3em;
+  --meo-heading-4-size: 1.2em;
+  --meo-heading-5-size: 1.1em;
+  --meo-heading-6-size: 1em;
   --meo-active-editor-font: var(--vscode-editor-font-family);
+  --meo-active-editor-font-size: var(--vscode-editor-font-size, 13px);
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
@@ -537,18 +545,20 @@ body {
 
 .cm-editor {
   font-family: var(--meo-active-editor-font);
-  font-size: var(--meo-font-size);
+  font-size: var(--meo-active-editor-font-size);
   min-width: 0;
   position: relative;
 }
 
 .cm-editor.meo-mode-live {
   --meo-active-editor-font: var(--meo-font-live);
+  --meo-active-editor-font-size: var(--meo-font-live-size);
   --meo-active-editor-line-height: var(--meo-line-height-live);
 }
 
 .cm-editor.meo-mode-source {
   --meo-active-editor-font: var(--meo-font-source);
+  --meo-active-editor-font-size: var(--meo-font-source-size);
   --meo-active-editor-line-height: var(--meo-line-height-source);
 }
 
@@ -866,27 +876,27 @@ body {
 }
 
 .cm-editor .meo-md-h1 {
-  font-size: 1.6em;
+  font-size: var(--meo-heading-1-size);
 }
 
 .cm-editor .meo-md-h2 {
-  font-size: 1.5em;
+  font-size: var(--meo-heading-2-size);
 }
 
 .cm-editor .meo-md-h3 {
-  font-size: 1.3em;
+  font-size: var(--meo-heading-3-size);
 }
 
 .cm-editor .meo-md-h4 {
-  font-size: 1.2em;
+  font-size: var(--meo-heading-4-size);
 }
 
 .cm-editor .meo-md-h5 {
-  font-size: 1.1em;
+  font-size: var(--meo-heading-5-size);
 }
 
 .cm-editor .meo-md-h6 {
-  font-size: 1em;
+  font-size: var(--meo-heading-6-size);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-heading-collapsed {
@@ -1094,6 +1104,11 @@ body {
   border-radius: 0.35em;
 }
 
+.cm-editor.meo-mode-live .meo-md-inline-code,
+.cm-editor.meo-mode-live .meo-md-inline-code * {
+  font-family: var(--meo-font-source);
+}
+
 .cm-editor .meo-md-kbd {
   display: inline-flex;
   align-items: center;
@@ -1177,6 +1192,11 @@ body {
 .cm-editor .meo-mermaid-block {
   position: relative;
   background: var(--vscode-textCodeBlock-background);
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-md-code-block,
+.cm-editor.meo-mode-live .cm-line.meo-md-code-block * {
+  font-family: var(--meo-font-source);
 }
 
 .cm-editor .meo-md-code-block {
@@ -1327,6 +1347,11 @@ body {
   line-height: 1 !important;
 }
 
+.cm-editor .meo-mermaid-block.meo-mermaid-math-block .meoMath,
+.meo-mermaid-fullscreen .meoMath {
+  font-size: var(--meo-active-editor-font-size) !important;
+}
+
 .cm-editor .meo-mermaid-svg-wrapper,
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper {
   display: flex;
@@ -1347,12 +1372,6 @@ body {
 .cm-editor .meo-mermaid-svg-wrapper svg {
   max-width: 100%;
   height: auto;
-}
-
-/* Hide duplicate unformatted KaTeX HTML layer in inline and fullscreen Mermaid views. */
-.cm-editor .meo-mermaid-block .katex-html,
-.meo-mermaid-fullscreen .katex-html {
-  display: none;
 }
 
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper svg {
@@ -1420,8 +1439,8 @@ body {
 }
 
 .cm-editor .meo-mermaid-fallback code {
-  font-family: var(--meo-active-editor-font);
-  font-size: var(--meo-font-size);
+  font-family: var(--meo-font-source);
+  font-size: var(--meo-active-editor-font-size);
 }
 
 .cm-editor .meo-mermaid-error-badge {
@@ -1472,7 +1491,7 @@ body {
 
 .cm-editor .meo-md-image-fallback-text {
   font-family: var(--meo-active-editor-font);
-  font-size: var(--meo-font-size);
+  font-size: var(--meo-active-editor-font-size);
   color: var(--vscode-descriptionForeground);
 }
 

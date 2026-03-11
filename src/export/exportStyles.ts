@@ -24,11 +24,19 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   const codeBlockBackgroundColor = sanitizeCssColor(environment.codeBlockBackgroundColor ?? '') || editorBackgroundColor;
   const sideBarBackgroundColor = sanitizeCssColor(environment.sideBarBackgroundColor ?? '') || editorBackgroundColor;
   const panelBorderColor = sanitizeCssColor(environment.panelBorderColor ?? '') || colors.base03;
-  const liveFont = sanitizeCssFont(environment.liveFontFamily ?? '') || sanitizeCssFont(fonts.live) || editorFontFamily || 'var(--meo-font-system-sans)';
-  const sourceFont = sanitizeCssFont(environment.sourceFontFamily ?? '') || sanitizeCssFont(fonts.source) || editorFontFamily || 'var(--meo-font-system-mono)';
-  const fontSizePx = clampFontSize(environment.editorFontSizePx);
+  const liveFont = sanitizeCssFont(environment.liveFontFamily ?? '') || sanitizeCssFont(fonts.liveFont) || editorFontFamily || 'var(--meo-font-system-sans)';
+  const sourceFont = sanitizeCssFont(environment.sourceFontFamily ?? '') || sanitizeCssFont(fonts.sourceFont) || editorFontFamily || 'var(--meo-font-system-mono)';
+  const editorFontSizePx = clampFontSize(environment.editorFontSizePx);
+  const liveFontSizePx = resolveThemeFontSizePx(fonts.liveFontSize, editorFontSizePx);
+  const sourceFontSizePx = resolveThemeFontSizePx(fonts.sourceFontSize, editorFontSizePx);
   const lineHeight = clampLineHeight(environment.liveLineHeight ?? fonts.liveLineHeight ?? defaultThemeFonts.liveLineHeight);
   const sourceLineHeight = clampLineHeight(environment.sourceLineHeight ?? fonts.sourceLineHeight ?? defaultThemeFonts.sourceLineHeight);
+  const h1FontSize = resolveHeadingFontSize(fonts.h1FontSize, '1.6em', 'em');
+  const h2FontSize = resolveHeadingFontSize(fonts.h2FontSize, '1.5em', 'em');
+  const h3FontSize = resolveHeadingFontSize(fonts.h3FontSize, '1.3em', 'em');
+  const h4FontSize = resolveHeadingFontSize(fonts.h4FontSize, '1.2em', 'em');
+  const h5FontSize = resolveHeadingFontSize(fonts.h5FontSize, '1.1em', 'em');
+  const h6FontSize = resolveHeadingFontSize(fonts.h6FontSize, '1em', 'em');
 
   return `
 :root {
@@ -52,7 +60,14 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-quote: ${colors.base07};
   --meo-font-body: ${liveFont};
   --meo-font-code: ${sourceFont};
-  --meo-font-size: ${fontSizePx}px;
+  --meo-font-size-body: ${liveFontSizePx}px;
+  --meo-font-size-code: ${sourceFontSizePx}px;
+  --meo-heading-1-size: ${h1FontSize};
+  --meo-heading-2-size: ${h2FontSize};
+  --meo-heading-3-size: ${h3FontSize};
+  --meo-heading-4-size: ${h4FontSize};
+  --meo-heading-5-size: ${h5FontSize};
+  --meo-heading-6-size: ${h6FontSize};
   --meo-line-height: ${lineHeight};
   --meo-code-line-height: ${sourceLineHeight};
   --meo-code-bg: ${codeBlockBackgroundColor};
@@ -78,7 +93,7 @@ body {
   background: var(--meo-bg);
   color: var(--meo-fg);
   font-family: var(--meo-font-body);
-  font-size: var(--meo-font-size);
+  font-size: var(--meo-font-size-body);
   line-height: var(--meo-line-height);
 }
 
@@ -163,6 +178,7 @@ body[data-meo-export-target='pdf'] hr {
   margin: 0 0 1em;
   color: var(--meo-base07);
   font-family: var(--meo-font-code);
+  font-size: var(--meo-font-size-code);
 }
 
 .meo-export-frontmatter-boundary {
@@ -228,12 +244,12 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 1.2em;
   margin-bottom: 0.55em;
 }
-h1 { font-size: 2rem; }
-h2 { font-size: 1.7rem; }
-h3 { font-size: 1.35rem; }
-h4 { font-size: 1.15rem; }
-h5 { font-size: 1rem; }
-h6 { font-size: 0.95rem; opacity: 0.9; }
+h1 { font-size: var(--meo-heading-1-size); }
+h2 { font-size: var(--meo-heading-2-size); }
+h3 { font-size: var(--meo-heading-3-size); }
+h4 { font-size: var(--meo-heading-4-size); }
+h5 { font-size: var(--meo-heading-5-size); }
+h6 { font-size: var(--meo-heading-6-size); opacity: 0.9; }
 
 p, ul, ol, blockquote, pre, table, hr {
   margin: 0 0 1em;
@@ -357,7 +373,7 @@ strong { color: var(--meo-strong); }
 em { font-style: italic; }
 code {
   font-family: var(--meo-font-code);
-  font-size: 0.92em;
+  font-size: var(--meo-font-size-code);
   line-height: var(--meo-code-line-height);
 }
 
@@ -385,7 +401,7 @@ kbd {
   background: var(--meo-kbd-bg);
   color: var(--meo-fg);
   font-family: var(--meo-font-code);
-  font-size: 0.84em;
+  font-size: var(--meo-font-size-code);
   font-weight: 600;
   line-height: 1.2;
   vertical-align: baseline;
@@ -770,4 +786,26 @@ function clampFontSize(value: number | undefined): number {
     return 14;
   }
   return Math.min(32, Math.max(8, value as number));
+}
+
+function resolveThemeFontSizePx(value: number | null | undefined, fallbackPx: number): number {
+  if (!Number.isFinite(value) || (value as number) <= 0) {
+    return fallbackPx;
+  }
+  return clampFontSize(value as number);
+}
+
+function resolveHeadingFontSize(
+  value: number | null | undefined,
+  fallback: string,
+  unit: 'px' | 'em' = 'px'
+): string {
+  if (!Number.isFinite(value) || (value as number) <= 0) {
+    return fallback;
+  }
+  if (unit === 'em') {
+    const normalized = (value as number) > 10 ? (value as number) / 16 : (value as number);
+    return `${Math.min(9, Math.max(0.5, normalized))}em`;
+  }
+  return `${Math.min(144, Math.max(8, value as number))}px`;
 }

@@ -52,9 +52,25 @@
         "icon": "$(check)"
       },
       {
-        "command": "markdownEditorOptimized.resetThemeToDefaults",
-        "title": "Markdown Editor Optimized: Reset Theme to Defaults",
+        "command": "markdownEditorOptimized.resetThemeToDefault",
+        "title": "Markdown Editor Optimized: Reset Theme to Default",
         "icon": "$(discard)"
+      },
+      {
+        "command": "markdownEditorOptimized.selectTheme",
+        "title": "Markdown Editor Optimized: Select Theme"
+      },
+      {
+        "command": "markdownEditorOptimized.importTheme",
+        "title": "Markdown Editor Optimized: Import Theme JSON"
+      },
+      {
+        "command": "markdownEditorOptimized.exportTheme",
+        "title": "Markdown Editor Optimized: Export Theme JSON"
+      },
+      {
+        "command": "markdownEditorOptimized.deleteImportedTheme",
+        "title": "Markdown Editor Optimized: Delete Imported Theme"
       },
       {
         "command": "markdownEditorOptimized.toggleMode",
@@ -205,86 +221,411 @@
           "order": 9,
           "description": "Folder name to save pasted images (relative to workspace root)."
         },
-        "markdownEditorOptimized.theme.base02": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#676f7d",
-          "description": "Subtle syntax markers and comments."
-        },
-        "markdownEditorOptimized.theme.base03": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#3e444d",
-          "description": "Muted borders and guides."
-        },
-        "markdownEditorOptimized.theme.base04": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#e06c75",
-          "description": "Headings and keywords."
-        },
-        "markdownEditorOptimized.theme.base05": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#61afef",
-          "description": "Links and primary identifiers."
-        },
-        "markdownEditorOptimized.theme.base06": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#66D9EF",
-          "description": "Type and function accents."
-        },
-        "markdownEditorOptimized.theme.base07": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#e5c07b",
-          "description": "Strings and strong emphasis."
-        },
-        "markdownEditorOptimized.theme.base08": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#c678dd",
-          "description": "Numbers and constants."
-        },
-        "markdownEditorOptimized.theme.base09": {
-          "type": "string",
-          "format": "color-hex",
-          "default": "#98c379",
-          "description": "Quotes and attributes."
-        },
-        "markdownEditorOptimized.fonts.live": {
-          "type": "string",
-          "default": "",
-          "description": "Font family for Live mode. Leave empty to use VS Code editor font."
-        },
-        "markdownEditorOptimized.fonts.source": {
-          "type": "string",
-          "default": "",
-          "description": "Font family for Source mode. Leave empty to use VS Code editor font."
-        },
-        "markdownEditorOptimized.fonts.fontSize": {
-          "type": [
-            "number",
-            "null"
+        "markdownEditorOptimized.theme": {
+          "type": "object",
+          "default": {
+            "id": "one-monokai",
+            "name": "One Monokai",
+            "colors": {
+              "base01": "var(--vscode-editor-foreground)",
+              "base02": "#676f7d",
+              "base03": "#3e444d",
+              "base04": "#e06c75",
+              "base05": "#61afef",
+              "base06": "#66d9ef",
+              "base07": "#e5c07b",
+              "base08": "#c678dd",
+              "base09": "#98c379"
+            },
+            "syntaxTokens": {},
+            "fonts": {
+              "liveFont": "",
+              "sourceFont": "",
+              "liveFontSize": null,
+              "sourceFontSize": null,
+              "h1FontSize": 1.6,
+              "h2FontSize": 1.5,
+              "h3FontSize": 1.3,
+              "h4FontSize": 1.2,
+              "h5FontSize": 1.1,
+              "h6FontSize": 1,
+              "liveLineHeight": 1.5,
+              "sourceLineHeight": 1.5
+            }
+          },
+          "defaultSnippets": [
+            {
+              "label": "One Monokai theme payload",
+              "description": "Insert the full theme object with sensible defaults.",
+              "body": "^{\n\t\"id\": \"one-monokai\",\n\t\"name\": \"One Monokai\",\n\t\"colors\": {\n\t\t\"base01\": \"var(--vscode-editor-foreground)\",\n\t\t\"base02\": \"#676f7d\",\n\t\t\"base03\": \"#3e444d\",\n\t\t\"base04\": \"#e06c75\",\n\t\t\"base05\": \"#61afef\",\n\t\t\"base06\": \"#66d9ef\",\n\t\t\"base07\": \"#e5c07b\",\n\t\t\"base08\": \"#c678dd\",\n\t\t\"base09\": \"#98c379\"\n\t},\n\t\"syntaxTokens\": {},\n\t\"fonts\": {\n\t\t\"liveFont\": \"\",\n\t\t\"sourceFont\": \"\",\n\t\t\"liveFontSize\": null,\n\t\t\"sourceFontSize\": null,\n\t\t\"h1FontSize\": 1.6,\n\t\t\"h2FontSize\": 1.5,\n\t\t\"h3FontSize\": 1.3,\n\t\t\"h4FontSize\": 1.2,\n\t\t\"h5FontSize\": 1.1,\n\t\t\"h6FontSize\": 1,\n\t\t\"liveLineHeight\": 1.5,\n\t\t\"sourceLineHeight\": 1.5\n\t}\n}$0"
+            }
           ],
-          "default": null,
-          "minimum": 8,
-          "description": "Font size in pixels. Leave unset to use VS Code editor font size."
-        },
-        "markdownEditorOptimized.fonts.liveLineHeight": {
-          "type": "number",
-          "default": 1.5,
-          "minimum": 1,
-          "maximum": 3,
-          "description": "Line height multiplier for Live mode editor content (for example, 1.4 or 1.6)."
-        },
-        "markdownEditorOptimized.fonts.sourceLineHeight": {
-          "type": "number",
-          "default": 1.5,
-          "minimum": 1,
-          "maximum": 3,
-          "description": "Line height multiplier for Source mode editor content (for example, 1.4 or 1.6)."
+          "description": "Theme payload containing base palette colors, optional token overrides, and font settings.",
+          "markdownDescription": "[Select Theme](command:markdownEditorOptimized.selectTheme) | [Import Theme](command:markdownEditorOptimized.importTheme) | [Export Theme](command:markdownEditorOptimized.exportTheme) | [Delete Imported Theme](command:markdownEditorOptimized.deleteImportedTheme) | [Reset Theme to Default](command:markdownEditorOptimized.resetThemeToDefault)",
+          "properties": {
+            "id": {
+              "type": "string",
+              "default": "one-monokai",
+              "description": "Unique theme identifier."
+            },
+            "name": {
+              "type": "string",
+              "default": "One Monokai (default)",
+              "description": "Display name for the theme."
+            },
+            "colors": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "base01": {
+                  "type": "string",
+                  "description": "Primary foreground color (hex/rgb/hsl/var).",
+                  "default": "var(--vscode-editor-foreground)"
+                },
+                "base02": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base03": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base04": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base05": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base06": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base07": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base08": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base09": {
+                  "type": "string",
+                  "format": "color"
+                }
+              },
+              "required": [
+                "base02",
+                "base03",
+                "base04",
+                "base05",
+                "base06",
+                "base07",
+                "base08",
+                "base09"
+              ],
+              "additionalProperties": false
+            },
+            "syntaxTokens": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "keyword": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "identifier": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "macroName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "variableName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "propertyName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "typeName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "className": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "namespace": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "operator": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "operatorKeyword": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "punctuation": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "functionName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "labelName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "definitionFunction": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "definedVariable": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "number": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "changed": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "annotation": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "modifier": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "self": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "color": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "constant": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "atom": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "bool": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "specialVariable": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "specialString": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "regexp": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "string": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "typeDefinition": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "meta": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "comment": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "tagName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "attributeName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "invalid": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "deleted": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "monospace": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "heading": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "emphasis": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "strong": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "strikethrough": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "quote": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "contentSeparator": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "link": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "processingInstruction": {
+                  "type": "string",
+                  "format": "color"
+                }
+              },
+              "additionalProperties": false
+            },
+            "fonts": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "liveFont": {
+                  "type": "string",
+                  "default": ""
+                },
+                "sourceFont": {
+                  "type": "string",
+                  "default": ""
+                },
+                "liveFontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "default": null
+                },
+                "sourceFontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "default": null
+                },
+                "h1FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.6
+                },
+                "h2FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.5
+                },
+                "h3FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.3
+                },
+                "h4FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.2
+                },
+                "h5FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.1
+                },
+                "h6FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1
+                },
+                "liveLineHeight": {
+                  "type": "number",
+                  "default": 1.5,
+                  "minimum": 1,
+                  "maximum": 3
+                },
+                "sourceLineHeight": {
+                  "type": "number",
+                  "default": 1.5,
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "liveFont",
+                "sourceFont",
+                "liveFontSize",
+                "sourceFontSize",
+                "liveLineHeight",
+                "sourceLineHeight"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "colors",
+            "syntaxTokens",
+            "fonts"
+          ],
+          "additionalProperties": false
         }
       }
     }
