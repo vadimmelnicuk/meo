@@ -4,7 +4,7 @@
 - Implemented Theming v2
   - Built-in themes
   - Granular style customisation for individual markdown tags
-  - Importy/Export themes as JSON
+  - Import/Export themes as JSON
 - PR: Extra code block langs (#26)
 - Fixed local link handling and navigation
 - Various minor improvements
