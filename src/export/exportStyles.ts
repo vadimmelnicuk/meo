@@ -375,6 +375,9 @@ code {
   font-family: var(--meo-font-code);
   font-size: var(--meo-font-size-code);
   line-height: var(--meo-code-line-height);
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  text-rendering: auto;
 }
 
 p code,

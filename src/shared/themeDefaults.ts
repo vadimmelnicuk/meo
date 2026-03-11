@@ -442,6 +442,90 @@ export const themePresets: readonly ThemeSettings[] = [
       constant: 'base09',
       bool: 'base09'
     }
+  }),
+  createThemeFromColors({
+    id: 'gruvbox',
+    name: 'Gruvbox',
+    colors: {
+      base02: '#a89984',
+      base03: '#3c3836',
+      base04: '#fb4934',
+      base05: '#83a598',
+      base06: '#8ec07c',
+      base07: '#fabd2f',
+      base08: '#d3869b',
+      base09: '#fe8019'
+    }
+  }),
+  createThemeFromColors({
+    id: 'nord',
+    name: 'Nord',
+    colors: {
+      base02: '#616e88',
+      base03: '#3b4252',
+      base04: '#bf616a',
+      base05: '#81a1c1',
+      base06: '#88c0d0',
+      base07: '#ebcb8b',
+      base08: '#b48ead',
+      base09: '#a3be8c'
+    }
+  }),
+  createThemeFromColors({
+    id: 'solarized-dark',
+    name: 'Solarized Dark',
+    colors: {
+      base02: '#586e75',
+      base03: '#073642',
+      base04: '#dc322f',
+      base05: '#268bd2',
+      base06: '#2aa198',
+      base07: '#b58900',
+      base08: '#d33682',
+      base09: '#859900'
+    }
+  }),
+  createThemeFromColors({
+    id: 'catppuccin-mocha',
+    name: 'Catppuccin Mocha',
+    colors: {
+      base02: '#a6adc8',
+      base03: '#313244',
+      base04: '#f38ba8',
+      base05: '#89b4fa',
+      base06: '#89dceb',
+      base07: '#f9e2af',
+      base08: '#cba6f7',
+      base09: '#a6e3a1'
+    }
+  }),
+  createThemeFromColors({
+    id: 'tokyo-night',
+    name: 'Tokyo Night',
+    colors: {
+      base02: '#a9b1d6',
+      base03: '#3b4261',
+      base04: '#f7768e',
+      base05: '#7aa2f7',
+      base06: '#7dcfff',
+      base07: '#e0af68',
+      base08: '#bb9af7',
+      base09: '#9ece6a'
+    }
+  }),
+  createThemeFromColors({
+    id: 'github-dark',
+    name: 'GitHub Dark',
+    colors: {
+      base02: '#8b949e',
+      base03: '#30363d',
+      base04: '#ff7b72',
+      base05: '#79c0ff',
+      base06: '#56d4dd',
+      base07: '#d29922',
+      base08: '#d2a8ff',
+      base09: '#56d364'
+    }
   })
 ] as const;
 

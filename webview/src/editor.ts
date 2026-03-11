@@ -1,5 +1,5 @@
-import { EditorState, Compartment, Transaction, StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd, Decoration } from '@codemirror/view';
+import { EditorState, Compartment, Transaction, StateEffect, StateField, RangeSetBuilder, type ChangeSpec } from '@codemirror/state';
+import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, scrollPastEnd, Decoration, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
@@ -61,9 +61,18 @@ type SearchMatchRange = {
   end: number;
 };
 
+type MarkerReplacementContext = {
+  contentStart: number;
+  oldMarkerLen: number;
+  isExistingTask: boolean;
+};
+
 const setSearchQueryEffect = StateEffect.define<SearchQueryState>();
 const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
+const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX]\]|[-+*]|\d+[.)])\s+/;
+const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
+const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX]\]/;
 
 const buildSearchDecorations = (doc, searchQuery: SearchQueryState) => {
   if (!searchQuery.text) {
@@ -565,6 +574,84 @@ export function createEditor({
     }
   };
 
+  const forEachSelectedLine = (
+    state: EditorState,
+    callback: (line: { from: number; to: number; number: number }) => void
+  ): void => {
+    const seen = new Set<number>();
+    for (const range of state.selection.ranges) {
+      const fromLine = state.doc.lineAt(range.from).number;
+      const toPos = Math.max(range.from, range.to - (range.empty ? 0 : 1));
+      const toLine = state.doc.lineAt(toPos).number;
+      for (let lineNumber = fromLine; lineNumber <= toLine; lineNumber += 1) {
+        if (seen.has(lineNumber)) {
+          continue;
+        }
+        seen.add(lineNumber);
+        callback(state.doc.line(lineNumber));
+      }
+    }
+  };
+
+  const lineMarkerReplacementContext = (
+    state: EditorState,
+    line: { from: number; to: number }
+  ): MarkerReplacementContext => {
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const existingMarker = existingListMarkerRegex.exec(lineText);
+    const existingHeading = existingHeadingMarkerRegex.exec(lineText);
+    const leadingWhitespace = existingMarker?.[1] ?? existingHeading?.[1] ?? /^(\s*)/.exec(lineText)[1];
+
+    const contentStart = line.from + leadingWhitespace.length;
+    let oldMarkerLen = 0;
+    if (existingMarker) {
+      oldMarkerLen = existingMarker[0].length - leadingWhitespace.length;
+    } else if (existingHeading) {
+      oldMarkerLen = existingHeading[0].length - leadingWhitespace.length;
+    }
+
+    const isExistingTask = Boolean(existingMarker && existingTaskMarkerRegex.test(existingMarker[0]));
+    return { contentStart, oldMarkerLen, isExistingTask };
+  };
+
+  const buildListFormatChangesForSelection = (state: EditorState, insert: string): ChangeSpec[] => {
+    const changes: ChangeSpec[] = [];
+    forEachSelectedLine(state, (line) => {
+      const { contentStart, oldMarkerLen } = lineMarkerReplacementContext(state, line);
+      changes.push({ from: contentStart, to: contentStart + oldMarkerLen, insert });
+    });
+    return changes;
+  };
+
+  const dispatchSelectedListFormatChanges = (
+    state: EditorState,
+    changes: ChangeSpec[],
+    shouldRenumberOrdered: boolean
+  ): void => {
+    if (!changes.length) {
+      return;
+    }
+
+    if (!shouldRenumberOrdered) {
+      view.dispatch({ changes });
+      return;
+    }
+
+    const withMarkers = state.update({ changes });
+    const renumberChanges = collectOrderedListRenumberChanges(withMarkers.state);
+    if (!renumberChanges.length) {
+      view.dispatch(withMarkers);
+      return;
+    }
+
+    view.dispatch(
+      state.update(
+        { changes },
+        { changes: renumberChanges, sequential: true }
+      )
+    );
+  };
+
   const isSearchMatchSelection = (from, to) => {
     if (!view || from >= to) {
       return false;
@@ -626,6 +713,16 @@ export function createEditor({
       to,
       anchorX: fromCoords.left,
       anchorY: fromCoords.top
+    });
+  };
+
+  const isHistoryReplayUpdate = (update: ViewUpdate): boolean => {
+    return update.transactions.some((transaction) => {
+      const userEvent = transaction.annotation(Transaction.userEvent);
+      return (
+        typeof userEvent === 'string' &&
+        (userEvent === 'undo' || userEvent === 'redo' || userEvent.startsWith('undo.') || userEvent.startsWith('redo.'))
+      );
     });
   };
 
@@ -964,6 +1061,11 @@ export function createEditor({
 
         pendingExternalUndoSelectionPreserve = false;
 
+        if (isHistoryReplayUpdate(update)) {
+          onApplyChanges(update.state.doc.toString());
+          return;
+        }
+
         const renumberChanges = collectOrderedListRenumberChanges(update.state);
         if (renumberChanges.length) {
           applyingRenumber = true;
@@ -1259,25 +1361,6 @@ export function createEditor({
 
       const { state } = view;
       const selection = state.selection.main;
-      const line = state.doc.lineAt(selection.from);
-      const lineText = state.doc.sliceString(line.from, line.to);
-
-      const existingMarker = /^(\s*)([-+*]\s+\[[ xX]\]|[-+*]|\d+[.)])\s+/.exec(lineText);
-      const existingHeading = /^(\s*)(#{1,6})\s+/.exec(lineText);
-      const leadingWhitespace = existingMarker?.[1] ?? existingHeading?.[1] ?? /^(\s*)/.exec(lineText)[1];
-
-      const contentStart = line.from + leadingWhitespace.length;
-      let oldMarkerLen = 0;
-      if (existingMarker) {
-        oldMarkerLen = existingMarker[0].length - leadingWhitespace.length;
-      } else if (existingHeading) {
-        oldMarkerLen = existingHeading[0].length - leadingWhitespace.length;
-      }
-
-      const isExistingTask = existingMarker && /^[-+*]\s+\[[ xX]\]/.test(existingMarker[0]);
-      if (action === 'task' && isExistingTask) {
-        return;
-      }
 
       let insert = '';
       switch (action) {
@@ -1318,6 +1401,18 @@ export function createEditor({
           return insertWikiLink(view, selection);
         case 'image':
           return insertImage(view, selection);
+      }
+
+      if (!selection.empty && (action === 'bulletList' || action === 'numberedList')) {
+        const changes = buildListFormatChangesForSelection(state, insert);
+        dispatchSelectedListFormatChanges(state, changes, action === 'numberedList');
+        return;
+      }
+
+      const line = state.doc.lineAt(selection.from);
+      const { contentStart, oldMarkerLen, isExistingTask } = lineMarkerReplacementContext(state, line);
+      if (action === 'task' && isExistingTask) {
+        return;
       }
 
       const newMarkerLen = insert.length;

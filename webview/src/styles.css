@@ -1109,6 +1109,18 @@ body {
   font-family: var(--meo-font-source);
 }
 
+.cm-editor .meo-md-inline-code,
+.cm-editor .meo-md-inline-code *,
+.cm-editor .cm-line.meo-md-code-block,
+.cm-editor .cm-line.meo-md-code-block *,
+.cm-editor.meo-mode-source .meo-md-colon-fence-code,
+.cm-editor.meo-mode-source .meo-md-colon-fence-code *,
+.cm-editor .meo-mermaid-fallback code {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  text-rendering: auto;
+}
+
 .cm-editor .meo-md-kbd {
   display: inline-flex;
   align-items: center;

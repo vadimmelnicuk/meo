@@ -261,7 +261,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const themeItems = buildThemeQuickPickItems(context);
       const selectedTheme = await showTimedQuickPick(
         themeItems,
-        { title: 'Select Theme', placeHolder: 'Select & apply a theme preset.' }
+        { title: 'Select Theme', placeHolder: 'Select & apply a theme preset.' },
+        0
       );
 
       if (!selectedTheme) {
@@ -330,7 +331,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const theme = getThemeSettings();
+      const theme = serializeThemeSettings(getThemeSettings());
       try {
         await vscode.workspace.fs.writeFile(
           uri,

@@ -10,19 +10,25 @@ Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and
 4. Import the file (`Import Theme JSON`).
 5. If needed, recover quickly with `Reset Theme to Default`.
 
-## Built-In Presets
+## Built-In Themes
 
-- One Monokai (one-monokai) (default)
-- One Dark Pro (one-dark-pro)
-- Dracula (dracula)
+1. One Monokai (default)
+2. One Dark Pro
+3. Dracula
+4. Gruvbox
+5. Nord
+6. Solarized Dark
+7. Catppuccin Mocha
+8. Tokyo Night
+9. GitHub Dark
 
 ## Commands
 
-- `Markdown Editor Optimized: Select Theme`
-- `Markdown Editor Optimized: Import Theme JSON`
-- `Markdown Editor Optimized: Export Theme JSON`
-- `Markdown Editor Optimized: Delete Imported Theme`
-- `Markdown Editor Optimized: Reset Theme to Default`
+1. `Markdown Editor Optimized: Select Theme`
+2. `Markdown Editor Optimized: Import Theme JSON`
+3. `Markdown Editor Optimized: Export Theme JSON`
+4. `Markdown Editor Optimized: Delete Imported Theme`
+5. `Markdown Editor Optimized: Reset Theme to Default`
 
 ## id
 
@@ -53,8 +59,7 @@ Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and
 
 Each key in `syntaxTokens` maps to a syntax category.
 
-### Code Syntax Highlighting
-
+**Code Syntax Highlighting:**
 - `keyword`: Language keywords like `if`, `return`, `class`, `import`.
 - `identifier`: Generic names and unresolved identifiers.
 - `macroName`: Macro identifiers (for languages that support macros).
@@ -89,8 +94,7 @@ Each key in `syntaxTokens` maps to a syntax category.
 - `deleted`: Deleted/removed tokens when marked by parser/highlighter.
 - `changed`: Changed/diff-like tokens when present in a grammar.
 
-### Markdown
-
+**Markdown:**
 - `heading`: Markdown/markup heading text.
 - `emphasis`: Emphasized/italic text.
 - `strong`: Strong/bold text.

@@ -46,7 +46,7 @@ export function showTimedErrorMessage(message: string, timeoutMs = MEO_NOTIFICAT
 export function showTimedQuickPick<T extends vscode.QuickPickItem>(
   items: readonly T[],
   options?: TimedQuickPickOptions,
-  timeoutMs = MEO_NOTIFICATION_TIMEOUT_MS
+  timeoutMs: number | null = MEO_NOTIFICATION_TIMEOUT_MS
 ): Promise<T | undefined> {
   return new Promise<T | undefined>((resolve) => {
     const quickPick = vscode.window.createQuickPick<T>();
@@ -99,8 +99,10 @@ export function showTimedQuickPick<T extends vscode.QuickPickItem>(
     quickPick.ignoreFocusOut = options?.ignoreFocusOut ?? false;
 
     quickPick.show();
-    timeoutHandle = setTimeout(() => {
-      quickPick.hide();
-    }, timeoutMs);
+    if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        quickPick.hide();
+      }, timeoutMs);
+    }
   });
 }
