@@ -1,5 +1,14 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.18
+- Implemented Theming v2
+  - Built-in themes
+  - Granular style customisation for individual markdown tags
+  - Importy/Export themes as JSON
+- PR: Extra code block langs (#26)
+- Fixed local link handling and navigation
+- Various minor improvements
+
 ## 0.1.17
 - Added latex math rendering
 - Added kbd tag parsing and rendering
