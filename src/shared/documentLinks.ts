@@ -6,6 +6,7 @@ import { withMarkdownExtensions } from './extensionConfig';
 const WIKI_LINK_SCHEME = 'meo-wiki:';
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+const HOSTNAME_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
 
 export async function openExternalLink(rawHref: string): Promise<void> {
   try {
@@ -25,6 +26,15 @@ export async function openLink(rawHref: string, documentUri: vscode.Uri): Promis
     return;
   }
   if (await openLocalLink(rawHref, documentUri)) {
+    return;
+  }
+  if (looksLikeLocalHref(rawHref)) {
+    console.warn('[meo] Local link target not found', {
+      href: rawHref,
+      documentUri: documentUri.toString(),
+      documentScheme: documentUri.scheme,
+      documentFsPath: documentUri.fsPath
+    });
     return;
   }
   await openExternalLink(rawHref);
@@ -83,6 +93,22 @@ export async function resolveWikiLinkTargets(
   return resolved;
 }
 
+export async function resolveLocalLinkTargets(
+  targets: string[],
+  documentUri: vscode.Uri
+): Promise<Array<{ target: string; exists: boolean }>> {
+  const uniqueTargets = Array.from(new Set(targets
+    .map((target) => `${target ?? ''}`.trim())
+    .filter((target) => target.length > 0)));
+
+  const resolved = await Promise.all(uniqueTargets.map(async (target) => {
+    const targetUri = await resolveLocalLinkTargetUri(target, documentUri);
+    return { target, exists: Boolean(targetUri) };
+  }));
+
+  return resolved;
+}
+
 export function normalizeWikiTarget(target: string): string {
   const normalized = target.split('#', 1)[0]?.trim() ?? '';
   if (!normalized || SCHEME_RE.test(normalized)) {
@@ -98,12 +124,31 @@ export async function resolveWikiLinkTargetUri(target: string, documentUri: vsco
     : path.resolve(path.dirname(documentUri.fsPath), normalized);
   const ext = path.extname(normalized);
   const candidates = ext ? [basePath] : withMarkdownExtensions(basePath);
-  return findFirstExistingFileUri(candidates);
+  const resolvedFromDocumentDir = await findFirstExistingUri(candidates.map((candidate) => toDocumentScopedUri(candidate, documentUri)));
+  if (resolvedFromDocumentDir) {
+    return resolvedFromDocumentDir;
+  }
+
+  if (path.isAbsolute(normalized)) {
+    return null;
+  }
+
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (!workspaceRoot?.fsPath) {
+    return null;
+  }
+
+  const workspaceBasePath = path.resolve(workspaceRoot.fsPath, normalized);
+  const workspaceCandidates = ext ? [workspaceBasePath] : withMarkdownExtensions(workspaceBasePath);
+  return findFirstExistingUri(workspaceCandidates.map((candidate) => toDocumentScopedUri(candidate, workspaceRoot)));
 }
 
 export async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
   const trimmed = rawHref.trim();
   if (!trimmed || trimmed.startsWith('#')) {
+    return null;
+  }
+  if (/^\/\//.test(trimmed)) {
     return null;
   }
 
@@ -131,7 +176,23 @@ export async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vs
     : path.resolve(path.dirname(documentUri.fsPath), decodedPath);
   const ext = path.extname(decodedPath);
   const candidates = ext ? [basePath] : withMarkdownExtensions(basePath, true);
-  return findFirstExistingFileUri(candidates);
+  const resolvedFromDocumentDir = await findFirstExistingUri(candidates.map((candidate) => toDocumentScopedUri(candidate, documentUri)));
+  if (resolvedFromDocumentDir) {
+    return resolvedFromDocumentDir;
+  }
+
+  if (path.isAbsolute(decodedPath)) {
+    return null;
+  }
+
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (!workspaceRoot?.fsPath) {
+    return null;
+  }
+
+  const workspaceBasePath = path.resolve(workspaceRoot.fsPath, decodedPath);
+  const workspaceCandidates = ext ? [workspaceBasePath] : withMarkdownExtensions(workspaceBasePath, true);
+  return findFirstExistingUri(workspaceCandidates.map((candidate) => toDocumentScopedUri(candidate, workspaceRoot)));
 }
 
 export async function uriExists(uri: vscode.Uri): Promise<boolean> {
@@ -147,6 +208,9 @@ export function resolveWebviewImageSrc(rawUrl: string, documentUri: vscode.Uri, 
   const trimmed = rawUrl.trim();
   if (!trimmed) {
     return '';
+  }
+  if (/^\/\//.test(trimmed)) {
+    return `https:${trimmed}`;
   }
 
   if (ALLOWED_IMAGE_SRC_RE.test(trimmed)) {
@@ -193,9 +257,72 @@ export function normalizeExternalHref(rawHref: string): string {
   return `https://${trimmed}`;
 }
 
-async function findFirstExistingFileUri(candidatePaths: readonly string[]): Promise<vscode.Uri | null> {
-  for (const candidate of candidatePaths) {
-    const uri = vscode.Uri.file(candidate);
+function toDocumentScopedUri(candidatePath: string, baseUri: vscode.Uri): vscode.Uri {
+  if (baseUri.scheme === 'file') {
+    return vscode.Uri.file(candidatePath);
+  }
+  return baseUri.with({
+    path: candidatePath,
+    query: '',
+    fragment: ''
+  });
+}
+
+function looksLikeLocalHref(rawHref: string): boolean {
+  const trimmed = rawHref.trim();
+  if (!trimmed || trimmed.startsWith('#')) {
+    return false;
+  }
+  if (/^\/\//.test(trimmed)) {
+    return false;
+  }
+  if (/^file:/i.test(trimmed)) {
+    return true;
+  }
+  const [targetPath = ''] = trimmed.split(/[?#]/, 1);
+  if (!targetPath) {
+    return false;
+  }
+  if (SCHEME_RE.test(targetPath)) {
+    return false;
+  }
+
+  const normalized = safeDecodeURIComponent(targetPath).trim().replace(/\\/g, '/');
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized.startsWith('./') ||
+    normalized.startsWith('../') ||
+    normalized.startsWith('/') ||
+    normalized.startsWith('~')
+  ) {
+    return true;
+  }
+  if (/^[a-zA-Z]:\//.test(normalized)) {
+    return true;
+  }
+  if (normalized.toLowerCase().startsWith('www.')) {
+    return false;
+  }
+
+  const firstSegment = normalized.split('/', 1)[0] ?? '';
+  const hostPart = firstSegment.includes(':') ? firstSegment.split(':', 1)[0] : firstSegment;
+  if (hostPart === 'localhost') {
+    return false;
+  }
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostPart)) {
+    return false;
+  }
+  if (HOSTNAME_RE.test(hostPart)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function findFirstExistingUri(candidateUris: readonly vscode.Uri[]): Promise<vscode.Uri | null> {
+  for (const uri of candidateUris) {
     if (await uriExists(uri)) {
       return uri;
     }

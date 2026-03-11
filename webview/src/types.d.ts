@@ -19,6 +19,7 @@ type WebviewMessage =
   | { type: 'openLink'; href: string }
   | { type: 'resolveImageSrc'; requestId: string; url: string }
   | { type: 'resolveWikiLinks'; requestId: string; targets: string[] }
+  | { type: 'resolveLocalLinks'; requestId: string; targets: string[] }
   | { type: 'saveDocument' }
   | { type: 'exportDocument'; format: 'html' | 'pdf' }
   | { type: 'exportSnapshot'; requestId: string; text: string; environment?: Record<string, unknown> }
@@ -42,6 +43,7 @@ type ExtensionMessage =
   | { type: 'findOptionsChanged'; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'resolvedImageSrc'; requestId: string; resolvedUrl: string }
   | { type: 'resolvedWikiLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }
+  | { type: 'resolvedLocalLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }
   | { type: 'savedImagePath'; requestId: string; success: boolean; path?: string; error?: string };
 
 interface ThemeSettings {

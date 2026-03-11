@@ -3,6 +3,7 @@ import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleIm
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
+import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
 import { applyThemeSettings } from './helpers/theme';
 import { createFailureNoticeManager, getErrorMessage, isTransientMermaidRuntimeError, shouldAutoFallbackToSourceForLiveError, logWebviewRenderError, type EditorNotice, type FailureNoticeManager } from './helpers/errors';
@@ -16,6 +17,7 @@ type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 const vscode = acquireVsCodeApi();
 initializeImageHandling(vscode);
 initializeWikiLinkHandling(vscode);
+initializeLocalLinkHandling(vscode);
 
 applyThemeSettings();
 setImageSrcResolver(resolveImageSrc);
@@ -772,6 +774,7 @@ const queueChanges = (nextText: string) => {
     outlineController.refresh();
   }
   scheduleWikiLinkStatusRefresh(nextText);
+  scheduleLocalLinkStatusRefresh(nextText);
   findPanelController.updateFindStatusSummary();
 };
 
@@ -898,6 +901,7 @@ const mountInitialEditor = async () => {
       failureNotice.clearFailureNotice();
     }
     requestWikiLinkStatuses(initialText);
+    requestLocalLinkStatuses(initialText);
     if (pendingRevealSelection) {
       applyRevealSelectionFromHost(pendingRevealSelection);
     }
@@ -910,6 +914,9 @@ const mountInitialEditor = async () => {
     failureNotice.updateEditorNotice();
     
     setWikiLinkRefreshContext({
+      refreshDecorations: () => editor?.refreshDecorations?.()
+    });
+    setLocalLinkRefreshContext({
       refreshDecorations: () => editor?.refreshDecorations?.()
     });
   } catch (error) {
@@ -989,6 +996,7 @@ const handleInit = (message: any) => {
     outlineController.refresh();
   }
   scheduleWikiLinkStatusRefresh(message.text);
+  scheduleLocalLinkStatusRefresh(message.text);
   findPanelController.updateFindStatusSummary();
 };
 
@@ -1150,6 +1158,7 @@ window.addEventListener('message', (event) => {
       return;
     }
     scheduleWikiLinkStatusRefresh(message.text);
+    scheduleLocalLinkStatusRefresh(message.text);
     findPanelController.updateFindStatusSummary();
     return;
   }
@@ -1234,6 +1243,13 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'resolvedLocalLinks') {
+    if (handleResolvedLocalLinks(message)) {
+      editor?.refreshDecorations();
+    }
+    return;
+  }
+
   if (message.type === 'savedImagePath') {
     handleSavedImagePath(message);
     return;
@@ -1284,6 +1300,7 @@ const forceFlushChanges = () => {
 
 window.addEventListener('beforeunload', () => {
   cancelPendingWikiStatusRefresh();
+  cancelPendingLocalLinkStatusRefresh();
   clearGitBlameCache({ hideTooltip: false });
 
   if (pendingDebounce !== null) {

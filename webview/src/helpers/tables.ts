@@ -6,6 +6,7 @@ import { ImageWidget } from './images';
 import { emojiData } from './emoji';
 import { parseKbdTagAt } from './kbd';
 import { createLatexMathElement, parseLatexMathAt } from './math';
+import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
 
 declare global {
@@ -89,12 +90,7 @@ function targetElementFrom(target) {
 
 function isPrimaryModifier(event) {
   if (event.altKey) return false;
-  return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
-}
-
-function isPrimaryModifierPointerClick(event) {
-  if (event.altKey || event.shiftKey) return false;
-  return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
+  return event.metaKey || event.ctrlKey;
 }
 
 function isModifierLinkActivationEvent(event) {

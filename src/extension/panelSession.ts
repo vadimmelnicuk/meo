@@ -15,7 +15,7 @@ import {
   getThemeSettings,
   getVimModeEnabled
 } from '../shared/extensionConfig';
-import { openLink, resolveWebviewImageSrc, resolveWikiLinkTargets } from '../shared/documentLinks';
+import { openLink, resolveLocalLinkTargets, resolveWebviewImageSrc, resolveWikiLinkTargets } from '../shared/documentLinks';
 import { GitDocumentState, hashGitBaselinePayload } from '../git/documentState';
 import { openGitRevisionForLine, openGitWorktreeForLine, resolveGitBlameForRequest } from '../git/blameActions';
 import type { GitBaselinePayload, GitBlameLineResult } from '../git/types';
@@ -107,6 +107,12 @@ type ResolveWikiLinksMessage = {
   targets: string[];
 };
 
+type ResolveLocalLinksMessage = {
+  type: 'resolveLocalLinks';
+  requestId: string;
+  targets: string[];
+};
+
 type SaveDocumentMessage = {
   type: 'saveDocument';
 };
@@ -166,6 +172,12 @@ type ResolvedImageSrcMessage = {
 
 type ResolvedWikiLinksMessage = {
   type: 'resolvedWikiLinks';
+  requestId: string;
+  results: Array<{ target: string; exists: boolean }>;
+};
+
+type ResolvedLocalLinksMessage = {
+  type: 'resolvedLocalLinks';
   requestId: string;
   results: Array<{ target: string; exists: boolean }>;
 };
@@ -236,6 +248,7 @@ type WebviewMessage =
   | OpenLinkMessage
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
+  | ResolveLocalLinksMessage
   | SaveDocumentMessage
   | ExportDocumentMessage
   | ExportSnapshotMessage
@@ -730,6 +743,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           type: 'resolvedWikiLinks',
           requestId: raw.requestId,
           results: await resolveWikiLinkTargets(raw.targets, documentUri)
+        };
+        await postToWebview(response);
+        return;
+      }
+      case 'resolveLocalLinks': {
+        const response: ResolvedLocalLinksMessage = {
+          type: 'resolvedLocalLinks',
+          requestId: raw.requestId,
+          results: await resolveLocalLinkTargets(raw.targets, documentUri)
         };
         await postToWebview(response);
         return;

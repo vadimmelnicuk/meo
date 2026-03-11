@@ -4,9 +4,25 @@ export const MEO_NOTIFICATION_TIMEOUT_MS = 3000;
 
 type TimedQuickPickOptions = Omit<vscode.QuickPickOptions, 'canPickMany'>;
 
+const notificationCloseCommands = [
+  'notifications.hideToasts',
+  'workbench.action.closeMessages'
+] as const;
+
+async function closeVisibleNotifications(): Promise<void> {
+  for (const command of notificationCloseCommands) {
+    try {
+      await vscode.commands.executeCommand(command);
+      return;
+    } catch {
+      // Ignore unknown command errors; try the next fallback command.
+    }
+  }
+}
+
 function createUiTimeout(timeoutMs: number): ReturnType<typeof setTimeout> {
   return setTimeout(() => {
-    void vscode.commands.executeCommand('workbench.action.closeMessages');
+    void closeVisibleNotifications();
   }, timeoutMs);
 }
 

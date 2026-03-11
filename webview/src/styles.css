@@ -922,9 +922,14 @@ body {
 }
 
 .cm-editor .meo-md-link {
+  color: var(--meo-token-link-color, var(--meo-color-base05));
   text-decoration: underline;
   text-decoration-color: var(--meo-color-base05);
   text-underline-offset: 4px;
+}
+
+.cm-editor.meo-mode-source .meo-md-source-file-link {
+  color: var(--meo-token-link-color, var(--meo-color-base05));
 }
 
 .cm-editor.meo-mode-live .meo-md-link[data-meo-link-href] {
@@ -1043,6 +1048,24 @@ body {
 }
 
 .cm-editor .meo-md-wiki-missing-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.cm-editor .meo-md-local-link-missing-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  line-height: 1;
+  color: var(--meo-color-base04);
+  vertical-align: middle;
+}
+
+.cm-editor .meo-md-local-link-missing-icon svg {
   width: 12px;
   height: 12px;
   display: block;

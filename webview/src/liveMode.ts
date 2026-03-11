@@ -44,6 +44,7 @@ import {
   isThematicBreakLine
 } from './helpers/frontmatter';
 import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
+import { getLocalLinkStatus, normalizeLocalLinkTarget, isLikelyLocalLinkTarget } from './helpers/localLinks';
 import { mergeConflictSourceExtensions, parseMergeConflicts } from './helpers/mergeConflicts';
 import {
   AlertType,
@@ -53,6 +54,7 @@ import {
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
 import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
+import { findRawSourceUrlMatches } from './helpers/rawUrls';
 import {
   collectLatexMathRanges,
   renderLatexMathToHtml,
@@ -119,6 +121,20 @@ const hiddenAlertMarkerDeco = Decoration.mark({ class: 'meo-md-alert-marker-hidd
 const frontmatterKeyDeco = Decoration.mark({ class: 'meo-md-frontmatter-key' });
 const frontmatterValueDeco = Decoration.mark({ class: 'meo-md-frontmatter-value' });
 const mergeConflictMarkerPrefixes = ['<<<<<<<', '|||||||', '=======', '>>>>>>>'];
+const fileSchemePrefix = 'file:';
+const rawFileUrlBlockedAncestorNames = new Set([
+  'Link',
+  'Autolink',
+  'URL',
+  'Image',
+  'InlineCode',
+  'CodeText',
+  'FencedCode',
+  'CodeBlock',
+  'HTMLTag',
+  'HTMLBlock',
+  'Table'
+]);
 
 const listLineDecoCache = new Map();
 const listIndentWidgetCache = new Map();
@@ -397,6 +413,25 @@ class MissingWikiLinkWidget extends WidgetType {
   }
 }
 
+class MissingLocalLinkWidget extends WidgetType {
+  eq(other) {
+    return other instanceof MissingLocalLinkWidget;
+  }
+
+  toDOM(): HTMLElement {
+    const badge = document.createElement('span');
+    badge.className = 'meo-md-local-link-missing-icon';
+    badge.title = 'Local file link target not found';
+    badge.setAttribute('aria-label', 'Local file link target not found');
+    badge.appendChild(createElement(AlertCircle, { 'aria-hidden': 'true' }));
+    return badge;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 class FrontmatterArrayPillsWidget extends WidgetType {
   itemLabels: string[];
   cacheKey: string;
@@ -615,6 +650,19 @@ function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   }
   const href = getNodeHref(state, urlNode);
   addLinkMark(builder, textFrom, textTo, href);
+
+  const localTarget = normalizeLocalLinkTarget(href);
+  const localTargetStatus = isLikelyLocalLinkTarget(localTarget) ? getLocalLinkStatus(localTarget) : null;
+  if (localTarget && localTargetStatus === false) {
+    const iconPos = textFrom < textTo ? textFrom : node.from + 1;
+    builder.push(
+      Decoration.widget({
+        widget: new MissingLocalLinkWidget(),
+        side: -1
+      }).range(iconPos)
+    );
+  }
+
   if (!href) {
     return;
   }
@@ -1209,6 +1257,7 @@ function buildDecorations(state) {
   });
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks);
+  addRawFileUrlDecorations(ranges, state, tree, frontmatter);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
   addMathDecorations(ranges, state, mathRanges, activeLines);
@@ -1924,6 +1973,48 @@ function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, me
     if (isInsideCodeBlock(tree, from)) continue;
     if (rangeOverlapsMermaidColonBlock(mermaidColonBlocks, from, to)) continue;
     addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo);
+  }
+}
+
+function hasBlockedRawFileUrlAncestor(tree, from, to) {
+  const positions = [from, Math.max(from, to - 1)];
+  for (const position of positions) {
+    let node = tree.resolveInner(position, 1);
+    while (node) {
+      if (rawFileUrlBlockedAncestorNames.has(node.name)) {
+        return true;
+      }
+      node = node.parent;
+    }
+  }
+  return false;
+}
+
+function addRawFileUrlDecorations(builder, state, tree, frontmatter = null) {
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    const line = state.doc.line(lineNo);
+    if (line.text.indexOf(fileSchemePrefix) === -1) {
+      continue;
+    }
+
+    const matches = findRawSourceUrlMatches(line.text);
+    for (const match of matches) {
+      if (!match.href.toLowerCase().startsWith(fileSchemePrefix)) {
+        continue;
+      }
+      const from = line.from + match.index;
+      const to = from + match.length;
+      if (to <= from) {
+        continue;
+      }
+      if (isInsideFrontmatterContent(frontmatter, from)) {
+        continue;
+      }
+      if (hasBlockedRawFileUrlAncestor(tree, from, to)) {
+        continue;
+      }
+      addLinkMark(builder, from, to, match.href);
+    }
   }
 }
 

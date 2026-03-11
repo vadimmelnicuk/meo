@@ -10,6 +10,8 @@ import { headingCollapseSharedExtensions, headingCollapseSourceSpacerExtensions 
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
+import { sourceFileLinkField } from './helpers/sourceRawLinks';
+import { getLinkHrefAtPointer, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
 import {
   gitDiffGutterBaselineExtensions,
   gitDiffGutterLiveRenderExtensions,
@@ -168,6 +170,7 @@ export function createEditor({
   let onScroll = null;
   let gitBlameHover = null;
   let gitDiffOverviewRuler = null;
+  let sourceLinkHoverPointerActive = false;
   const vimExtensionsForState = () => (vimModeEnabled && currentMode === 'source' ? vim() : []);
   const initialCursorPos = (() => {
     if (!text) {
@@ -179,22 +182,11 @@ export function createEditor({
   const targetElementFrom = (target) => (
     target instanceof Element ? target : target instanceof Node ? target.parentElement : null
   );
-  const isPrimaryModifierClick = (event) => (
-    !event.altKey && !event.shiftKey && event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey)
-  );
-  const openLinkIfModifierClick = (event) => {
-    if (currentMode !== 'live' || !isPrimaryModifierClick(event)) {
+  const openLinkIfModifierClick = (event, editorView) => {
+    if (!isPrimaryModifierPointerClick(event)) {
       return false;
     }
-    const targetElement = targetElementFrom(event.target);
-    if (!targetElement) {
-      return false;
-    }
-    const linkElement = targetElement.closest('[data-meo-link-href]');
-    if (!(linkElement instanceof Element)) {
-      return false;
-    }
-    const href = linkElement.getAttribute('data-meo-link-href');
+    const href = getLinkHrefAtPointer(event, editorView);
     if (!href) {
       return false;
     }
@@ -202,6 +194,28 @@ export function createEditor({
     event.stopPropagation();
     onOpenLink?.(href);
     return true;
+  };
+  const setSourceLinkHoverCursor = (editorView, active) => {
+    if (sourceLinkHoverPointerActive === active) {
+      return;
+    }
+    sourceLinkHoverPointerActive = active;
+    const cursor = active ? 'pointer' : '';
+    editorView.dom.style.cursor = cursor;
+    editorView.contentDOM.style.cursor = cursor;
+  };
+  const updateSourceLinkHoverCursor = (event, editorView) => {
+    if (currentMode !== 'source') {
+      setSourceLinkHoverCursor(editorView, false);
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node) || !editorView.contentDOM.contains(target)) {
+      setSourceLinkHoverCursor(editorView, false);
+      return;
+    }
+    const href = getLinkHrefAtPointer(event, editorView, { exactTextHit: true });
+    setSourceLinkHoverCursor(editorView, Boolean(href));
   };
   const isLiveMode = (editorView) => editorView.dom.classList.contains('meo-mode-live');
   const isPlainPrimaryPointerEvent = (event) => (
@@ -339,6 +353,9 @@ export function createEditor({
     }
     view.dom.classList.toggle('meo-mode-live', currentMode === 'live');
     view.dom.classList.toggle('meo-mode-source', currentMode !== 'live');
+    if (currentMode !== 'source') {
+      setSourceLinkHoverCursor(view, false);
+    }
   };
 
   const syncLineNumbersVisibility = () => {
@@ -914,7 +931,7 @@ export function createEditor({
             frontmatterBoundaryClick = null;
             return false;
           }
-          if (openLinkIfModifierClick(event)) {
+          if (openLinkIfModifierClick(event, view)) {
             frontmatterBoundaryClick = null;
             return true;
           }
@@ -1034,6 +1051,14 @@ export function createEditor({
           frontmatterBoundaryClick = null;
           inlineCodeClick = null;
           checkboxClick = null;
+          return false;
+        },
+        pointermove(event, view) {
+          updateSourceLinkHoverCursor(event, view);
+          return false;
+        },
+        pointerleave(_event, view) {
+          setSourceLinkHoverCursor(view, false);
           return false;
         }
       }),
@@ -1256,6 +1281,7 @@ export function createEditor({
         releasePointerCaptureIfHeld(capturedPointerId);
         capturedPointerId = null;
       }
+      setSourceLinkHoverCursor(view, false);
       view.destroy();
     },
     setText(textValue) {
@@ -1889,6 +1915,7 @@ function sourceMode() {
     sourceListMarkerField,
     sourceStrikeMarkerField,
     sourceWikiMarkerField,
+    sourceFileLinkField,
     sourceTableHeaderLineField,
     sourceFrontmatterField,
     gitDiffLineHighlightsField,
