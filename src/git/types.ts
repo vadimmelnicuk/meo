@@ -5,7 +5,7 @@ export type GitBaselinePayload = {
   tracked: boolean;
   gitPath?: string;
   baseText?: string | null;
-  reason?: 'not-file' | 'git-unavailable' | 'not-repo' | 'too-large' | 'binary' | 'error';
+  reason?: 'not-file' | 'git-unavailable' | 'not-repo' | 'ignored' | 'too-large' | 'binary' | 'error';
   maxBytesExceeded?: boolean;
 };
 

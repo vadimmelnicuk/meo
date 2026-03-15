@@ -4,6 +4,31 @@ import type { GitBaselinePayload } from './types';
 import { GitCliFailure } from './types';
 
 export const gitBaselineMaxBytes = 1024 * 1024;
+type NonRenderableGitBaselineReason = 'not-file' | 'git-unavailable' | 'not-repo' | 'ignored' | 'error';
+
+function createUnavailableGitBaselinePayload(reason: NonRenderableGitBaselineReason): GitBaselinePayload {
+  return {
+    available: false,
+    tracked: false,
+    reason
+  };
+}
+
+function createRenderableGitBaselinePayload(
+  repoRoot: string,
+  headOid: string | null,
+  tracked: boolean,
+  gitPath: string
+): GitBaselinePayload {
+  return {
+    available: true,
+    repoRoot,
+    headOid,
+    tracked,
+    gitPath,
+    baseText: null
+  };
+}
 
 function toRepoRelativeGitPath(filePath: string, repoRoot: string): string | null {
   const relativeFs = path.relative(repoRoot, filePath);
@@ -45,58 +70,62 @@ async function isTracked(repoRoot: string, gitPath: string): Promise<boolean> {
   }
 }
 
+async function isIgnored(repoRoot: string, gitPath: string): Promise<boolean> {
+  try {
+    await runGit(['check-ignore', '-q', '--', gitPath], { cwd: repoRoot, maxBytes: 64 * 1024 });
+    return true;
+  } catch (error) {
+    if (error instanceof GitCliFailure && error.code === 1) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function hasNulByte(buffer: Buffer): boolean {
   return buffer.includes(0);
 }
 
-function mapBaselineOuterError(error: unknown): GitBaselinePayload {
-  if (isGitMissingError(error)) {
-    return {
-      available: false,
-      tracked: false,
-      reason: 'git-unavailable'
-    };
-  }
-  if (error instanceof GitCliFailure) {
-    return {
-      available: false,
-      tracked: false,
-      reason: 'not-repo'
-    };
-  }
-  return {
-    available: false,
-    tracked: false,
-    reason: 'error'
-  };
+function isRepoRootWithinWorkspace(repoRoot: string, workspaceRoot: string): boolean {
+  const relativeRoot = path.relative(path.resolve(workspaceRoot), path.resolve(repoRoot));
+  return relativeRoot === '' || (!relativeRoot.startsWith('..') && !path.isAbsolute(relativeRoot));
 }
 
-export async function getGitBaselineMetadataForFile(filePath: string): Promise<GitBaselinePayload> {
+function mapBaselineOuterError(error: unknown): GitBaselinePayload {
+  if (isGitMissingError(error)) {
+    return createUnavailableGitBaselinePayload('git-unavailable');
+  }
+  if (error instanceof GitCliFailure) {
+    return createUnavailableGitBaselinePayload('not-repo');
+  }
+  return createUnavailableGitBaselinePayload('error');
+}
+
+export async function getGitBaselineMetadataForFile(
+  filePath: string,
+  workspaceRoot?: string
+): Promise<GitBaselinePayload> {
   if (!path.isAbsolute(filePath)) {
-    return {
-      available: false,
-      tracked: false,
-      reason: 'not-file'
-    };
+    return createUnavailableGitBaselinePayload('not-file');
   }
 
   try {
     const repoRoot = await resolveRepoRoot(filePath);
     if (!repoRoot) {
-      return {
-        available: false,
-        tracked: false,
-        reason: 'not-repo'
-      };
+      return createUnavailableGitBaselinePayload('not-repo');
+    }
+    if (workspaceRoot && !isRepoRootWithinWorkspace(repoRoot, workspaceRoot)) {
+      return createUnavailableGitBaselinePayload('not-repo');
     }
 
     const gitPath = toRepoRelativeGitPath(filePath, repoRoot);
     if (!gitPath) {
-      return {
-        available: false,
-        tracked: false,
-        reason: 'not-repo'
-      };
+      return createUnavailableGitBaselinePayload('not-repo');
+    }
+
+    const ignored = await isIgnored(repoRoot, gitPath);
+    if (ignored) {
+      return createUnavailableGitBaselinePayload('ignored');
     }
 
     const [tracked, headOid] = await Promise.all([
@@ -104,14 +133,7 @@ export async function getGitBaselineMetadataForFile(filePath: string): Promise<G
       resolveHeadOid(repoRoot)
     ]);
 
-    return {
-      available: true,
-      repoRoot,
-      headOid,
-      tracked,
-      gitPath,
-      baseText: null
-    };
+    return createRenderableGitBaselinePayload(repoRoot, headOid, tracked, gitPath);
   } catch (error) {
     return mapBaselineOuterError(error);
   }
@@ -182,8 +204,11 @@ export async function hydrateGitBaselineText(payload: GitBaselinePayload): Promi
   };
 }
 
-export async function getGitBaselinePayloadForFile(filePath: string): Promise<GitBaselinePayload> {
-  const metadata = await getGitBaselineMetadataForFile(filePath);
+export async function getGitBaselinePayloadForFile(
+  filePath: string,
+  workspaceRoot?: string
+): Promise<GitBaselinePayload> {
+  const metadata = await getGitBaselineMetadataForFile(filePath, workspaceRoot);
   try {
     return await hydrateGitBaselineText(metadata);
   } catch (error) {

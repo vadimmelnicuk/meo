@@ -1217,6 +1217,9 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'gitBaselineChanged') {
+    if (typeof message.version === 'number' && message.version < documentVersion) {
+      return;
+    }
     gitClient?.handleMessage(message, { editor });
     return;
   }

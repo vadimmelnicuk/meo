@@ -333,7 +333,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   let pendingRevealSelection: RevealSelectionPayload | null = null;
   let pendingDraftText: string | null = null;
   let disposed = false;
-  const gitDocumentState = new GitDocumentState(documentUri.fsPath);
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+  const gitDocumentState = new GitDocumentState(documentUri.fsPath, workspaceRoot);
   const pendingExportSnapshots = new Map<string, PendingExportSnapshot>();
 
   const enqueue = (task: () => Promise<void>): Promise<void> => {

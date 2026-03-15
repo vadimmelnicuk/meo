@@ -41,7 +41,10 @@ export class GitDocumentState {
   private withTextPromise: Promise<GitBaselinePayload> | null = null;
   private lastSentBaselineHash = '';
 
-  constructor(private readonly filePath: string) {}
+  constructor(
+    private readonly filePath: string,
+    private readonly workspaceRoot?: string
+  ) {}
 
   getRepoRoot(): string | null {
     return this.withTextCache?.repoRoot ?? this.metadataCache?.repoRoot ?? null;
@@ -87,7 +90,7 @@ export class GitDocumentState {
       }
     }
 
-    const promise = getGitBaselineMetadataForFile(this.filePath)
+    const promise = getGitBaselineMetadataForFile(this.filePath, this.workspaceRoot)
       .then((payload) => {
         this.metadataCache = payload;
         if (baselineDoesNotNeedTextLookup(payload)) {

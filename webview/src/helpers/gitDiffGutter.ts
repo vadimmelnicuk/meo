@@ -11,6 +11,7 @@ import { getLiveGitCollapsedBlockAtLine, getLiveGitCollapsedBlocks } from './liv
 const MAX_DIFF_TEXT_CHARS = 1024 * 1024;
 const MAX_DIFF_LINES = 1200;
 const MAX_DIFF_CELLS = 1_500_000;
+const NON_RENDERABLE_GIT_BASELINE_REASONS = new Set(['not-repo', 'ignored']);
 
 export const setGitBaselineEffect = StateEffect.define<any>();
 
@@ -20,7 +21,7 @@ interface BaselineSnapshot {
   baseText: string | null;
   baseLines: string[] | null;
   headOid?: string | null;
-  reason?: string;
+  reason?: 'not-file' | 'git-unavailable' | 'not-repo' | 'ignored' | 'too-large' | 'binary' | 'error';
 }
 
 export interface MarkerFlags {
@@ -192,6 +193,41 @@ function coalesceTrailingEofVisualLineFlag(doc: any, lineFlags: (MarkerFlags | u
   return lineFlags;
 }
 
+function canRenderGitDiffBaseline(snapshot: BaselineSnapshot | null): boolean {
+  if (!snapshot?.available) {
+    return false;
+  }
+  if (!snapshot.reason) {
+    return true;
+  }
+  return !NON_RENDERABLE_GIT_BASELINE_REASONS.has(snapshot.reason);
+}
+
+function getTrailingEofProxyFlags(
+  doc: any,
+  lineFlags: (MarkerFlags | undefined)[] | null
+): MarkerFlags | null {
+  if (!isTrailingEofVisualLine(doc, doc.lines) || doc.lines <= 1 || !Array.isArray(lineFlags)) {
+    return null;
+  }
+
+  const previousFlags = lineFlags[doc.lines - 2];
+  if (!previousFlags || (!previousFlags.added && !previousFlags.modified)) {
+    if (!previousFlags?.trailingEofProxyOnly) {
+      return null;
+    }
+  }
+  if (!previousFlags?.trailingEofProxySource && lineFlags[doc.lines - 1]) {
+    return null;
+  }
+
+  return {
+    added: previousFlags?.trailingEofProxyOnly ? false : !!previousFlags?.added,
+    modified: previousFlags?.trailingEofProxyOnly ? true : !!previousFlags?.modified,
+    eofProxy: true
+  };
+}
+
 function buildLineFlagsFromRuns(runs: any[] | null, currentLineCount: number): (MarkerFlags | undefined)[] {
   const lineFlags: (MarkerFlags | undefined)[] = new Array(currentLineCount);
   if (!runs) {
@@ -299,7 +335,7 @@ function buildLineFlagsFromMapping(baseLines: string[], currentLines: string[], 
 }
 
 function buildDiffLineFlags(state: EditorState, baseline: BaselineSnapshot | null): (MarkerFlags | undefined)[] | null {
-  if (!baseline?.available) {
+  if (!canRenderGitDiffBaseline(baseline)) {
     return null;
   }
 
@@ -351,26 +387,7 @@ function buildGitGutterMarkersFromLineFlags(state: EditorState, lineFlags: (Mark
   if (!lineFlags) {
     return builder.finish();
   }
-  const trailingEofProxyFlags = (
-    isTrailingEofVisualLine(state.doc, state.doc.lines) && state.doc.lines > 1
-      ? (() => {
-          const prevFlags = lineFlags[state.doc.lines - 2];
-          if (!prevFlags || (!prevFlags.added && !prevFlags.modified)) {
-            if (!prevFlags?.trailingEofProxyOnly) {
-              return null;
-            }
-          }
-          if (!prevFlags.trailingEofProxySource && lineFlags[state.doc.lines - 1]) {
-            return null;
-          }
-          return {
-            added: prevFlags.trailingEofProxyOnly ? false : !!prevFlags.added,
-            modified: prevFlags.trailingEofProxyOnly ? true : !!prevFlags.modified,
-            eofProxy: true
-          };
-        })()
-      : null
-  );
+  const trailingEofProxyFlags = getTrailingEofProxyFlags(state.doc, lineFlags);
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (isTrailingEofVisualLine(state.doc, lineNo)) {
@@ -405,26 +422,7 @@ function buildLiveGitGutterMarkersFromLineFlags(state: EditorState, lineFlags: (
   let activeCollapsedBlock = collapsedBlocks[collapsedBlockIndex] ?? null;
   let activeCollapsedFlags = activeCollapsedBlock ? liveCollapsedBlockMarkerFlags(activeCollapsedBlock) : null;
 
-  const trailingEofProxyFlags = (
-    isTrailingEofVisualLine(state.doc, state.doc.lines) && state.doc.lines > 1
-      ? (() => {
-          const prevFlags = lineFlags[state.doc.lines - 2];
-          if (!prevFlags || (!prevFlags.added && !prevFlags.modified)) {
-            if (!prevFlags?.trailingEofProxyOnly) {
-              return null;
-            }
-          }
-          if (!prevFlags.trailingEofProxySource && lineFlags[state.doc.lines - 1]) {
-            return null;
-          }
-          return {
-            added: prevFlags.trailingEofProxyOnly ? false : !!prevFlags.added,
-            modified: prevFlags.trailingEofProxyOnly ? true : !!prevFlags.modified,
-            eofProxy: true
-          };
-        })()
-      : null
-  );
+  const trailingEofProxyFlags = getTrailingEofProxyFlags(state.doc, lineFlags);
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);

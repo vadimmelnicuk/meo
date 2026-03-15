@@ -6,13 +6,26 @@ const setGitDiffHighlightsEnabled = StateEffect.define<boolean>();
 
 let gitDiffHighlightsEnabled = false;
 
+function hasRenderableGitDiffLines(lineFlags: unknown): boolean {
+  if (!Array.isArray(lineFlags)) {
+    return false;
+  }
+  for (let i = 0; i < lineFlags.length; i += 1) {
+    const flags = lineFlags[i] as { added?: boolean; modified?: boolean } | undefined;
+    if (flags?.added || flags?.modified) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildGitDiffLineHighlights(state: EditorState): DecorationSet {
   if (!gitDiffHighlightsEnabled) {
     return Decoration.none;
   }
 
   const lineFlags = state.field(gitDiffLineFlagsField, false);
-  if (!lineFlags) {
+  if (!hasRenderableGitDiffLines(lineFlags)) {
     return Decoration.none;
   }
 

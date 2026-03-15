@@ -19,6 +19,16 @@ type ResolvedGitBlameRequest = {
   result: GitBlameLineResult;
 };
 
+function resolveBlameUnavailableReason(reason: GitBaselinePayload['reason']): GitBlameLineResult['reason'] {
+  if (reason === 'git-unavailable') {
+    return 'git-unavailable';
+  }
+  if (reason === 'not-repo' || reason === 'ignored') {
+    return 'not-repo';
+  }
+  return 'error';
+}
+
 // The shared mapper now scales via anchors/heuristics and only uses exact LCS on
 // bounded chunks, so these are chunk limits rather than global failure caps.
 const MAX_BLAME_LINE_MAP_EXACT_CHUNK_LINES = 6000;
@@ -73,11 +83,12 @@ export async function resolveGitBlameForRequest(
   const state = gitDocumentState ?? new GitDocumentState(documentUri.fsPath);
   let baseline = await state.resolveBaseline({ includeText: false });
   if (!baseline.available || !baseline.repoRoot || !baseline.gitPath) {
+    const unavailableReason = resolveBlameUnavailableReason(baseline.reason);
     return {
       baseline,
       result: {
         kind: 'unavailable',
-        reason: baseline.reason === 'git-unavailable' ? 'git-unavailable' : 'not-repo'
+        reason: unavailableReason
       }
     };
   }
