@@ -118,6 +118,10 @@ body {
   background-color: var(--vscode-sideBar-background);
 }
 
+.editor-root:has(.cm-editor.meo-line-numbers-hidden) .mode-toolbar {
+  padding-left: 17px;
+}
+
 .editor-notice {
   display: none;
   position: absolute;
