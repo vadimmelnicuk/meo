@@ -17,8 +17,31 @@ function trimTrailingUrlPunctuation(value: string): string {
   return trimmed;
 }
 
+function trimMatchingUrlQuotes(value: string): string {
+  let trimmed = value;
+  while (trimmed.length >= 2) {
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"'))
+      || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      || (trimmed.startsWith('`') && trimmed.endsWith('`'))) {
+      trimmed = trimmed.slice(1, -1);
+      continue;
+    }
+    break;
+  }
+  if (!trimmed.length) {
+    return trimmed;
+  }
+  if (!linkSchemeRe.test(trimmed) && !trimmed.toLowerCase().startsWith('www.')) {
+    return trimmed;
+  }
+  while (trimmed.endsWith('"') || trimmed.endsWith("'") || trimmed.endsWith('`')) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
 export function normalizeSourceHref(value: string): string {
-  const trimmed = trimTrailingUrlPunctuation((value ?? '').trim());
+  const trimmed = trimMatchingUrlQuotes(trimTrailingUrlPunctuation((value ?? '').trim()));
   if (!trimmed) {
     return '';
   }
@@ -45,7 +68,7 @@ export function findRawSourceUrlMatches(text: string): RawSourceUrlMatch[] {
     matches.push({
       index: match.index,
       href,
-      length: href.length
+      length: match[0].length
     });
   }
   return matches;

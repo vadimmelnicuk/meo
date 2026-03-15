@@ -11,6 +11,7 @@ import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './he
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
 import { sourceFileLinkField } from './helpers/sourceRawLinks';
+import { sourceUrlBoundaryField } from './helpers/sourceUrlBoundaries';
 import { getLinkHrefAtPointer, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
 import {
   gitDiffGutterBaselineExtensions,
@@ -1916,6 +1917,7 @@ function sourceMode() {
     sourceStrikeMarkerField,
     sourceWikiMarkerField,
     sourceFileLinkField,
+    sourceUrlBoundaryField,
     sourceTableHeaderLineField,
     sourceFrontmatterField,
     gitDiffLineHighlightsField,

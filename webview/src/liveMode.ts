@@ -54,7 +54,8 @@ import {
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
 import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
-import { findRawSourceUrlMatches } from './helpers/rawUrls';
+import { findRawSourceUrlMatches, normalizeSourceHref } from './helpers/rawUrls';
+import { trimDecoratedUrlRange } from './helpers/urlDecorationRange';
 import {
   collectLatexMathRanges,
   renderLatexMathToHtml,
@@ -78,6 +79,7 @@ const activeCodeMarkerDeco = Decoration.mark({ class: 'meo-md-code-marker-active
 const fenceMarkerDeco = Decoration.mark({ class: 'meo-md-fence-marker' });
 const hrMarkerDeco = Decoration.mark({ class: 'meo-md-hr-marker' });
 const hiddenLinkUrlDeco = Decoration.mark({ class: 'meo-md-link-url-hidden' });
+const linkBoundaryDeco = Decoration.mark({ class: 'meo-md-url-boundary' });
 const collapsedHeadingBodyDeco = Decoration.replace({
   inclusiveStart: false,
   inclusiveEnd: false
@@ -317,7 +319,7 @@ function addForcedThematicBreakDecorations(builder, state, activeLines, frontmat
 
 function getNodeHref(state, node) {
   const href = state.doc.sliceString(node.from, node.to).trim();
-  return href || '';
+  return normalizeSourceHref(href);
 }
 
 function addLinkMark(builder, from, to, href) {
@@ -333,6 +335,20 @@ function addLinkMark(builder, from, to, href) {
       attributes: { 'data-meo-link-href': href }
     })
   );
+}
+
+function addTrimmedUrlLinkMark(builder, from, to, rawUrl, href) {
+  if (!href) {
+    return;
+  }
+  const range = trimDecoratedUrlRange(from, to, rawUrl, href);
+  if (from < range.from) {
+    addRange(builder, from, range.from, linkBoundaryDeco);
+  }
+  if (range.to < to) {
+    addRange(builder, range.to, to, linkBoundaryDeco);
+  }
+  addLinkMark(builder, range.from, range.to, href);
 }
 
 function findChildNode(node, name) {
@@ -723,8 +739,9 @@ function addAutolinkDecorations(builder, state, node) {
   if (!urlNode) {
     return;
   }
-
-  addLinkMark(builder, urlNode.from, urlNode.to, getNodeHref(state, urlNode));
+  const href = getNodeHref(state, urlNode);
+  const rawUrl = state.doc.sliceString(urlNode.from, urlNode.to);
+  addTrimmedUrlLinkMark(builder, urlNode.from, urlNode.to, rawUrl, href);
 }
 
 function addWikiLinkDecorations(builder, state, node, activeLines) {
@@ -1153,7 +1170,9 @@ function buildDecorations(state) {
       } else if (node.name === 'URL') {
         const parentName = node.node.parent?.name ?? '';
         if (parentName !== 'Link' && parentName !== 'Autolink') {
-          addLinkMark(ranges, node.from, node.to, getNodeHref(state, node));
+          const href = getNodeHref(state, node);
+          const rawUrl = state.doc.sliceString(node.from, node.to);
+          addTrimmedUrlLinkMark(ranges, node.from, node.to, rawUrl, href);
         }
       } else if (node.name === 'Image') {
         const line = state.doc.lineAt(node.from);

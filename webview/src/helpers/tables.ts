@@ -8,6 +8,7 @@ import { parseKbdTagAt } from './kbd';
 import { createLatexMathElement, parseLatexMathAt } from './math';
 import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
+import { normalizeSourceHref } from './rawUrls';
 
 declare global {
   interface HTMLDivElement {
@@ -140,9 +141,7 @@ function isTableInlineUrlLike(text) {
 }
 
 function tableInlineHrefFromRawUrl(text) {
-  if (!text) return '';
-  if (text.startsWith('www.')) return `https://${text}`;
-  return text;
+  return normalizeSourceHref(text);
 }
 
 function tableInlineHrefFromWikiTarget(target) {
@@ -282,7 +281,7 @@ function parseTableInlineMarkdownLink(text, index, { image = false } = {}) {
   const destination = consumeTableInlineParenContent(text, label.nextIndex);
   if (!destination) return null;
 
-  let url = destination.content.trim();
+  let url = normalizeSourceHref(destination.content.trim());
   if (url.startsWith('<') && url.endsWith('>') && url.length >= 2) {
     url = url.slice(1, -1).trim();
   }
@@ -379,7 +378,7 @@ function parseTableInlineDelimitedSpan(text, index) {
   return null;
 }
 
-function trimTableInlineRawUrl(raw) {
+function trimTableInlineRawUrl(raw, precedingChar) {
   let end = raw.length;
   while (end > 0 && /[.,!?;:]/.test(raw[end - 1])) end -= 1;
   while (end > 0 && raw[end - 1] === ')') {
@@ -389,7 +388,25 @@ function trimTableInlineRawUrl(raw) {
     if (closes <= opens) break;
     end -= 1;
   }
-  return raw.slice(0, end);
+  let trimmed = raw.slice(0, end);
+  while (trimmed.length > 0) {
+    const last = trimmed[trimmed.length - 1];
+    if (last !== '"' && last !== "'" && last !== '`') {
+      break;
+    }
+    const withoutTrailing = trimmed.slice(0, -1);
+    if (normalizeSourceHref(withoutTrailing) === normalizeSourceHref(trimmed)) {
+      trimmed = withoutTrailing;
+      continue;
+    }
+    break;
+  }
+  if (precedingChar === '"' || precedingChar === "'" || precedingChar === '`') {
+    while (trimmed.length > 0 && trimmed[trimmed.length - 1] === precedingChar) {
+      trimmed = trimmed.slice(0, -1);
+    }
+  }
+  return trimmed;
 }
 
 function parseTableInlineAutolink(text, index) {
@@ -410,7 +427,7 @@ function parseTableInlineRawUrl(text, index) {
   if (index > 0 && /[A-Za-z0-9]/.test(text[index - 1])) return null;
   const match = tableInlineRawUrlRe.exec(text.slice(index));
   if (!match) return null;
-  const trimmed = trimTableInlineRawUrl(match[0]);
+  const trimmed = trimTableInlineRawUrl(match[0], text[index - 1]);
   if (!trimmed) return null;
   return {
     label: trimmed,

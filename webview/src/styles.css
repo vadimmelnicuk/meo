@@ -935,6 +935,13 @@ body {
   text-underline-offset: 4px;
 }
 
+.cm-editor .meo-md-url-boundary {
+  color: var(--vscode-editor-foreground) !important;
+  -webkit-text-fill-color: var(--vscode-editor-foreground) !important;
+  text-decoration: none;
+  text-decoration-color: transparent !important;
+}
+
 .cm-editor.meo-mode-source .meo-md-source-file-link {
   color: var(--meo-token-link-color, var(--meo-color-base05));
 }
