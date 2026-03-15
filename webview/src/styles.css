@@ -627,7 +627,7 @@ body {
 
 .cm-editor .cm-gutters {
   width: auto;
-  min-width: 79px;
+  min-width: 23px;
   max-width: 89px;
   background: var(--vscode-editor-background);
   border-right: 0;
@@ -765,6 +765,13 @@ body {
 .cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement,
 .cm-editor.meo-line-numbers-hidden .cm-gutterElement.cm-activeLineGutter {
   color: transparent !important;
+}
+
+.cm-editor.meo-line-numbers-hidden .cm-gutter.cm-lineNumbers,
+.cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement {
+  width: 2px !important;
+  min-width: 2px !important;
+  max-width: 2px !important;
 }
 
 .cm-editor.meo-git-gutter-hidden .cm-gutter.meo-git-gutter {
