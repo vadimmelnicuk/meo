@@ -9,6 +9,7 @@ import {
   AgentReviewHandoffController
 } from './agents/reviewHandoff';
 import {
+  areAgentReviewTextsEquivalent,
   findLikelyAgentReviewState,
   getComparableFileUri,
   isLikelyAgentReviewUri,
@@ -191,14 +192,24 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
-      if (isLikelyAgentReviewUri(event.document.uri)) {
+      const isAgentReviewDocument = isLikelyAgentReviewUri(event.document.uri);
+      if (isAgentReviewDocument) {
         agentReviewOverrides.scheduleSync();
       }
       if (!agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(event.document.uri)) {
         void provider.redirectOpenEditorsForCopilotReview(event.document.uri);
       }
-      if (!agentReviewHandoff.shouldReevaluateDeferredReopen(event.document.uri, isLikelyAgentReviewUri(event.document.uri))) {
+
+      const shouldReevaluate = agentReviewHandoff.shouldReevaluateDeferredReopen(
+        event.document.uri,
+        isAgentReviewDocument
+      );
+      if (!shouldReevaluate) {
         return;
+      }
+
+      if (!isAgentReviewDocument) {
+        agentReviewOverrides.scheduleSync();
       }
       agentReviewHandoff.scheduleFlushDeferredReopens();
     })
@@ -479,7 +490,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         continue;
       }
 
-      if (reviewState.text === session.document.getText()) {
+      if (areAgentReviewTextsEquivalent(reviewState.text, session.document.getText())) {
         continue;
       }
 

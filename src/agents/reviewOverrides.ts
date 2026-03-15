@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { areAgentReviewTextsEquivalent } from './reviewState';
 
 const REVIEW_FILE_OVERRIDE_STATE_KEY = 'copilotReviewNativeFileOverrides';
 
@@ -64,7 +65,7 @@ export class AgentReviewOverrideController {
       }
 
       const openTargetDocument = this.deps.getOpenTextDocumentForComparableKey(targetKey);
-      if (openTargetDocument && openTargetDocument.getText() === document.getText()) {
+      if (areAgentReviewTextsEquivalent(openTargetDocument?.getText(), document.getText())) {
         continue;
       }
 

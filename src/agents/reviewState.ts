@@ -11,6 +11,17 @@ export type LikelyAgentReviewState = {
 type ComparableKeyResolver = (uri: vscode.Uri) => string | undefined;
 type OpenTextDocumentResolver = (uri: vscode.Uri) => vscode.TextDocument | undefined;
 
+export function normalizeReviewComparisonText(value: string): string {
+  return value.replace(/\r\n/g, '\n');
+}
+
+export function areAgentReviewTextsEquivalent(left?: string, right?: string): boolean {
+  if (typeof left !== 'string' || typeof right !== 'string') {
+    return false;
+  }
+  return normalizeReviewComparisonText(left) === normalizeReviewComparisonText(right);
+}
+
 export function isLikelyAgentReviewUri(uri: vscode.Uri): boolean {
   return agentReviewModelSchemeSet.has(uri.scheme);
 }
@@ -57,7 +68,7 @@ export function findLikelyAgentReviewState(
   targetText?: string
 ): LikelyAgentReviewState | undefined {
   for (const relatedDocument of findRelatedAgentReviewDocuments(targetUri, getComparableResourceKey)) {
-    if (typeof targetText === 'string' && relatedDocument.getText() === targetText) {
+    if (areAgentReviewTextsEquivalent(targetText, relatedDocument.getText())) {
       continue;
     }
 
@@ -69,7 +80,7 @@ export function findLikelyAgentReviewState(
 
   for (const relatedTab of findRelatedAgentReviewTabs(targetUri, getComparableResourceKey)) {
     const relatedText = getOpenTextDocumentForUri(relatedTab.uri)?.getText();
-    if (typeof targetText === 'string' && typeof relatedText === 'string' && relatedText === targetText) {
+    if (areAgentReviewTextsEquivalent(targetText, relatedText)) {
       continue;
     }
 
