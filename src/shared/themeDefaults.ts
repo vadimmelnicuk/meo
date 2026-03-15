@@ -22,6 +22,8 @@ export const defaultThemeLineHeight = 1.5;
 export type ThemeFonts = {
   liveFont: string;
   sourceFont: string;
+  liveFontWeight: string;
+  sourceFontWeight: string;
   liveFontSize: number | null;
   sourceFontSize: number | null;
   h1FontSize: number | null;
@@ -350,6 +352,8 @@ export const defaultThemeColors: ThemeColors = {
 export const defaultThemeFonts: ThemeFonts = {
   liveFont: '',
   sourceFont: '',
+  liveFontWeight: '',
+  sourceFontWeight: '',
   liveFontSize: null,
   sourceFontSize: null,
   h1FontSize: 1.6,
@@ -570,7 +574,11 @@ const sanitizeThemeFont = (value: unknown, fallback: string): string => {
   if (typeof value !== 'string') {
     return fallback;
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  return trimmed.replace(/[\n\r;{}]/g, ' ');
 };
 
 const sanitizeThemeOptionalPositiveNumber = (value: unknown, fallback: number | null): number | null => {
@@ -608,6 +616,8 @@ const sanitizeThemeLineHeight = (value: unknown, fallback: number): number => {
 const themeFontKeys = [
   'liveFont',
   'sourceFont',
+  'liveFontWeight',
+  'sourceFontWeight',
   'liveFontSize',
   'sourceFontSize',
   'h1FontSize',
@@ -625,6 +635,8 @@ const resolveThemeFonts = (raw?: unknown): ThemeFonts => {
   return {
     liveFont: sanitizeThemeFont(value.liveFont, defaultThemeFonts.liveFont),
     sourceFont: sanitizeThemeFont(value.sourceFont, defaultThemeFonts.sourceFont),
+    liveFontWeight: sanitizeThemeFont(value.liveFontWeight, defaultThemeFonts.liveFontWeight),
+    sourceFontWeight: sanitizeThemeFont(value.sourceFontWeight, defaultThemeFonts.sourceFontWeight),
     liveFontSize: sanitizeThemeOptionalPositiveNumber(value.liveFontSize, defaultThemeFonts.liveFontSize),
     sourceFontSize: sanitizeThemeOptionalPositiveNumber(value.sourceFontSize, defaultThemeFonts.sourceFontSize),
     h1FontSize: sanitizeThemeOptionalNumberInRange(value.h1FontSize, defaultThemeFonts.h1FontSize, 1, 3),
@@ -762,6 +774,12 @@ export const validateThemePayload = (value: unknown): ThemeValidationResult => {
     }
     if (typeof rawFonts.sourceFont !== 'string') {
       errors.push('Theme font "sourceFont" must be a string.');
+    }
+    if (rawFonts.liveFontWeight !== undefined && typeof rawFonts.liveFontWeight !== 'string') {
+      errors.push('Theme font "liveFontWeight" must be a string.');
+    }
+    if (rawFonts.sourceFontWeight !== undefined && typeof rawFonts.sourceFontWeight !== 'string') {
+      errors.push('Theme font "sourceFontWeight" must be a string.');
     }
     if (rawFonts.liveFontSize !== null && rawFonts.liveFontSize !== undefined
       && (typeof rawFonts.liveFontSize !== 'number' || !Number.isFinite(rawFonts.liveFontSize) || rawFonts.liveFontSize <= 0)) {

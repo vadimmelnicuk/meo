@@ -7,9 +7,12 @@ export interface ExportStyleEnvironment {
   sideBarBackgroundColor: string;
   panelBorderColor: string;
   editorFontFamily: string;
+  editorFontWeight: string;
   editorFontSizePx: number | undefined;
   liveFontFamily: string;
   sourceFontFamily: string;
+  liveFontWeight: string;
+  sourceFontWeight: string;
   liveLineHeight: number | undefined;
   sourceLineHeight: number | undefined;
   meoThemeColors: Record<string, string>;
@@ -34,6 +37,7 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
   const fontSizeRaw = editorFontSizeRaw || (editorStyles?.fontSize || bodyStyles.fontSize || '').trim();
   const parsedFontSize = Number.parseFloat(fontSizeRaw);
   const editorFontFamilyRaw = rootStyles.getPropertyValue('--vscode-editor-font-family').trim();
+  const editorFontWeightRaw = rootStyles.getPropertyValue('--vscode-editor-font-weight').trim();
   const lineHeightLiveRaw = rootStyles.getPropertyValue('--meo-line-height-live').trim();
   const lineHeightSourceRaw = rootStyles.getPropertyValue('--meo-line-height-source').trim();
   const parsedLiveLineHeight = Number.parseFloat(lineHeightLiveRaw);
@@ -53,9 +57,12 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
     sideBarBackgroundColor: colorVar('--vscode-sideBar-background', ''),
     panelBorderColor: colorVar('--vscode-panel-border', ''),
     editorFontFamily: editorFontFamilyRaw || (editorStyles?.fontFamily || bodyStyles.fontFamily || '').trim(),
+    editorFontWeight: editorFontWeightRaw || 'normal',
     editorFontSizePx: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
     liveFontFamily: colorVar('--meo-font-live', ''),
     sourceFontFamily: colorVar('--meo-font-source', ''),
+    liveFontWeight: colorVar('--meo-font-live-weight', ''),
+    sourceFontWeight: colorVar('--meo-font-source-weight', ''),
     liveLineHeight: Number.isFinite(parsedLiveLineHeight) ? parsedLiveLineHeight : undefined,
     sourceLineHeight: Number.isFinite(parsedSourceLineHeight) ? parsedSourceLineHeight : undefined,
     meoThemeColors

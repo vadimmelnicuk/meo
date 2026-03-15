@@ -1,8 +1,11 @@
 import { defaultThemeColors, defaultThemeFonts, type ThemeColorKey, type ThemeColors, type ThemeSettings } from '../shared/themeDefaults';
 
+const styleValueInjectionPattern = /[\n\r;{}]/g;
+
 export type ExportStyleEnvironment = {
   editorFontFamily?: string;
   editorFontSizePx?: number;
+  editorFontWeight?: string;
   editorBackgroundColor?: string;
   editorForegroundColor?: string;
   codeBlockBackgroundColor?: string;
@@ -10,6 +13,8 @@ export type ExportStyleEnvironment = {
   panelBorderColor?: string;
   liveFontFamily?: string;
   sourceFontFamily?: string;
+  liveFontWeight?: string;
+  sourceFontWeight?: string;
   liveLineHeight?: number;
   sourceLineHeight?: number;
   meoThemeColors?: Partial<Record<ThemeColorKey, string>>;
@@ -19,13 +24,36 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   const colors = resolveThemeColors(theme, environment);
   const fonts = theme.fonts ?? defaultThemeFonts;
   const editorFontFamily = sanitizeCssFont(environment.editorFontFamily ?? '');
+  const editorFontWeight = sanitizeFontWeight(environment.editorFontWeight, 'normal');
   const editorBackgroundColor = sanitizeCssColor(environment.editorBackgroundColor ?? '') || colors.base03;
   const editorForegroundColor = sanitizeCssColor(environment.editorForegroundColor ?? '') || colors.base02;
   const codeBlockBackgroundColor = sanitizeCssColor(environment.codeBlockBackgroundColor ?? '') || editorBackgroundColor;
   const sideBarBackgroundColor = sanitizeCssColor(environment.sideBarBackgroundColor ?? '') || editorBackgroundColor;
   const panelBorderColor = sanitizeCssColor(environment.panelBorderColor ?? '') || colors.base03;
-  const liveFont = sanitizeCssFont(environment.liveFontFamily ?? '') || sanitizeCssFont(fonts.liveFont) || editorFontFamily || 'var(--meo-font-system-sans)';
-  const sourceFont = sanitizeCssFont(environment.sourceFontFamily ?? '') || sanitizeCssFont(fonts.sourceFont) || editorFontFamily || 'var(--meo-font-system-mono)';
+  const liveFont = resolveThemeFontChoice(
+    sanitizeCssFont(environment.liveFontFamily ?? ''),
+    sanitizeCssFont(fonts.liveFont),
+    editorFontFamily,
+    'var(--meo-font-system-sans)'
+  );
+  const sourceFont = resolveThemeFontChoice(
+    sanitizeCssFont(environment.sourceFontFamily ?? ''),
+    sanitizeCssFont(fonts.sourceFont),
+    editorFontFamily,
+    'var(--meo-font-system-mono)'
+  );
+  const liveFontWeight = resolveThemeFontChoice(
+    sanitizeFontWeight(environment.liveFontWeight, editorFontWeight),
+    sanitizeFontWeight(fonts.liveFontWeight, editorFontWeight),
+    editorFontWeight,
+    'normal'
+  );
+  const sourceFontWeight = resolveThemeFontChoice(
+    sanitizeFontWeight(environment.sourceFontWeight, editorFontWeight),
+    sanitizeFontWeight(fonts.sourceFontWeight, editorFontWeight),
+    editorFontWeight,
+    'normal'
+  );
   const editorFontSizePx = clampFontSize(environment.editorFontSizePx);
   const liveFontSizePx = resolveThemeFontSizePx(fonts.liveFontSize, editorFontSizePx);
   const sourceFontSizePx = resolveThemeFontSizePx(fonts.sourceFontSize, editorFontSizePx);
@@ -60,6 +88,8 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-quote: ${colors.base07};
   --meo-font-body: ${liveFont};
   --meo-font-code: ${sourceFont};
+  --meo-font-weight-body: ${liveFontWeight};
+  --meo-font-weight-code: ${sourceFontWeight};
   --meo-font-size-body: ${liveFontSizePx}px;
   --meo-font-size-code: ${sourceFontSizePx}px;
   --meo-heading-1-size: ${h1FontSize};
@@ -93,6 +123,7 @@ body {
   background: var(--meo-bg);
   color: var(--meo-fg);
   font-family: var(--meo-font-body);
+  font-weight: var(--meo-font-weight-body);
   font-size: var(--meo-font-size-body);
   line-height: var(--meo-line-height);
 }
@@ -178,6 +209,7 @@ body[data-meo-export-target='pdf'] hr {
   margin: 0 0 1em;
   color: var(--meo-base07);
   font-family: var(--meo-font-code);
+  font-weight: var(--meo-font-weight-code);
   font-size: var(--meo-font-size-code);
 }
 
@@ -373,6 +405,7 @@ strong { color: var(--meo-strong); }
 em { font-style: italic; }
 code {
   font-family: var(--meo-font-code);
+  font-weight: var(--meo-font-weight-code);
   font-size: var(--meo-font-size-code);
   line-height: var(--meo-code-line-height);
   font-variant-ligatures: none;
@@ -766,7 +799,27 @@ function sanitizeCssFont(value: string): string {
   if (!trimmed) {
     return '';
   }
-  return trimmed.replace(/[\n\r;{}]/g, ' ');
+  return trimmed.replace(styleValueInjectionPattern, ' ');
+}
+
+function sanitizeFontWeight(value: string, fallback: string): string {
+  const trimmed = sanitizeCssFont(value);
+  if (!trimmed) {
+    return fallback;
+  }
+  if (/^var\(\s*--vscode-editor-font-weight\s*\)$/i.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
+}
+
+function resolveThemeFontChoice(
+  explicitValue: string,
+  themeValue: string,
+  fallback: string,
+  fallbackDefault: string
+): string {
+  return explicitValue || themeValue || fallback || fallbackDefault;
 }
 
 function sanitizeCssColor(value: string): string {
@@ -774,7 +827,7 @@ function sanitizeCssColor(value: string): string {
   if (!trimmed) {
     return '';
   }
-  return trimmed.replace(/[\n\r;{}]/g, ' ');
+  return trimmed.replace(styleValueInjectionPattern, ' ');
 }
 
 function clampLineHeight(value: number): number {

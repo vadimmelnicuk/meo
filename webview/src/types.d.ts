@@ -54,6 +54,8 @@ interface ThemeSettings {
   fonts: {
     liveFont?: string;
     sourceFont?: string;
+    liveFontWeight?: string;
+    sourceFontWeight?: string;
     liveFontSize?: number | null;
     sourceFontSize?: number | null;
     h1FontSize?: number | null;

@@ -7,6 +7,14 @@ import {
 
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
 const vscodeEditorFontSize = 'var(--vscode-editor-font-size, 13px)';
+const styleValueInjectionPattern = /[\n\r;{}]/g;
+
+const resolveEditorFontWeight = (): string => {
+  const rawEditorFontWeight = getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-font-weight').trim();
+  return rawEditorFontWeight || 'normal';
+};
+
+const sanitizeThemeFontStyle = (value: string): string => `${value ?? ''}`.trim().replace(styleValueInjectionPattern, ' ');
 
 const normalizeThemeLineHeight = (value: number | undefined, fallback: number): number => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -35,6 +43,7 @@ const normalizeThemeHeadingSize = (value: number | undefined, fallback: string, 
 
 export const applyThemeSettings = (theme?: ThemeSettings): void => {
   let resolvedTheme: ThemeSettings;
+  const editorFontWeight = resolveEditorFontWeight();
   try {
     resolvedTheme = resolveTheme(theme);
   } catch (error) {
@@ -53,8 +62,10 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
     rootStyle.setProperty(`--meo-token-${spec.id}-color`, tokenColor);
   }
 
-  const liveFont = resolvedTheme.fonts.liveFont.trim();
-  const sourceFont = resolvedTheme.fonts.sourceFont.trim();
+  const liveFont = sanitizeThemeFontStyle(resolvedTheme.fonts.liveFont);
+  const sourceFont = sanitizeThemeFontStyle(resolvedTheme.fonts.sourceFont);
+  const liveFontWeight = sanitizeThemeFontStyle(resolvedTheme.fonts.liveFontWeight);
+  const sourceFontWeight = sanitizeThemeFontStyle(resolvedTheme.fonts.sourceFontWeight);
   const liveFontSize = normalizeThemeFontSize(resolvedTheme.fonts.liveFontSize);
   const sourceFontSize = normalizeThemeFontSize(resolvedTheme.fonts.sourceFontSize);
   const h1FontSize = normalizeThemeHeadingSize(resolvedTheme.fonts.h1FontSize, '1.6em', 'em');
@@ -67,6 +78,8 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
   const sourceLineHeight = normalizeThemeLineHeight(resolvedTheme.fonts.sourceLineHeight, 1.5);
   rootStyle.setProperty('--meo-font-live', liveFont || vscodeEditorFontFamily);
   rootStyle.setProperty('--meo-font-source', sourceFont || vscodeEditorFontFamily);
+  rootStyle.setProperty('--meo-font-live-weight', liveFontWeight || editorFontWeight);
+  rootStyle.setProperty('--meo-font-source-weight', sourceFontWeight || editorFontWeight);
   rootStyle.setProperty('--meo-font-live-size', liveFontSize || vscodeEditorFontSize);
   rootStyle.setProperty('--meo-font-source-size', sourceFontSize || vscodeEditorFontSize);
   rootStyle.setProperty('--meo-heading-1-size', h1FontSize);

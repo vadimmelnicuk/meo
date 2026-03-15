@@ -14,6 +14,7 @@ export type ExportRuntimeBuildHtmlOptions = {
   styleEnvironment?: ExportStyleEnvironment;
   editorFontEnvironment?: {
     editorFontFamily?: string;
+    editorFontWeight?: string;
     editorFontSizePx?: number;
   };
   mermaidRuntimeSrc: string;

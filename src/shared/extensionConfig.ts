@@ -86,12 +86,14 @@ export function getExportPdfBrowserPath(): string | undefined {
   return trimmed || undefined;
 }
 
-export function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFontSizePx?: number } {
+export function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFontWeight?: string; editorFontSizePx?: number } {
   const editorConfig = vscode.workspace.getConfiguration('editor');
   const fontFamily = `${editorConfig.get<string>('fontFamily', '') ?? ''}`.trim() || undefined;
+  const editorFontWeight = `${editorConfig.get<string>('fontWeight', 'normal') ?? 'normal'}`.trim() || 'normal';
   const fontSize = editorConfig.get<number>('fontSize');
   return {
     editorFontFamily: fontFamily,
+    editorFontWeight: editorFontWeight,
     editorFontSizePx: typeof fontSize === 'number' && Number.isFinite(fontSize) ? fontSize : undefined
   };
 }

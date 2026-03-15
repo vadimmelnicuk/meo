@@ -95,6 +95,7 @@ type ExportRuntimeModule = {
     styleEnvironment?: ExportStyleEnvironment;
     editorFontEnvironment?: {
       editorFontFamily?: string;
+      editorFontWeight?: string;
       editorFontSizePx?: number;
     };
     mermaidRuntimeSrc: string;
@@ -192,14 +193,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (isLikelyAgentReviewUri(event.document.uri)) {
         agentReviewOverrides.scheduleSync();
+        if (!agentReviewHandoff.shouldReevaluateDeferredReopen(event.document.uri, true)) {
+          return;
+        }
+        agentReviewHandoff.scheduleFlushDeferredReopens();
       }
-      if (!agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(event.document.uri)) {
-        void provider.redirectOpenEditorsForCopilotReview(event.document.uri);
-      }
-      if (!agentReviewHandoff.shouldReevaluateDeferredReopen(event.document.uri, isLikelyAgentReviewUri(event.document.uri))) {
-        return;
-      }
-      agentReviewHandoff.scheduleFlushDeferredReopens();
     })
   );
 
@@ -565,7 +563,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     if (await this.redirectGitResourceToNativeEditor(document, panel)) {
       return;
-      return;
     }
 
     this.activePanels.add(panel);
@@ -814,7 +811,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         existingDiff.title,
         [viewColumn, editorOptions]
       );
-      panel.dispose();
       return true;
     }
 
@@ -830,7 +826,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         title,
         [viewColumn, editorOptions]
       );
-      panel.dispose();
       return true;
     }
 
@@ -853,7 +848,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         preview: true
       }
     );
-    panel.dispose();
   }
 
   private getWebviewHtml(webview: vscode.Webview): string {

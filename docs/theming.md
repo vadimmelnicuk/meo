@@ -57,7 +57,7 @@ Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and
 
 ## syntaxTokens
 
-Each key in `syntaxTokens` maps to a syntax category.
+Each key in `syntaxTokens` maps to a syntax category. Color values must use `#hex`, `rgb()/rgba()`, `hsl()/hsla()`, or `var(--...)`.
 
 **Code Syntax Highlighting:**
 - `keyword`: Language keywords like `if`, `return`, `class`, `import`.
@@ -114,25 +114,19 @@ Each key in `syntaxTokens` maps to a syntax category.
 
 - `liveFont`: Font family for rendered markdown text.
 - `sourceFont`: Font family for source/code text (also used for inline code and code blocks in Live mode).
+- `liveFontWeight`: Font weight for live mode text. Free-form CSS font-weight values (for example `normal`, `bold`, `500`, `600`).
+- `sourceFontWeight`: Font weight for source mode text (and monospaced token rendering in both export and Live mode code areas).
 - `liveFontSize`: Live mode font size (`null` = use VS Code editor font size).
 - `sourceFontSize`: Source mode font size (`null` = use VS Code editor font size).
 - `h1FontSize` to `h6FontSize`: Optional heading size overrides (`null` = use defaults). Heading font sizes are in `em` units and must be between `1` and `3` when provided.
 - `liveLineHeight` and `sourceLineHeight`: Line-height for each mode (must be between `1` and `3`).
-- Empty `liveFont`/`sourceFont` strings fall back to the VS Code editor font family.
-
-## Validation Rules
-
-- Color values must use `#hex`, `rgb()/rgba()`, `hsl()/hsla()`, or `var(--...)`.
-- `liveFontSize` and `sourceFontSize` must be `null` or a positive number.
-- `h1FontSize` to `h6FontSize` must be `null` or a number between `1` and `3`.
-- `liveLineHeight` and `sourceLineHeight` must be between `1` and `3`.
-- Unknown keys in `colors`, `syntaxTokens`, or `fonts` are rejected on import.
 
 ## Defaults and Fallbacks
 
+- Empty syntax token color (`""`) falls back to that token's palette-derived default.
 - Empty `fonts.liveFont` or `fonts.sourceFont` falls back to VS Code editor font family.
 - `fonts.liveFontSize: null` and `fonts.sourceFontSize: null` fall back to VS Code editor font size.
+- Empty `fonts.liveFontWeight` or `fonts.sourceFontWeight` falls back to VS Code editor font weight.
 - `fonts.h1FontSize` to `fonts.h6FontSize` default to `1.6`, `1.5`, `1.3`, `1.2`, `1.1`, and `1` respectively (and `null` falls back to those defaults).
 - In Live mode, inline code and code blocks use `fonts.sourceFont` (not `fonts.liveFont`).
 - Export is mode-independent: body text uses `liveFontSize`, and code/monospace text uses `sourceFontSize`.
-- Empty syntax token color (`""`) falls back to that token's palette-derived default.

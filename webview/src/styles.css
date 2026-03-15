@@ -5,6 +5,8 @@
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent 50%);
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
+  --meo-font-live-weight: var(--vscode-editor-font-weight);
+  --meo-font-source-weight: var(--vscode-editor-font-weight);
   --meo-font-live-size: var(--vscode-editor-font-size, 13px);
   --meo-font-source-size: var(--vscode-editor-font-size, 13px);
   --meo-heading-1-size: 1.6em;
@@ -14,6 +16,7 @@
   --meo-heading-5-size: 1.1em;
   --meo-heading-6-size: 1em;
   --meo-active-editor-font: var(--vscode-editor-font-family);
+  --meo-active-editor-font-weight: var(--vscode-editor-font-weight);
   --meo-active-editor-font-size: var(--vscode-editor-font-size, 13px);
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
@@ -545,6 +548,7 @@ body {
 
 .cm-editor {
   font-family: var(--meo-active-editor-font);
+  font-weight: var(--meo-active-editor-font-weight);
   font-size: var(--meo-active-editor-font-size);
   min-width: 0;
   position: relative;
@@ -552,12 +556,14 @@ body {
 
 .cm-editor.meo-mode-live {
   --meo-active-editor-font: var(--meo-font-live);
+  --meo-active-editor-font-weight: var(--meo-font-live-weight);
   --meo-active-editor-font-size: var(--meo-font-live-size);
   --meo-active-editor-line-height: var(--meo-line-height-live);
 }
 
 .cm-editor.meo-mode-source {
   --meo-active-editor-font: var(--meo-font-source);
+  --meo-active-editor-font-weight: var(--meo-font-source-weight);
   --meo-active-editor-font-size: var(--meo-font-source-size);
   --meo-active-editor-line-height: var(--meo-line-height-source);
 }
@@ -1144,6 +1150,7 @@ body {
 .cm-editor.meo-mode-live .meo-md-inline-code,
 .cm-editor.meo-mode-live .meo-md-inline-code * {
   font-family: var(--meo-font-source);
+  font-weight: var(--meo-font-source-weight);
 }
 
 .cm-editor .meo-md-inline-code,
@@ -1246,6 +1253,7 @@ body {
 .cm-editor.meo-mode-live .cm-line.meo-md-code-block,
 .cm-editor.meo-mode-live .cm-line.meo-md-code-block * {
   font-family: var(--meo-font-source);
+  font-weight: var(--meo-font-source-weight);
 }
 
 .cm-editor .meo-md-code-block {
@@ -1490,6 +1498,7 @@ body {
 .cm-editor .meo-mermaid-fallback code {
   font-family: var(--meo-font-source);
   font-size: var(--meo-active-editor-font-size);
+  font-weight: var(--meo-font-source-weight);
 }
 
 .cm-editor .meo-mermaid-error-badge {
