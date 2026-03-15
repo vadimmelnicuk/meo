@@ -1930,7 +1930,7 @@ body {
 .cm-editor .meo-merge-action-btn {
   appearance: none;
   border: 1px solid var(--vscode-button-border, transparent);
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  background-color: var(--meo-color-base03, var(--vscode-button-secondaryBackground, var(--vscode-button-background))) !important;
   color: var(--vscode-editor-foreground);
   border-radius: 4px;
   padding: 2px 8px;
@@ -1943,8 +1943,12 @@ body {
 
 .cm-editor .meo-merge-action-btn:hover,
 .cm-editor .meo-merge-action-btn:focus-visible {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+  background-color: color-mix(in srgb, var(--meo-color-base03) 92%, black) !important;
   outline: none;
+}
+
+.cm-editor .meo-merge-action-btn:active {
+  background-color: color-mix(in srgb, var(--meo-color-base03) 88%, black) !important;
 }
 
 .cm-editor .meo-merge-action-labels {

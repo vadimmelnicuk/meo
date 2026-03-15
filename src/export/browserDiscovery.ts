@@ -16,7 +16,7 @@ export async function findPdfBrowserExecutablePath(configuredPath?: string): Pro
   }
 
   throw new Error(
-    'No supported Chrome/Edge executable was found. Install Chrome/Edge or set markdownEditorOptimized.export.pdf.browserPath.'
+    'No supported Chrome/Edge executable was found. Install Chrome/Edge or set markdownEditorOptimized.export.browserPath.'
   );
 }
 

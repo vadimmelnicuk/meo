@@ -22,7 +22,7 @@ An optimized markdown editor with live editing mode for VS Code.
 
 ### Git and Agents Integration
 
-- **Change visualisations** - See insertions and modifications inline
+- **Change visualisations** - See insertions, modifications, and merge conflicts inline
 - **Git blame** - View commit information for any line directly in the editor
 - **GitHub syntax** - Renders GitHub-specific markdown including collapsible details, footnotes, alerts, kbd, and emojis
 - **GitHub Copilot** - Support of native changes review experience

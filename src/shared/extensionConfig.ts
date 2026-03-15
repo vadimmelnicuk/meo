@@ -81,9 +81,24 @@ export function getOutlineVisible(context: vscode.ExtensionContext): boolean {
 }
 
 export function getExportPdfBrowserPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<string>('export.pdf.browserPath', '');
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  const settingKey = 'export.browserPath';
+
+  if (hasExplicitConfigurationValue<string>(config, settingKey)) {
+    const configured = config.get<string>(settingKey, '');
+    const trimmed = `${configured ?? ''}`.trim();
+    return trimmed || undefined;
+  }
+
+  const configured = config.get<string>(settingKey, '');
   const trimmed = `${configured ?? ''}`.trim();
-  return trimmed || undefined;
+  if (trimmed) {
+    return trimmed;
+  }
+
+  const legacyConfigured = config.get<string>('export.pdf.browserPath', '');
+  const legacyTrimmed = `${legacyConfigured ?? ''}`.trim();
+  return legacyTrimmed || undefined;
 }
 
 export function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFontWeight?: string; editorFontSizePx?: number } {
