@@ -40,8 +40,6 @@ An optimized markdown editor with live editing mode for VS Code.
 2. Set as default: `Cmd/Ctrl + Shift + P` → **Markdown Editor Optimized: Set as Default**
 3. Toggle between Live/Source modes: `Option/Alt + Shift + M`
 
-## [Changelog](CHANGELOG)
-
 ## Acknowledgements
 
 - [VS Code](https://code.visualstudio.com/) - Extension platform
@@ -51,6 +49,10 @@ An optimized markdown editor with live editing mode for VS Code.
 ## Feedback & Contributions
 
 For any issues, suggestions, or feature requests, please [open a ticket](https://github.com/vadimmelnicuk/meo/issues).
+
+## Changelog
+
+Please refer to [CHANGELOG.md](CHANGELOG.md) for details about ongoing changes.
 
 ## License
 
