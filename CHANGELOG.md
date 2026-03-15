@@ -1,5 +1,14 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.19
+- Added support for customizable font weights in theme settings
+- Fixed URL boundary decorations
+- Fixed agent review handling
+- Fixed min-width for hidden line numbers
+- Updated configuration for browser path handling
+- Updated demo image URL for proper rendering outside of GitHub
+- Removed git decorations from no git paths and files in .gitignore
+
 ## 0.1.18
 - Implemented Theming v2
   - Built-in themes
