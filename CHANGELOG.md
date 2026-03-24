@@ -1,5 +1,17 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.20
+- Added export image mode configuration for HTML export
+- Added font weight configuration for headings in theming
+- Added ready handshake mechanism for webview
+- Removed auto-save feature and related configurations
+- Enhanced VSCode API compatibility with fallback state management
+- Enhanced copilot handoff
+- Updated anchor coordinates for improved selection handling
+- Updated global configuration
+- Fixed base01 theming issue
+- Fixed padding for mode-toolbar when line numbers are hidden
+
 ## 0.1.19
 - Added support for customizable font weights in theme settings
 - Fixed URL boundary decorations
