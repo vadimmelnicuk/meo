@@ -373,8 +373,15 @@ export function createEditor({
     if (!view) {
       return;
     }
+    const isLiveModeActive = currentMode === 'live';
     view.dom.classList.toggle('meo-mode-live', currentMode === 'live');
     view.dom.classList.toggle('meo-mode-source', currentMode !== 'live');
+    // Keep active typography vars explicitly synced to mode so source/live
+    // font sizing and line-height don't depend on selector cascade.
+    view.dom.style.setProperty('--meo-active-editor-font', isLiveModeActive ? 'var(--meo-font-live)' : 'var(--meo-font-source)');
+    view.dom.style.setProperty('--meo-active-editor-font-weight', isLiveModeActive ? 'var(--meo-font-live-weight)' : 'var(--meo-font-source-weight)');
+    view.dom.style.setProperty('--meo-active-editor-font-size', isLiveModeActive ? 'var(--meo-font-live-size)' : 'var(--meo-font-source-size)');
+    view.dom.style.setProperty('--meo-active-editor-line-height', isLiveModeActive ? 'var(--meo-line-height-live)' : 'var(--meo-line-height-source)');
     if (currentMode !== 'source') {
       setSourceLinkHoverCursor(view, false);
     }

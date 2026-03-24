@@ -568,6 +568,40 @@ const scheduleEditorBundleWarmupAfterReady = () => {
   window.addEventListener('load', warm, { once: true });
 };
 
+const READY_RETRY_DELAYS_MS = [120, 300, 700, 1300] as const;
+let readyHandshakeAcknowledged = false;
+const readyRetryTimers = new Set<number>();
+
+const clearReadyRetryTimers = () => {
+  for (const timer of readyRetryTimers) {
+    window.clearTimeout(timer);
+  }
+  readyRetryTimers.clear();
+};
+
+const postReadyMessage = () => {
+  if (readyHandshakeAcknowledged) {
+    return;
+  }
+  vscode.postMessage({ type: 'ready' });
+};
+
+const scheduleReadyHandshake = () => {
+  postReadyMessage();
+  for (const delayMs of READY_RETRY_DELAYS_MS) {
+    const timer = window.setTimeout(() => {
+      readyRetryTimers.delete(timer);
+      postReadyMessage();
+    }, delayMs);
+    readyRetryTimers.add(timer);
+  }
+};
+
+const acknowledgeReadyHandshake = () => {
+  readyHandshakeAcknowledged = true;
+  clearReadyRetryTimers();
+};
+
 type WebviewUiState = {
   mode?: 'live' | 'source';
 };
@@ -1072,6 +1106,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (message.type === 'init') {
+    acknowledgeReadyHandshake();
     withMessageErrorBoundary('init handler', () => {
       applyThemeSettings(message.theme);
       initialMountRecoveryAttempted = false;
@@ -1337,6 +1372,7 @@ const forceFlushChanges = () => {
 };
 
 window.addEventListener('beforeunload', () => {
+  clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();
   clearGitBlameCache({ hideTooltip: false });
@@ -1503,5 +1539,5 @@ gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
 
 persistModeState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });
-vscode.postMessage({ type: 'ready' });
+scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();

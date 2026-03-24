@@ -589,7 +589,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       enableScripts: true,
       localResourceRoots: collectLocalResourceRoots(distRoot, documentUri)
     };
-    panel.webview.html = this.getWebviewHtml(panel.webview);
 
     const controller = createPanelSessionController({
       panel,
@@ -617,6 +616,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
+    panel.webview.html = this.getWebviewHtml(panel.webview);
     this.panelSessions.set(panel, controller.session);
     if (panel.active) {
       this.lastActivePanel = panel;
