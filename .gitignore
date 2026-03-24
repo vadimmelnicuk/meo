@@ -8,6 +8,7 @@ bun.lockb
 *.vsix
 releases/
 tests/
+assets/
 .claude/
 AGENTS.md
 features.md

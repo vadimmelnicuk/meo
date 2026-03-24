@@ -725,12 +725,16 @@ export function createEditor({
       return;
     }
 
+    const fromCharCoords = view.coordsForChar(from);
+    const anchorX = fromCharCoords?.left ?? fromCoords.left;
+    const anchorY = fromCharCoords ? Math.min(fromCoords.top, fromCharCoords.top) : fromCoords.top;
+
     onSelectionChange({
       visible: true,
       from,
       to,
-      anchorX: fromCoords.left,
-      anchorY: fromCoords.top
+      anchorX,
+      anchorY
     });
   };
 
