@@ -246,7 +246,7 @@ export class AgentReviewHandoffController {
     return remainingMs;
   }
 
-  private hasOpenNativeTextTabForUri(targetUri: vscode.Uri): boolean {
+  hasOpenNativeTextTabForUri(targetUri: vscode.Uri): boolean {
     return this.findOpenNativeTextTabsForUri(targetUri).length > 0;
   }
 

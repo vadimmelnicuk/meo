@@ -181,12 +181,21 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       agentReviewOverrides.scheduleSync(AGENT_REVIEW_FILE_OVERRIDE_CLEANUP_DELAY_MS);
-      agentReviewHandoff.scheduleFlushDeferredReopens(AGENT_REVIEW_REOPEN_ON_CLOSE_DELAY_MS);
       const targetUri = getComparableFileUri(document.uri, getComparableResourceKey);
       if (targetUri) {
+        const targetPath = (targetUri.path || targetUri.fsPath || '').toLowerCase();
+        if (isMarkdownDocumentPath(targetPath)) {
+          const openTargetDocument = getOpenTextDocumentForUri(targetUri);
+          const reviewApplied = areAgentReviewTextsEquivalent(document.getText(), openTargetDocument?.getText());
+          if (reviewApplied && agentReviewHandoff.hasOpenNativeTextTabForUri(targetUri)) {
+            agentReviewHandoff.scheduleDeferredReopen(targetUri);
+          }
+        }
+
         agentReviewHandoff.notePendingMEOtabDedup(targetUri);
         agentReviewHandoff.scheduleMEOtabDedup(targetUri, AGENT_REVIEW_POST_REOPEN_DEDUP_DELAY_MS);
       }
+      agentReviewHandoff.scheduleFlushDeferredReopens(AGENT_REVIEW_REOPEN_ON_CLOSE_DELAY_MS);
     })
   );
 

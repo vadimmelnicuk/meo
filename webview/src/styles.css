@@ -18,6 +18,7 @@
   --meo-active-editor-font: var(--vscode-editor-font-family);
   --meo-active-editor-font-weight: var(--vscode-editor-font-weight);
   --meo-active-editor-font-size: var(--vscode-editor-font-size, 13px);
+  --meo-foreground: var(--meo-color-base01, var(--vscode-editor-foreground));
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
@@ -554,6 +555,7 @@ body {
   font-family: var(--meo-active-editor-font);
   font-weight: var(--meo-active-editor-font-weight);
   font-size: var(--meo-active-editor-font-size);
+  color: var(--meo-foreground);
   min-width: 0;
   position: relative;
 }
@@ -576,6 +578,7 @@ body {
 .cm-editor .cm-content,
 .cm-editor .cm-line {
   font-family: var(--meo-active-editor-font);
+  color: var(--meo-foreground);
   min-width: 0;
   min-height: 1.2em;
 }
@@ -759,7 +762,7 @@ body {
 
 .cm-editor .meo-md-details-summary:hover,
 .cm-editor .meo-md-details-summary:focus-visible {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   outline: none;
 }
 
@@ -946,8 +949,8 @@ body {
 }
 
 .cm-editor .meo-md-url-boundary {
-  color: var(--vscode-editor-foreground) !important;
-  -webkit-text-fill-color: var(--vscode-editor-foreground) !important;
+  color: var(--meo-foreground) !important;
+  -webkit-text-fill-color: var(--meo-foreground) !important;
   text-decoration: none;
   text-decoration-color: transparent !important;
 }
@@ -1005,12 +1008,12 @@ body {
 .cm-editor .meo-md-footnote-ref:focus-visible,
 .cm-editor .meo-md-footnote-backref:hover,
 .cm-editor .meo-md-footnote-backref:focus-visible {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   outline: none;
 }
 
 .cm-editor .cm-line.meo-md-footnote-line {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
 }
 
 .cm-editor .cm-line.meo-md-footnote-continuation {
@@ -1056,7 +1059,7 @@ body {
 }
 
 .cm-editor .meo-md-link-clear-btn:hover {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
 }
 
 .cm-editor .meo-md-wiki-missing-icon {
@@ -1181,7 +1184,7 @@ body {
   background: var(--vscode-sideBar-background);
   /* Keep fill out of the border area so the bottom edge stays crisp. */
   background-clip: padding-box;
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   font-size: 0.84em;
   font-weight: 600;
   line-height: 1.2;
@@ -1349,7 +1352,7 @@ body {
 }
 
 .cm-editor .meo-task-checkbox:hover {
-  border: 1px solid var(--vscode-editor-foreground);
+  border: 1px solid var(--meo-foreground);
 }
 
 .cm-editor .meo-task-checkbox:checked::after {
@@ -1359,7 +1362,7 @@ body {
   top: 2px;
   width: 4px;
   height: 7px;
-  border: solid var(--vscode-editor-foreground);
+  border: solid var(--meo-foreground);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -1904,7 +1907,7 @@ body {
 .cm-editor .cm-line.meo-merge-current,
 .cm-editor .cm-line.meo-merge-base,
 .cm-editor .cm-line.meo-merge-incoming {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
 }
 
 .cm-editor .cm-line.meo-merge-current-header,
@@ -2080,7 +2083,7 @@ body {
   box-sizing: border-box;
   min-height: 1lh;
   padding: 0.25em 0.5em;
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -2111,7 +2114,7 @@ body {
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   font: inherit;
   font-weight: inherit;
   font-style: inherit;
@@ -2285,7 +2288,7 @@ body {
 .cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell *,
 .cm-editor.meo-mode-source .meo-md-source-table-header-cell,
 .cm-editor.meo-mode-source .meo-md-source-table-header-cell * {
-  color: var(--vscode-editor-foreground) !important;
+  color: var(--meo-foreground) !important;
 }
 
 .cm-editor.meo-mode-live .meo-md-table-line .meo-md-marker-active,
@@ -2332,7 +2335,7 @@ body {
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-value,
 .cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-value {
-  color: var(--vscode-editor-foreground) !important;
+  color: var(--meo-foreground) !important;
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content .meo-md-frontmatter-array-pills {
@@ -2350,7 +2353,7 @@ body {
   padding: 0 6px;
   border-radius: 999px;
   background: var(--meo-color-base03);
-  color: var(--vscode-editor-foreground) !important;
+  color: var(--meo-foreground) !important;
   font-size: 0.92em;
   line-height: 1.1;
   white-space: nowrap;
