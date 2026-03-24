@@ -707,6 +707,8 @@ export function addTopLinePillLabel(builder: any[], lineEnd: number, labelText: 
 }
 
 const quotedFenceOpeningLineRegex = /^[ \t]{0,3}(?:>[ \t]?)*[ \t]{0,3}(?:`{3,}|~{3,})/;
+const fenceLineRegex = /^[ \t]*[`~]{3,}.*$/;
+const quotedFencePrefixRegex = /^[ \t]{0,3}((?:>[ \t]?)*)[ \t]{0,3}(?:`{3,}|~{3,})/;
 
 export function addFenceOpeningLineMarker(builder: any[], state: EditorState, from: number, activeLines: Set<number>, addRange: Function, activeLineMarkerDeco: any, fenceMarkerDeco: any): void {
   const line = state.doc.lineAt(from);
@@ -797,15 +799,15 @@ export function addMermaidDiagramBlock(
 export function addCopyCodeButton(builder: any[], state: EditorState, from: number, to: number): void {
   const startLine = state.doc.lineAt(from);
   const endLine = state.doc.lineAt(Math.max(to - 1, from));
+  const quoteDepth = getQuotedFenceDepth(startLine.text);
 
   const codeLines: string[] = [];
   for (let lineNum = startLine.number + 1; lineNum <= endLine.number; lineNum += 1) {
     const line = state.doc.line(lineNum);
-    const lineText = line.text;
+    const lineText = stripLeadingQuotePrefix(line.text, quoteDepth);
 
     if (lineNum === endLine.number) {
-      const fenceMatch = /^[ \t]*[`~]{3,}.*$/.exec(lineText);
-      if (fenceMatch) {
+      if (fenceLineRegex.test(lineText)) {
         continue;
       }
     }
@@ -819,4 +821,25 @@ export function addCopyCodeButton(builder: any[], state: EditorState, from: numb
   }
 
   addTopLineCopyButton(builder, startLine.to, codeContent);
+}
+
+function getQuotedFenceDepth(lineText: string): number {
+  const match = quotedFencePrefixRegex.exec(lineText);
+  if (!match) {
+    return 0;
+  }
+  return (match[1].match(/>/g) ?? []).length;
+}
+
+function stripLeadingQuotePrefix(lineText: string, quoteDepth: number): string {
+  if (quoteDepth <= 0) {
+    return lineText;
+  }
+
+  const prefixRe = new RegExp(`^[ \\t]{0,3}(?:>[ \\t]?){${quoteDepth}}`);
+  const match = prefixRe.exec(lineText);
+  if (!match) {
+    return lineText;
+  }
+  return lineText.slice(match[0].length);
 }

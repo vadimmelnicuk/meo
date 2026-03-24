@@ -1,8 +1,8 @@
 declare function acquireVsCodeApi(): VsCodeWebviewApi;
 
 interface VsCodeWebviewApi {
-  getState(): unknown;
-  setState(state: unknown): void;
+  getState?(): unknown;
+  setState?(state: unknown): void;
   postMessage(message: WebviewMessage): void;
 }
 

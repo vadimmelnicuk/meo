@@ -14,7 +14,53 @@ import { createExportHandler, type ExportHandlerContext } from './helpers/export
 
 type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 
-const vscode = acquireVsCodeApi();
+type CompatibleVsCodeWebviewApi = {
+  postMessage: (message: WebviewMessage) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
+};
+
+function createCompatibleVsCodeApi(): CompatibleVsCodeWebviewApi {
+  const hostApi = acquireVsCodeApi();
+  let fallbackState: unknown;
+
+  const getState = (): unknown => {
+    if (typeof hostApi.getState !== 'function') {
+      return fallbackState;
+    }
+
+    try {
+      const hostState = hostApi.getState();
+      if (hostState !== undefined) {
+        fallbackState = hostState;
+      }
+      return hostState;
+    } catch {
+      return fallbackState;
+    }
+  };
+
+  const setState = (state: unknown): void => {
+    fallbackState = state;
+    if (typeof hostApi.setState !== 'function') {
+      return;
+    }
+
+    try {
+      hostApi.setState(state);
+    } catch {
+      // Keep session-local fallback state when host persistence is unavailable.
+    }
+  };
+
+  return {
+    postMessage: (message: WebviewMessage) => hostApi.postMessage(message),
+    getState,
+    setState
+  };
+}
+
+const vscode = createCompatibleVsCodeApi();
 initializeImageHandling(vscode);
 initializeWikiLinkHandling(vscode);
 initializeLocalLinkHandling(vscode);
