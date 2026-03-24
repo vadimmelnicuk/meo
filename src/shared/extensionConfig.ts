@@ -132,9 +132,6 @@ export async function resetThemeSettingsToDefault(): Promise<void> {
   const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
   const key = 'theme';
 
-  await clearThemeKeysForTarget(config, [key], vscode.ConfigurationTarget.Workspace);
-  await clearThemeKeysForTarget(config, [key], vscode.ConfigurationTarget.WorkspaceFolder);
-
   try {
     await config.update(key, serializeThemeSettings(defaultThemeSettings), vscode.ConfigurationTarget.Global);
   } catch {
@@ -154,15 +151,6 @@ export async function syncEditorAssociations(useAsDefault: boolean): Promise<voi
     vscode.ConfigurationTarget.Global,
     markdownAssociation
   );
-
-  if (inspected?.workspaceValue !== undefined) {
-    await syncEditorAssociationsForTarget(
-      config,
-      inspected.workspaceValue,
-      vscode.ConfigurationTarget.Workspace,
-      markdownAssociation
-    );
-  }
 }
 
 function getToggleSettingValue(

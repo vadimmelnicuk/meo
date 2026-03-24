@@ -39,7 +39,7 @@ export class AgentReviewOverrideController {
     const changed = this.applyOverrideAssociations(current, previousKeys, nextKeys);
 
     if (changed) {
-      await config.update('editorAssociations', current, this.getConfigurationTarget());
+      await config.update('editorAssociations', current, vscode.ConfigurationTarget.Global);
     }
 
     const previousList = this.getSortedValues(previousKeys);
@@ -82,18 +82,6 @@ export class AgentReviewOverrideController {
     const posixKey = targetKey.split(path.sep).join(path.posix.sep);
     keys.add(posixKey);
 
-    for (const workspaceFolder of vscode.workspace.workspaceFolders ?? []) {
-      const workspaceRoot = path.normalize(workspaceFolder.uri.fsPath);
-      const relativePath = path.relative(workspaceRoot, targetKey);
-      if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-        continue;
-      }
-
-      const relativePosixPath = relativePath.split(path.sep).join(path.posix.sep);
-      keys.add(relativePosixPath);
-      keys.add(`**/${relativePosixPath}`);
-    }
-
     return Array.from(keys);
   }
 
@@ -121,12 +109,6 @@ export class AgentReviewOverrideController {
     }
 
     return changed;
-  }
-
-  private getConfigurationTarget(): vscode.ConfigurationTarget.Global | vscode.ConfigurationTarget.Workspace {
-    return vscode.workspace.workspaceFolders?.length
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
   }
 
   private getSortedValues(values: ReadonlySet<string>): string[] {
