@@ -3,10 +3,8 @@ import * as vscode from 'vscode';
 import type { AgentReviewHandoffController } from '../agents/reviewHandoff';
 import {
   EXTENSION_CONFIG_SECTION,
-  AUTO_SAVE_SETTING_KEY,
   LINE_NUMBERS_SETTING_KEY,
   GIT_CHANGES_GUTTER_SETTING_KEY,
-  getAutoSaveEnabled,
   getLineNumbersEnabled,
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
@@ -36,7 +34,6 @@ type InitMessage = {
   text: string;
   version: number;
   mode: EditorMode;
-  autoSave: boolean;
   lineNumbers: boolean;
   gitChangesGutter: boolean;
   gitDiffLineHighlights: boolean;
@@ -133,11 +130,6 @@ type ExportSnapshotErrorMessage = {
   type: 'exportSnapshotError';
   requestId: string;
   message: string;
-};
-
-type SetAutoSaveMessage = {
-  type: 'setAutoSave';
-  enabled: boolean;
 };
 
 type SetLineNumbersMessage = {
@@ -240,7 +232,6 @@ type WebviewMessage =
   | ApplyChangesMessage
   | DraftChangedMessage
   | SetModeMessage
-  | SetAutoSaveMessage
   | SetLineNumbersMessage
   | SetGitChangesGutterMessage
   | SetOutlineVisibleMessage
@@ -323,6 +314,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   const documentKey = document.uri.toString();
   let mode: EditorMode = 'live';
   let applyQueue: Promise<void> = Promise.resolve();
+  let webviewReady = false;
   let initDelivered = false;
   let isApplyingOwnChange = false;
   let gitRefreshRunning = false;
@@ -366,13 +358,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }
   };
 
-  const saveDocumentIfAutoSaveEnabled = async (): Promise<void> => {
-    if (!getAutoSaveEnabled(context) || !document.isDirty) {
-      return;
-    }
-    await document.save();
-  };
-
   const applyPendingDraftIfNeeded = async (): Promise<boolean> => {
     const draftText = pendingDraftText;
     pendingDraftText = null;
@@ -400,7 +385,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       text: document.getText(),
       version: document.version,
       mode,
-      autoSave: getAutoSaveEnabled(context),
       lineNumbers: getLineNumbersEnabled(context),
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
@@ -482,7 +466,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const ensureInitDelivered = async (): Promise<void> => {
-    if (disposed || initDelivered) {
+    if (disposed || initDelivered || !webviewReady) {
       return;
     }
     const posted = await sendInit();
@@ -549,7 +533,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const runPendingGitRefreshes = async (): Promise<void> => {
-    if (gitRefreshRunning) {
+    if (gitRefreshRunning || !webviewReady) {
       return;
     }
     gitRefreshRunning = true;
@@ -564,6 +548,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         gitRefreshPendingForceReload = false;
         try {
           await ensureInitDelivered();
+          if (!initDelivered) {
+            gitRefreshPending = true;
+            gitRefreshPendingForcePost = gitRefreshPendingForcePost || nextOptions.forcePost === true;
+            gitRefreshPendingForceReload = gitRefreshPendingForceReload || nextOptions.forceReload === true;
+            return;
+          }
           await sendGitBaselineChanged(nextOptions);
         } catch {
           // Keep refresh coalescing alive across transient git/webview failures.
@@ -605,7 +595,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const postRevealSelection = async (selection: RevealSelectionPayload): Promise<void> => {
+    if (!webviewReady) {
+      pendingRevealSelection = selection;
+      return;
+    }
     await ensureInitDelivered();
+    if (!initDelivered) {
+      pendingRevealSelection = selection;
+      return;
+    }
     const message: RevealSelectionMessage = {
       type: 'revealSelection',
       anchor: selection.anchor,
@@ -628,7 +626,13 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const postFocusEditor = async (): Promise<void> => {
+    if (!webviewReady) {
+      return;
+    }
     await ensureInitDelivered();
+    if (!initDelivered) {
+      return;
+    }
     const message: FocusEditorMessage = { type: 'focusEditor' };
     await postToWebview(message);
   };
@@ -680,17 +684,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }
     switch (raw.type) {
       case 'ready':
+        webviewReady = true;
         await ensureInitDelivered();
-        refreshGitBaseline({ forcePost: true });
         await flushPendingRevealSelection();
+        gitRefreshPending = true;
+        gitRefreshPendingForcePost = true;
+        await runPendingGitRefreshes();
         return;
       case 'setMode':
         mode = raw.mode;
-        return;
-      case 'setAutoSave':
-        await vscode.workspace
-          .getConfiguration(EXTENSION_CONFIG_SECTION)
-          .update(AUTO_SAVE_SETTING_KEY, raw.enabled, vscode.ConfigurationTarget.Global);
         return;
       case 'setLineNumbers': {
         const visible = raw.visible ?? raw.enabled;
@@ -790,7 +792,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         try {
           await enqueue(async () => {
             await applyDocumentChanges(document, raw, sendDocChanged, sendApplied);
-            await saveDocumentIfAutoSaveEnabled();
           });
         } finally {
           isApplyingOwnChange = false;
@@ -880,7 +881,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     dispose();
   });
 
-  runBackground(ensureInitDelivered(), 'ensureInitDelivered.startup');
   refreshGitBaseline({ forcePost: true });
   runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.startup');
 
@@ -893,10 +893,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     runBackground(enqueue(async () => {
       try {
         // Best-effort recovery for edits that never made it through the debounce/apply round-trip.
-        const recovered = await applyPendingDraftIfNeeded();
-        if (recovered) {
-          await saveDocumentIfAutoSaveEnabled();
-        }
+        await applyPendingDraftIfNeeded();
       } catch {
         // Ignore dispose-time recovery failures to avoid surfacing noisy teardown errors.
       }

@@ -76,6 +76,8 @@ const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
 const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX]\]|[-+*]|\d+[.)])\s+/;
 const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
 const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX]\]/;
+const blockquoteLinePrefixRegex = /^[ \t]{0,3}(?:>[ \t]?)+/;
+const quotedCodeBlockAncestorNames = new Set(['FencedCode', 'CodeBlock']);
 
 const buildSearchDecorations = (doc, searchQuery: SearchQueryState) => {
   if (!searchQuery.text) {
@@ -236,6 +238,25 @@ export function createEditor({
     const lineText = state.doc.sliceString(line.from, line.to);
     const markerStart = lineText.indexOf('---');
     return markerStart >= 0 ? line.from + markerStart + 3 : null;
+  };
+  const emptyBlockquoteLineCursorEnd = (state, pos) => {
+    const line = state.doc.lineAt(pos);
+    const lineText = state.doc.sliceString(line.from, line.to);
+    const quoteMatch = /^[ \t]{0,3}(?:>[ \t]?)+$/.exec(lineText);
+    if (!quoteMatch) {
+      return null;
+    }
+
+    const probePos = Math.min(line.to, line.from + 1);
+    let node = resolvedSyntaxTree(state).resolveInner(probePos, 1);
+    while (node) {
+      if (node.name === 'Blockquote') {
+        return line.from + quoteMatch[0].length;
+      }
+      node = node.parent;
+    }
+
+    return null;
   };
   const trackFrontmatterBoundaryClick = (event, editorView) => {
     frontmatterBoundaryClick = null;
@@ -910,6 +931,7 @@ export function createEditor({
         {
           key: 'Enter',
           run: (view) =>
+            handleEnterContinueQuotedCodeBlock(view) ||
             handleEnterOnEmptyListItem(view) ||
             handleEnterAtListContentStart(view) ||
             handleEnterContinueList(view) ||
@@ -1025,6 +1047,12 @@ export function createEditor({
           if (isLiveMode(view)) {
             const { head, empty } = view.state.selection.main;
             if (empty) {
+              const emptyQuoteCursorEnd = emptyBlockquoteLineCursorEnd(view.state, head);
+              if (emptyQuoteCursorEnd !== null && head < emptyQuoteCursorEnd) {
+                view.dispatch({ selection: { anchor: emptyQuoteCursorEnd } });
+                return false;
+              }
+
               const node = resolvedSyntaxTree(view.state).resolveInner(head, -1);
               if (node.name === 'HorizontalRule') {
                 const line = view.state.doc.lineAt(head);
@@ -1538,6 +1566,58 @@ function insertTableCellLineBreak(view) {
     selection: { anchor: selection.from + insert.length }
   });
   return true;
+}
+
+function handleEnterContinueQuotedCodeBlock(view) {
+  const { state } = view;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+
+  const quotePrefix = getQuotedCodeBlockLinePrefix(state, selection.from);
+  if (!quotePrefix) {
+    return false;
+  }
+
+  const insert = `\n${quotePrefix}`;
+  const nextPos = selection.from + insert.length;
+  view.dispatch({
+    changes: { from: selection.from, to: selection.from, insert },
+    selection: { anchor: nextPos }
+  });
+  return true;
+}
+
+function getQuotedCodeBlockLinePrefix(state, position) {
+  const line = state.doc.lineAt(position);
+  const lineText = state.doc.sliceString(line.from, line.to);
+  const match = blockquoteLinePrefixRegex.exec(lineText);
+  if (!match) {
+    return null;
+  }
+
+  return isInsideQuotedCodeBlock(state, position) ? match[0] : null;
+}
+
+function isInsideQuotedCodeBlock(state, position) {
+  let node = syntaxTree(state).resolveInner(position, -1);
+  let insideCodeBlock = false;
+  let insideBlockquote = false;
+
+  while (node) {
+    if (quotedCodeBlockAncestorNames.has(node.name)) {
+      insideCodeBlock = true;
+    } else if (node.name === 'Blockquote') {
+      insideBlockquote = true;
+    }
+    if (insideCodeBlock && insideBlockquote) {
+      return true;
+    }
+    node = node.parent;
+  }
+
+  return false;
 }
 
 function deleteTableCellLineBreakBackward(view) {

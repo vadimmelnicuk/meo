@@ -26,8 +26,6 @@ import {
 import { AgentReviewOverrideController } from './agents/reviewOverrides';
 import {
   EXTENSION_CONFIG_SECTION,
-  AUTO_SAVE_LEGACY_SETTING_KEY,
-  AUTO_SAVE_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
@@ -39,7 +37,6 @@ import {
   OUTLINE_VISIBLE_KEY,
   VIM_MODE_SETTING_KEY,
   syncEditorAssociations,
-  getAutoSaveEnabled,
   getExportEditorFontEnvironment,
   getExportPdfBrowserPath,
   getGitChangesGutterEnabled,
@@ -509,13 +506,6 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
-    if (
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${AUTO_SAVE_SETTING_KEY}`) ||
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${AUTO_SAVE_LEGACY_SETTING_KEY}`)
-    ) {
-      this.broadcast({ type: 'autoSaveChanged', enabled: getAutoSaveEnabled(this.context) });
-    }
-
     if (
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_SETTING_KEY}`) ||
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LINE_NUMBERS_LEGACY_SETTING_KEY}`) ||

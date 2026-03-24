@@ -1073,6 +1073,19 @@ function buildDecorations(state) {
   tree.iterate({
     enter: (node) => {
       if (hasCodeBlockAncestor(node)) {
+        if (node.name === 'QuoteMark') {
+          const line = state.doc.lineAt(node.from);
+          addLineAwareRange(
+            ranges,
+            activeLines,
+            line.number,
+            node.from,
+            node.to,
+            markerDeco,
+            activeLineMarkerDeco
+          );
+          return;
+        }
         if (!node.name.endsWith('Mark') || !isFenceMarker(state, node.from, node.to)) {
           return;
         }

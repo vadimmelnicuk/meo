@@ -706,10 +706,13 @@ export function addTopLinePillLabel(builder: any[], lineEnd: number, labelText: 
   addTopLineWidget(builder, lineEnd, new CodeLanguageLabelWidget(labelText));
 }
 
+const quotedFenceOpeningLineRegex = /^[ \t]{0,3}(?:>[ \t]?)*[ \t]{0,3}(?:`{3,}|~{3,})/;
+
 export function addFenceOpeningLineMarker(builder: any[], state: EditorState, from: number, activeLines: Set<number>, addRange: Function, activeLineMarkerDeco: any, fenceMarkerDeco: any): void {
   const line = state.doc.lineAt(from);
   const text = state.doc.sliceString(line.from, line.to);
-  if (!/^[ \t]{0,3}(?:`{3,}|~{3,})/.test(text)) {
+  // Support fenced code opening lines nested inside blockquotes/callouts, e.g. "> ```ts".
+  if (!quotedFenceOpeningLineRegex.test(text)) {
     return;
   }
 

@@ -1,4 +1,4 @@
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Save, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -97,15 +97,7 @@ taskBtn.dataset.action = 'task';
 taskBtn.title = 'Task';
 taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
 
-let autoSaveEnabled = true;
 let vimModeEnabled = false;
-
-const autoSaveBtn = document.createElement('button');
-autoSaveBtn.type = 'button';
-autoSaveBtn.className = 'format-button toggle-button is-active';
-autoSaveBtn.dataset.action = 'autoSave';
-autoSaveBtn.title = 'Auto Save';
-autoSaveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
 let lineNumbersVisible = true;
 let gitChangesGutterVisible = true;
@@ -132,11 +124,6 @@ gitChangesGutterBtn.dataset.action = 'gitChangesGutter';
 gitChangesGutterBtn.title = 'Hide Git Changes Gutter';
 gitChangesGutterBtn.appendChild(createElement(GitCompare, { width: 18, height: 18 }));
 
-const updateAutoSaveUI = () => {
-  autoSaveBtn.classList.toggle('is-active', autoSaveEnabled);
-  autoSaveBtn.title = `Auto Save`;
-};
-
 const updateLineNumbersUI = () => {
   lineNumbersBtn.classList.toggle('is-active', lineNumbersVisible);
   lineNumbersBtn.setAttribute('aria-pressed', lineNumbersVisible ? 'true' : 'false');
@@ -157,12 +144,6 @@ const syncGitDiffLineHighlights = () => {
     editor,
     currentMode === 'source' && gitChangesGutterVisible && gitDiffLineHighlightsEnabled
   );
-};
-
-const toggleAutoSave = () => {
-  autoSaveEnabled = !autoSaveEnabled;
-  updateAutoSaveUI();
-  vscode.postMessage({ type: 'setAutoSave', enabled: autoSaveEnabled });
 };
 
 const setLineNumbersVisible = (visible, { post = true } = {}) => {
@@ -388,7 +369,7 @@ const exportWrapper = document.createElement('div');
 exportWrapper.className = 'export-wrapper';
 exportWrapper.append(exportBtn, exportDropdownWrapper);
 
-rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, autoSaveBtn, exportWrapper);
+rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, exportWrapper);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -516,11 +497,29 @@ const loadCreateEditorFactory = async (): Promise<CreateEditorFactory> => {
   return createEditorFactoryPromise;
 };
 
-const warmEditorBundleAfterFirstPaint = () => {
-  // Let the preload shell paint first, then start fetching/parsing the heavy editor chunk.
-  window.requestAnimationFrame(() => {
-    void loadCreateEditorFactory();
-  });
+let editorBundleWarmupScheduled = false;
+
+const scheduleEditorBundleWarmupAfterReady = () => {
+  if (editorBundleWarmupScheduled) {
+    return;
+  }
+  editorBundleWarmupScheduled = true;
+
+  const warm = () => {
+    // Wait one frame after full document readiness before warming the heavy editor bundle.
+    window.requestAnimationFrame(() => {
+      void loadCreateEditorFactory().catch((error) => {
+        logWebviewRenderError('warmEditorBundleAfterReady', error);
+      });
+    });
+  };
+
+  if (document.readyState === 'complete') {
+    warm();
+    return;
+  }
+
+  window.addEventListener('load', warm, { once: true });
 };
 
 type WebviewUiState = {
@@ -968,10 +967,6 @@ const handleInit = (message: any) => {
   } else {
     setEditorTextSafely(message.text, 'init');
   }
-  if (typeof message.autoSave === 'boolean') {
-    autoSaveEnabled = message.autoSave;
-    updateAutoSaveUI();
-  }
   if (typeof message.lineNumbers === 'boolean') {
     setLineNumbersVisible(message.lineNumbers, { post: false });
   }
@@ -1176,12 +1171,6 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  if (message.type === 'autoSaveChanged') {
-    autoSaveEnabled = message.enabled;
-    updateAutoSaveUI();
-    return;
-  }
-
   if (message.type === 'lineNumbersChanged') {
     setLineNumbersVisible(message.enabled, { post: false });
     return;
@@ -1331,7 +1320,6 @@ if (state && (state.mode === 'live' || state.mode === 'source')) {
 outlineController.setPosition('right');
 updateLineNumbersUI();
 updateGitChangesGutterUI();
-updateAutoSaveUI();
 
 liveButton.addEventListener('click', () => {
   applyMode('live', { userTriggered: true });
@@ -1455,7 +1443,6 @@ hrBtn.addEventListener('click', () => handleFormatAction('hr'));
 linkBtn.addEventListener('click', () => handleFormatAction('link'));
 wikiLinkBtn.addEventListener('click', () => handleFormatAction('wikiLink'));
 imageBtn.addEventListener('click', () => handleFormatAction('image'));
-autoSaveBtn.addEventListener('click', toggleAutoSave);
 exportHtmlOption.addEventListener('click', () => {
   exportHandler.requestExport('html');
 });
@@ -1471,4 +1458,4 @@ gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
 persistModeState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });
 vscode.postMessage({ type: 'ready' });
-warmEditorBundleAfterFirstPaint();
+scheduleEditorBundleWarmupAfterReady();

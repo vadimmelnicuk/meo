@@ -1100,6 +1100,7 @@ body {
 
 .cm-editor .meo-md-quote {
   border-left: 3px solid var(--meo-color-base07);
+  min-height: calc(var(--meo-active-editor-line-height) * 1em);
   padding-left: 3ch;
   text-indent: -1ch;
 }
@@ -1107,6 +1108,20 @@ body {
 .cm-editor.meo-mode-live .cm-activeLine.meo-md-quote {
   padding-left: 3ch;
   text-indent: -2ch;
+}
+
+.cm-editor .cm-line:is(.meo-md-quote, .meo-md-alert):is(.meo-md-code-block, .meo-mermaid-block) {
+  padding-left: 2ch;
+  text-indent: 0;
+}
+
+.cm-editor .cm-line:is(.meo-md-quote, .meo-md-alert):is(.meo-md-code-block, .meo-mermaid-block) .meo-code-language-label {
+  left: 3ch;
+}
+
+.cm-editor.meo-mode-live .cm-activeLine:is(.meo-md-quote, .meo-md-alert):is(.meo-md-code-block, .meo-mermaid-block) {
+  padding-left: 2ch;
+  text-indent: -1ch;
 }
 
 .cm-editor .meo-md-hr {
@@ -2364,6 +2379,7 @@ body {
 .cm-editor .meo-md-alert {
   border-left: 3px solid;
   border-radius: 0;
+  min-height: calc(var(--meo-active-editor-line-height) * 1em);
   padding-left: 3ch;
   text-indent: -1ch;
 }
@@ -2440,14 +2456,18 @@ body {
   background-color: color-mix(in srgb, var(--meo-color-base04) 8%, transparent);
 }
 
-.cm-editor.meo-mode-live .cm-line.meo-md-alert,
-.cm-editor.meo-mode-source .cm-line.meo-md-alert {
+.cm-editor.meo-mode-live .cm-line.meo-md-alert:not(.meo-md-code-block):not(.meo-mermaid-block),
+.cm-editor.meo-mode-source .cm-line.meo-md-alert:not(.meo-md-code-block):not(.meo-mermaid-block) {
   color: var(--meo-alert-color) !important;
 }
 
-.cm-editor.meo-mode-live .cm-line.meo-md-alert *,
-.cm-editor.meo-mode-source .cm-line.meo-md-alert * {
+.cm-editor.meo-mode-live .cm-line.meo-md-alert:not(.meo-md-code-block):not(.meo-mermaid-block) *,
+.cm-editor.meo-mode-source .cm-line.meo-md-alert:not(.meo-md-code-block):not(.meo-mermaid-block) * {
   color: inherit !important;
+}
+
+.cm-editor .cm-line.meo-md-alert:is(.meo-md-code-block, .meo-mermaid-block) {
+  background: var(--vscode-textCodeBlock-background);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-marker-active,

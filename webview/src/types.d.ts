@@ -11,7 +11,6 @@ type WebviewMessage =
   | { type: 'applyChanges'; content?: string; baseVersion: number; changes?: { from: number; to: number; insert: string }[] }
   | { type: 'draftChanged'; text: string | null }
   | { type: 'setMode'; mode: 'live' | 'source' }
-  | { type: 'setAutoSave'; enabled: boolean }
   | { type: 'setLineNumbers'; visible: boolean }
   | { type: 'setGitChangesGutter'; visible: boolean }
   | { type: 'setOutlineVisible'; visible: boolean }
@@ -27,7 +26,7 @@ type WebviewMessage =
   | { type: 'saveImageFromClipboard'; requestId: string; imageData: string; fileName: string };
 
 type ExtensionMessage =
-  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; autoSave: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
+  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'docChanged'; text: string; version: number }
   | { type: 'applied'; version: number }
   | { type: 'focusEditor' }
@@ -35,7 +34,6 @@ type ExtensionMessage =
   | { type: 'themeChanged'; theme: ThemeSettings }
   | { type: 'outlinePositionChanged'; position: 'left' | 'right' }
   | { type: 'outlineVisibilityChanged'; visible: boolean }
-  | { type: 'autoSaveChanged'; enabled: boolean }
   | { type: 'lineNumbersChanged'; enabled: boolean }
   | { type: 'gitChangesGutterChanged'; enabled: boolean }
   | { type: 'gitDiffLineHighlightsChanged'; enabled: boolean }

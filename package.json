@@ -197,28 +197,22 @@
           "order": 5,
           "description": "Show subtle line coloring for modified lines in Source mode."
         },
-        "markdownEditorOptimized.autoSave.enabled": {
-          "type": "boolean",
-          "default": true,
-          "order": 6,
-          "description": "Enable the auto-save while editing."
-        },
         "markdownEditorOptimized.vimMode.enabled": {
           "type": "boolean",
           "default": false,
-          "order": 7,
+          "order": 6,
           "description": "Enable Vim keybindings in Source mode."
         },
         "markdownEditorOptimized.export.browserPath": {
           "type": "string",
           "default": "",
-          "order": 8,
+          "order": 7,
           "description": "Optional path to a Chrome/Edge executable used for browser-based export rendering (PDF and HTML finalize). Leave empty to auto-detect."
         },
         "markdownEditorOptimized.export.pdf.browserPath": {
           "type": "string",
           "default": "",
-          "order": 8,
+          "order": 7,
           "description": "Deprecated: use markdownEditorOptimized.export.browserPath.",
           "deprecationMessage": "Use markdownEditorOptimized.export.browserPath instead.",
           "markdownDeprecationMessage": "Use `markdownEditorOptimized.export.browserPath` instead."
@@ -226,7 +220,7 @@
         "markdownEditorOptimized.imageFolder": {
           "type": "string",
           "default": "assets",
-          "order": 9,
+          "order": 8,
           "description": "Folder name to save pasted images (relative to workspace root)."
         },
         "markdownEditorOptimized.theme": {

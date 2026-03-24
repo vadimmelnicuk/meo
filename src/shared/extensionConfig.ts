@@ -8,18 +8,15 @@ import {
 } from './themeDefaults';
 
 export const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
-export const AUTO_SAVE_SETTING_KEY = 'autoSave.enabled';
 export const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
-export const AUTO_SAVE_LEGACY_SETTING_KEY = 'autoSave.visibility';
 export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.enabled';
 export const LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY = 'lineNumbers.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY = 'gitChangesGutter.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY = 'gitChangesGutter.enabled';
-export const AUTO_SAVE_KEY = 'autoSaveEnabled';
 export const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 export const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 export const VIM_MODE_KEY = 'vimModeEnabled';
@@ -42,10 +39,6 @@ export function getThemeSettings(): ThemeSettings {
   }
 
   return result.theme;
-}
-
-export function getAutoSaveEnabled(context: vscode.ExtensionContext): boolean {
-  return getToggleSettingValue(context, AUTO_SAVE_SETTING_KEY, AUTO_SAVE_KEY, [AUTO_SAVE_LEGACY_SETTING_KEY]);
 }
 
 export function getLineNumbersEnabled(context: vscode.ExtensionContext): boolean {
@@ -123,7 +116,6 @@ export function withMarkdownExtensions(basePath: string, preferExtensionlessFirs
 }
 
 export async function migrateLegacyToggleSettings(context: vscode.ExtensionContext): Promise<void> {
-  await migrateLegacyToggleSetting(context, AUTO_SAVE_SETTING_KEY, AUTO_SAVE_KEY);
   await migrateLegacyToggleSetting(context, LINE_NUMBERS_SETTING_KEY, LINE_NUMBERS_KEY);
   await migrateLegacyToggleSetting(context, GIT_CHANGES_GUTTER_SETTING_KEY, GIT_CHANGES_GUTTER_KEY);
 }
