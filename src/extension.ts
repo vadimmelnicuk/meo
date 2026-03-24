@@ -37,6 +37,8 @@ import {
   OUTLINE_VISIBLE_KEY,
   VIM_MODE_SETTING_KEY,
   syncEditorAssociations,
+  type ExportHtmlImageMode,
+  getExportHtmlImageMode,
   getExportEditorFontEnvironment,
   getExportPdfBrowserPath,
   getGitChangesGutterEnabled,
@@ -89,6 +91,7 @@ type ExportRuntimeModule = {
     sourceDocumentPath: string;
     outputFilePath: string;
     target: ExportFormat;
+    htmlImageMode: ExportHtmlImageMode;
     theme: ThemeSettings;
     styleEnvironment?: ExportStyleEnvironment;
     editorFontEnvironment?: {
@@ -715,6 +718,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
               sourceDocumentUri: session.documentUri,
               outputFileUri: saveUri,
               target: format,
+              htmlImageMode: getExportHtmlImageMode(),
               styleEnvironment: snapshot.environment
             });
 
@@ -775,6 +779,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       sourceDocumentUri: vscode.Uri;
       outputFileUri: vscode.Uri;
       target: ExportFormat;
+      htmlImageMode: ExportHtmlImageMode;
       styleEnvironment?: ExportStyleEnvironment;
     }
   ): Promise<{ htmlDocument: string; hasMermaid: boolean; hasMath: boolean }> {
@@ -790,6 +795,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       sourceDocumentPath: params.sourceDocumentUri.fsPath,
       outputFilePath: params.outputFileUri.fsPath,
       target: params.target,
+      htmlImageMode: params.htmlImageMode,
       theme: getThemeSettings(),
       styleEnvironment: params.styleEnvironment,
       editorFontEnvironment: getExportEditorFontEnvironment(),

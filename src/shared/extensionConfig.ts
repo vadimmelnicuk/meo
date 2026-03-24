@@ -24,6 +24,7 @@ export const OUTLINE_VISIBLE_KEY = 'outlineVisible';
 export const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
 
 export type OutlinePosition = 'left' | 'right';
+export type ExportHtmlImageMode = 'embedded' | 'linked';
 
 export function getThemeSettings(): ThemeSettings {
   const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
@@ -92,6 +93,14 @@ export function getExportPdfBrowserPath(): string | undefined {
   const legacyConfigured = config.get<string>('export.pdf.browserPath', '');
   const legacyTrimmed = `${legacyConfigured ?? ''}`.trim();
   return legacyTrimmed || undefined;
+}
+
+export function getExportHtmlImageMode(): ExportHtmlImageMode {
+  const configured = vscode.workspace
+    .getConfiguration(EXTENSION_CONFIG_SECTION)
+    .get<string>('export.html.imageMode', 'embedded');
+  const normalized = `${configured ?? ''}`.trim().toLowerCase();
+  return normalized === 'linked' ? 'linked' : 'embedded';
 }
 
 export function getExportEditorFontEnvironment(): { editorFontFamily?: string; editorFontWeight?: string; editorFontSizePx?: number } {

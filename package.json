@@ -217,10 +217,24 @@
           "deprecationMessage": "Use markdownEditorOptimized.export.browserPath instead.",
           "markdownDeprecationMessage": "Use `markdownEditorOptimized.export.browserPath` instead."
         },
+        "markdownEditorOptimized.export.html.imageMode": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "linked"
+          ],
+          "enumDescriptions": [
+            "Embed local image files in exported HTML.",
+            "Keep local image links as relative paths in exported HTML."
+          ],
+          "default": "embedded",
+          "order": 8,
+          "description": "How local images are handled during HTML export."
+        },
         "markdownEditorOptimized.imageFolder": {
           "type": "string",
           "default": "assets",
-          "order": 8,
+          "order": 9,
           "description": "Folder name to save pasted images (relative to workspace root)."
         },
         "markdownEditorOptimized.theme": {

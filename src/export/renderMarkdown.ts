@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it';
 import { full as emoji } from 'markdown-it-emoji';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
-import { rewriteExportImageSrc } from './assetPaths';
+import { rewriteExportImageSrc, type ExportHtmlImageMode } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
 import { prepareMarkdownWithFootnotes } from './footnotes';
 import { installMathTransform } from './mathTransform';
@@ -32,6 +32,7 @@ export type RenderMarkdownOptions = {
   markdownFilePath: string;
   outputFilePath?: string;
   target: RenderMarkdownTarget;
+  htmlImageMode?: ExportHtmlImageMode;
 };
 
 export type RenderMarkdownResult = {
@@ -43,6 +44,7 @@ export type RenderMarkdownResult = {
 export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMarkdownResult {
   let hasMermaid = false;
   let hasMath = false;
+  const embeddedImageDataUrlCache = new Map<string, string | null>();
   const normalizedMarkdown = normalizeMarkdownForExport(options.markdownText);
   const extractedFrontmatter = extractExportFrontmatter(normalizedMarkdown);
   const shouldEnableMathTransform = extractedFrontmatter.bodyMarkdown.includes('$');
@@ -98,7 +100,9 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     const rewritten = rewriteExportImageSrc(src, {
       markdownFilePath: options.markdownFilePath,
       outputFilePath: options.outputFilePath,
-      target: options.target
+      target: options.target,
+      htmlImageMode: options.htmlImageMode ?? 'embedded',
+      embeddedImageDataUrlCache
     });
     token.attrSet('src', rewritten);
     token.attrSet('loading', 'eager');

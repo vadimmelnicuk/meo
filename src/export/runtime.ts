@@ -3,6 +3,7 @@ import { buildExportHtmlDocument as buildStandaloneExportHtmlDocument } from './
 import { buildExportStyles, type ExportStyleEnvironment } from './exportStyles';
 import { writeFinalizedHtmlExport } from './htmlExport';
 import { renderPdfFromHtmlExport } from './pdfRenderer';
+import type { ExportHtmlImageMode } from './assetPaths';
 import type { ThemeSettings } from '../shared/themeDefaults';
 
 export type ExportRuntimeBuildHtmlOptions = {
@@ -10,6 +11,7 @@ export type ExportRuntimeBuildHtmlOptions = {
   sourceDocumentPath: string;
   outputFilePath: string;
   target: 'html' | 'pdf';
+  htmlImageMode: ExportHtmlImageMode;
   theme: ThemeSettings;
   styleEnvironment?: ExportStyleEnvironment;
   editorFontEnvironment?: {
@@ -30,7 +32,8 @@ function renderExportHtmlDocument(
     markdownText: options.markdownText,
     markdownFilePath: options.sourceDocumentPath,
     outputFilePath: options.outputFilePath,
-    target: options.target
+    target: options.target,
+    htmlImageMode: options.htmlImageMode
   });
 
   const stylesCss = buildExportStyles(
