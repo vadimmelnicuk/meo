@@ -15,6 +15,13 @@
   --meo-heading-4-size: 1.2em;
   --meo-heading-5-size: 1.1em;
   --meo-heading-6-size: 1em;
+  --meo-heading-1-weight: 600;
+  --meo-heading-2-weight: 600;
+  --meo-heading-3-weight: 600;
+  --meo-heading-4-weight: 600;
+  --meo-heading-5-weight: 600;
+  --meo-heading-6-weight: 600;
+  --meo-heading-token-weight: 600;
   --meo-active-editor-font: var(--vscode-editor-font-family);
   --meo-active-editor-font-weight: var(--vscode-editor-font-weight);
   --meo-active-editor-font-size: var(--vscode-editor-font-size, 13px);
@@ -897,26 +904,32 @@ body {
 
 .cm-editor .meo-md-h1 {
   font-size: var(--meo-heading-1-size);
+  --meo-heading-token-weight: var(--meo-heading-1-weight);
 }
 
 .cm-editor .meo-md-h2 {
   font-size: var(--meo-heading-2-size);
+  --meo-heading-token-weight: var(--meo-heading-2-weight);
 }
 
 .cm-editor .meo-md-h3 {
   font-size: var(--meo-heading-3-size);
+  --meo-heading-token-weight: var(--meo-heading-3-weight);
 }
 
 .cm-editor .meo-md-h4 {
   font-size: var(--meo-heading-4-size);
+  --meo-heading-token-weight: var(--meo-heading-4-weight);
 }
 
 .cm-editor .meo-md-h5 {
   font-size: var(--meo-heading-5-size);
+  --meo-heading-token-weight: var(--meo-heading-5-weight);
 }
 
 .cm-editor .meo-md-h6 {
   font-size: var(--meo-heading-6-size);
+  --meo-heading-token-weight: var(--meo-heading-6-weight);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-heading-collapsed {

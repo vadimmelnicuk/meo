@@ -32,6 +32,12 @@ export type ThemeFonts = {
   h4FontSize: number | null;
   h5FontSize: number | null;
   h6FontSize: number | null;
+  h1FontWeight: string;
+  h2FontWeight: string;
+  h3FontWeight: string;
+  h4FontWeight: string;
+  h5FontWeight: string;
+  h6FontWeight: string;
   liveLineHeight: number;
   sourceLineHeight: number;
 };
@@ -362,6 +368,12 @@ export const defaultThemeFonts: ThemeFonts = {
   h4FontSize: 1.2,
   h5FontSize: 1.1,
   h6FontSize: 1,
+  h1FontWeight: '600',
+  h2FontWeight: '600',
+  h3FontWeight: '600',
+  h4FontWeight: '600',
+  h5FontWeight: '600',
+  h6FontWeight: '600',
   liveLineHeight: defaultThemeLineHeight,
   sourceLineHeight: defaultThemeLineHeight
 };
@@ -613,6 +625,27 @@ const sanitizeThemeLineHeight = (value: unknown, fallback: number): number => {
   return Math.min(maxThemeLineHeight, Math.max(minThemeLineHeight, value));
 };
 
+type HeadingFontSizeKey = `h${1 | 2 | 3 | 4 | 5 | 6}FontSize`;
+type HeadingFontWeightKey = `h${1 | 2 | 3 | 4 | 5 | 6}FontWeight`;
+
+const headingFontSizeKeys = [
+  'h1FontSize',
+  'h2FontSize',
+  'h3FontSize',
+  'h4FontSize',
+  'h5FontSize',
+  'h6FontSize'
+] as const satisfies readonly HeadingFontSizeKey[];
+
+const headingFontWeightKeys = [
+  'h1FontWeight',
+  'h2FontWeight',
+  'h3FontWeight',
+  'h4FontWeight',
+  'h5FontWeight',
+  'h6FontWeight'
+] as const satisfies readonly HeadingFontWeightKey[];
+
 const themeFontKeys = [
   'liveFont',
   'sourceFont',
@@ -620,18 +653,23 @@ const themeFontKeys = [
   'sourceFontWeight',
   'liveFontSize',
   'sourceFontSize',
-  'h1FontSize',
-  'h2FontSize',
-  'h3FontSize',
-  'h4FontSize',
-  'h5FontSize',
-  'h6FontSize',
+  ...headingFontSizeKeys,
+  ...headingFontWeightKeys,
   'liveLineHeight',
   'sourceLineHeight'
 ] as const satisfies readonly (keyof ThemeFonts)[];
 
 const resolveThemeFonts = (raw?: unknown): ThemeFonts => {
   const value = isRecord(raw) ? raw : {};
+  const resolvedHeadingFontSizes = headingFontSizeKeys.reduce((acc, key) => {
+    acc[key] = sanitizeThemeOptionalNumberInRange(value[key], defaultThemeFonts[key], 1, 3);
+    return acc;
+  }, {} as Pick<ThemeFonts, HeadingFontSizeKey>);
+  const resolvedHeadingFontWeights = headingFontWeightKeys.reduce((acc, key) => {
+    acc[key] = sanitizeThemeFont(value[key], defaultThemeFonts[key]);
+    return acc;
+  }, {} as Pick<ThemeFonts, HeadingFontWeightKey>);
+
   return {
     liveFont: sanitizeThemeFont(value.liveFont, defaultThemeFonts.liveFont),
     sourceFont: sanitizeThemeFont(value.sourceFont, defaultThemeFonts.sourceFont),
@@ -639,12 +677,8 @@ const resolveThemeFonts = (raw?: unknown): ThemeFonts => {
     sourceFontWeight: sanitizeThemeFont(value.sourceFontWeight, defaultThemeFonts.sourceFontWeight),
     liveFontSize: sanitizeThemeOptionalPositiveNumber(value.liveFontSize, defaultThemeFonts.liveFontSize),
     sourceFontSize: sanitizeThemeOptionalPositiveNumber(value.sourceFontSize, defaultThemeFonts.sourceFontSize),
-    h1FontSize: sanitizeThemeOptionalNumberInRange(value.h1FontSize, defaultThemeFonts.h1FontSize, 1, 3),
-    h2FontSize: sanitizeThemeOptionalNumberInRange(value.h2FontSize, defaultThemeFonts.h2FontSize, 1, 3),
-    h3FontSize: sanitizeThemeOptionalNumberInRange(value.h3FontSize, defaultThemeFonts.h3FontSize, 1, 3),
-    h4FontSize: sanitizeThemeOptionalNumberInRange(value.h4FontSize, defaultThemeFonts.h4FontSize, 1, 3),
-    h5FontSize: sanitizeThemeOptionalNumberInRange(value.h5FontSize, defaultThemeFonts.h5FontSize, 1, 3),
-    h6FontSize: sanitizeThemeOptionalNumberInRange(value.h6FontSize, defaultThemeFonts.h6FontSize, 1, 3),
+    ...resolvedHeadingFontSizes,
+    ...resolvedHeadingFontWeights,
     liveLineHeight: sanitizeThemeLineHeight(value.liveLineHeight, defaultThemeFonts.liveLineHeight),
     sourceLineHeight: sanitizeThemeLineHeight(value.sourceLineHeight, defaultThemeFonts.sourceLineHeight)
   };
@@ -789,12 +823,12 @@ export const validateThemePayload = (value: unknown): ThemeValidationResult => {
       && (typeof rawFonts.sourceFontSize !== 'number' || !Number.isFinite(rawFonts.sourceFontSize) || rawFonts.sourceFontSize <= 0)) {
       errors.push('Theme font "sourceFontSize" must be null or a positive number.');
     }
-    validateOptionalThemeHeadingSize(rawFonts, 'h1FontSize', errors, 1, 3);
-    validateOptionalThemeHeadingSize(rawFonts, 'h2FontSize', errors, 1, 3);
-    validateOptionalThemeHeadingSize(rawFonts, 'h3FontSize', errors, 1, 3);
-    validateOptionalThemeHeadingSize(rawFonts, 'h4FontSize', errors, 1, 3);
-    validateOptionalThemeHeadingSize(rawFonts, 'h5FontSize', errors, 1, 3);
-    validateOptionalThemeHeadingSize(rawFonts, 'h6FontSize', errors, 1, 3);
+    for (const key of headingFontSizeKeys) {
+      validateOptionalThemeHeadingSize(rawFonts, key, errors, 1, 3);
+    }
+    for (const key of headingFontWeightKeys) {
+      validateOptionalThemeFontString(rawFonts, key, errors);
+    }
     if (typeof rawFonts.liveLineHeight !== 'number' || !Number.isFinite(rawFonts.liveLineHeight)) {
       errors.push('Theme font "liveLineHeight" must be a number.');
     } else if (rawFonts.liveLineHeight < minThemeLineHeight || rawFonts.liveLineHeight > maxThemeLineHeight) {
@@ -820,7 +854,7 @@ export const validateThemePayload = (value: unknown): ThemeValidationResult => {
 
 function validateOptionalThemeHeadingSize(
   rawFonts: Record<string, unknown>,
-  key: keyof ThemeFonts,
+  key: HeadingFontSizeKey,
   errors: string[],
   min?: number,
   max?: number
@@ -841,5 +875,16 @@ function validateOptionalThemeHeadingSize(
   }
   if (value <= 0) {
     errors.push(`Theme font "${key}" must be null or a positive number.`);
+  }
+}
+
+function validateOptionalThemeFontString(
+  rawFonts: Record<string, unknown>,
+  key: HeadingFontWeightKey,
+  errors: string[]
+): void {
+  const value = rawFonts[key];
+  if (value !== undefined && typeof value !== 'string') {
+    errors.push(`Theme font "${key}" must be a string.`);
   }
 }

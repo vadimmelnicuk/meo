@@ -62,6 +62,12 @@ interface ThemeSettings {
     h4FontSize?: number | null;
     h5FontSize?: number | null;
     h6FontSize?: number | null;
+    h1FontWeight?: string;
+    h2FontWeight?: string;
+    h3FontWeight?: string;
+    h4FontWeight?: string;
+    h5FontWeight?: string;
+    h6FontWeight?: string;
     liveLineHeight?: number;
     sourceLineHeight?: number;
   };

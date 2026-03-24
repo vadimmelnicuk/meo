@@ -59,12 +59,35 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   const sourceFontSizePx = resolveThemeFontSizePx(fonts.sourceFontSize, editorFontSizePx);
   const lineHeight = clampLineHeight(environment.liveLineHeight ?? fonts.liveLineHeight ?? defaultThemeFonts.liveLineHeight);
   const sourceLineHeight = clampLineHeight(environment.sourceLineHeight ?? fonts.sourceLineHeight ?? defaultThemeFonts.sourceLineHeight);
-  const h1FontSize = resolveHeadingFontSize(fonts.h1FontSize, '1.6em', 'em');
-  const h2FontSize = resolveHeadingFontSize(fonts.h2FontSize, '1.5em', 'em');
-  const h3FontSize = resolveHeadingFontSize(fonts.h3FontSize, '1.3em', 'em');
-  const h4FontSize = resolveHeadingFontSize(fonts.h4FontSize, '1.2em', 'em');
-  const h5FontSize = resolveHeadingFontSize(fonts.h5FontSize, '1.1em', 'em');
-  const h6FontSize = resolveHeadingFontSize(fonts.h6FontSize, '1em', 'em');
+  const headingFontSizes = [
+    resolveHeadingFontSize(fonts.h1FontSize, '1.6em', 'em'),
+    resolveHeadingFontSize(fonts.h2FontSize, '1.5em', 'em'),
+    resolveHeadingFontSize(fonts.h3FontSize, '1.3em', 'em'),
+    resolveHeadingFontSize(fonts.h4FontSize, '1.2em', 'em'),
+    resolveHeadingFontSize(fonts.h5FontSize, '1.1em', 'em'),
+    resolveHeadingFontSize(fonts.h6FontSize, '1em', 'em')
+  ];
+  const headingFontWeights = [
+    resolveHeadingFontWeight(fonts.h1FontWeight, '600'),
+    resolveHeadingFontWeight(fonts.h2FontWeight, '600'),
+    resolveHeadingFontWeight(fonts.h3FontWeight, '600'),
+    resolveHeadingFontWeight(fonts.h4FontWeight, '600'),
+    resolveHeadingFontWeight(fonts.h5FontWeight, '600'),
+    resolveHeadingFontWeight(fonts.h6FontWeight, '600')
+  ];
+  const headingSizeVarsCss = headingFontSizes
+    .map((fontSize, index) => `  --meo-heading-${index + 1}-size: ${fontSize};`)
+    .join('\n');
+  const headingWeightVarsCss = headingFontWeights
+    .map((fontWeight, index) => `  --meo-heading-${index + 1}-weight: ${fontWeight};`)
+    .join('\n');
+  const headingRulesCss = headingFontSizes
+    .map((_fontSize, index) => {
+      const level = index + 1;
+      const opacity = level === 6 ? ' opacity: 0.9;' : '';
+      return `h${level} { font-size: var(--meo-heading-${level}-size); font-weight: var(--meo-heading-${level}-weight);${opacity} }`;
+    })
+    .join('\n');
 
   return `
 :root {
@@ -92,12 +115,8 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   --meo-font-weight-code: ${sourceFontWeight};
   --meo-font-size-body: ${liveFontSizePx}px;
   --meo-font-size-code: ${sourceFontSizePx}px;
-  --meo-heading-1-size: ${h1FontSize};
-  --meo-heading-2-size: ${h2FontSize};
-  --meo-heading-3-size: ${h3FontSize};
-  --meo-heading-4-size: ${h4FontSize};
-  --meo-heading-5-size: ${h5FontSize};
-  --meo-heading-6-size: ${h6FontSize};
+${headingSizeVarsCss}
+${headingWeightVarsCss}
   --meo-line-height: ${lineHeight};
   --meo-code-line-height: ${sourceLineHeight};
   --meo-code-bg: ${codeBlockBackgroundColor};
@@ -276,12 +295,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 1.2em;
   margin-bottom: 0.55em;
 }
-h1 { font-size: var(--meo-heading-1-size); }
-h2 { font-size: var(--meo-heading-2-size); }
-h3 { font-size: var(--meo-heading-3-size); }
-h4 { font-size: var(--meo-heading-4-size); }
-h5 { font-size: var(--meo-heading-5-size); }
-h6 { font-size: var(--meo-heading-6-size); opacity: 0.9; }
+${headingRulesCss}
 
 p, ul, ol, blockquote, pre, table, hr {
   margin: 0 0 1em;
@@ -794,7 +808,7 @@ function resolveThemeColors(theme: ThemeSettings, environment: ExportStyleEnviro
   return resolved;
 }
 
-function sanitizeCssFont(value: string): string {
+function sanitizeCssFont(value: string | undefined): string {
   const trimmed = `${value ?? ''}`.trim();
   if (!trimmed) {
     return '';
@@ -802,7 +816,7 @@ function sanitizeCssFont(value: string): string {
   return trimmed.replace(styleValueInjectionPattern, ' ');
 }
 
-function sanitizeFontWeight(value: string, fallback: string): string {
+function sanitizeFontWeight(value: string | undefined, fallback: string): string {
   const trimmed = sanitizeCssFont(value);
   if (!trimmed) {
     return fallback;
@@ -864,4 +878,8 @@ function resolveHeadingFontSize(
     return `${Math.min(9, Math.max(0.5, normalized))}em`;
   }
   return `${Math.min(144, Math.max(8, value as number))}px`;
+}
+
+function resolveHeadingFontWeight(value: string | undefined, fallback: string): string {
+  return sanitizeFontWeight(value ?? '', fallback);
 }

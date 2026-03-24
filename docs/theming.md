@@ -119,6 +119,7 @@ Each key in `syntaxTokens` maps to a syntax category. Color values must use `#he
 - `liveFontSize`: Live mode font size (`null` = use VS Code editor font size).
 - `sourceFontSize`: Source mode font size (`null` = use VS Code editor font size).
 - `h1FontSize` to `h6FontSize`: Optional heading size overrides (`null` = use defaults). Heading font sizes are in `em` units and must be between `1` and `3` when provided.
+- `h1FontWeight` to `h6FontWeight`: Optional per-heading font weight overrides. Accepts CSS `font-weight` values (for example `normal`, `bold`, `500`, `600`).
 - `liveLineHeight` and `sourceLineHeight`: Line-height for each mode (must be between `1` and `3`).
 
 ## Defaults and Fallbacks
@@ -128,5 +129,6 @@ Each key in `syntaxTokens` maps to a syntax category. Color values must use `#he
 - `fonts.liveFontSize: null` and `fonts.sourceFontSize: null` fall back to VS Code editor font size.
 - Empty `fonts.liveFontWeight` or `fonts.sourceFontWeight` falls back to VS Code editor font weight.
 - `fonts.h1FontSize` to `fonts.h6FontSize` default to `1.6`, `1.5`, `1.3`, `1.2`, `1.1`, and `1` respectively (and `null` falls back to those defaults).
+- `fonts.h1FontWeight` to `fonts.h6FontWeight` default to `600` (and empty/invalid values fall back to those defaults).
 - In Live mode, inline code and code blocks use `fonts.sourceFont` (not `fonts.liveFont`).
 - Export is mode-independent: body text uses `liveFontSize`, and code/monospace text uses `sourceFontSize`.
