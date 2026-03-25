@@ -1,5 +1,9 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.21
+- Added scroll position restoration for long markdown files
+- Fixed shortcut handling for local search shortcut to exclude shift key
+
 ## 0.1.20
 - Added export image mode configuration for HTML export
 - Added font weight configuration for headings in theming
