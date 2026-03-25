@@ -491,10 +491,19 @@ let modeToggleShouldRestoreEditorFocus = false;
 let gitClient: any = null;
 let pendingEditorFocus = false;
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
+let pendingRestoreTopLine: number | null = null;
+let pendingRestoreTopLineOffset = 0;
+let pendingViewPositionTimer: number | null = null;
+let lastSentTopLine: number | null = null;
+let lastSentTopLineOffset: number | null = null;
 let lastSentDraftText: string | null = null;
 let hasSentDraftText = false;
 let initialEditorMountInFlight = false;
+let initialEditorMountFallbackTimer: number | null = null;
+let pendingEditorSurfaceRecoveryRaf: number | null = null;
 let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
+const VIEW_POSITION_DEBOUNCE_MS = 250;
+const INITIAL_EDITOR_MOUNT_FALLBACK_MS = 120;
 
 const setEditorNotice = (message: string, kind = 'info') => {
   const normalizedMessage = `${message ?? ''}`.trim();
@@ -649,6 +658,116 @@ const syncPendingDraftState = () => {
   vscode.postMessage({ type: 'draftChanged', text: nextDraftText });
 };
 
+const normalizeLineNumber = (value: unknown): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(1, Math.floor(value));
+};
+
+const normalizeLineOffset = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(value * 100) / 100);
+};
+
+const getTopVisiblePosition = (): { topLine: number; topLineOffset: number } | null => {
+  if (!editor) {
+    return null;
+  }
+  if (typeof editor.getTopVisiblePosition === 'function') {
+    const position = editor.getTopVisiblePosition();
+    const topLine = normalizeLineNumber(position?.line);
+    if (topLine === null) {
+      return null;
+    }
+    return {
+      topLine,
+      topLineOffset: normalizeLineOffset(position?.lineOffset)
+    };
+  }
+  if (typeof editor.getTopVisibleLine !== 'function') {
+    return null;
+  }
+  const topLine = normalizeLineNumber(editor.getTopVisibleLine());
+  if (topLine === null) {
+    return null;
+  }
+  return {
+    topLine,
+    topLineOffset: 0
+  };
+};
+
+const postTopVisiblePositionIfChanged = (position: { topLine: number; topLineOffset: number } | null): void => {
+  if (!position) {
+    return;
+  }
+  if (position.topLine === lastSentTopLine && position.topLineOffset === lastSentTopLineOffset) {
+    return;
+  }
+  lastSentTopLine = position.topLine;
+  lastSentTopLineOffset = position.topLineOffset;
+  vscode.postMessage({
+    type: 'viewPositionChanged',
+    topLine: position.topLine,
+    topLineOffset: position.topLineOffset
+  });
+};
+
+const flushViewPositionNow = (): void => {
+  if (pendingViewPositionTimer !== null) {
+    window.clearTimeout(pendingViewPositionTimer);
+    pendingViewPositionTimer = null;
+  }
+  postTopVisiblePositionIfChanged(getTopVisiblePosition());
+};
+
+const scheduleViewPositionCapture = (): void => {
+  if (pendingViewPositionTimer !== null) {
+    window.clearTimeout(pendingViewPositionTimer);
+  }
+  pendingViewPositionTimer = window.setTimeout(() => {
+    pendingViewPositionTimer = null;
+    postTopVisiblePositionIfChanged(getTopVisiblePosition());
+  }, VIEW_POSITION_DEBOUNCE_MS);
+};
+
+const applyPendingRestoreTopLine = (): void => {
+  if (!editor || pendingRestoreTopLine === null || pendingRevealSelection !== null) {
+    return;
+  }
+  if (typeof editor.restoreTopLine === 'function') {
+    editor.restoreTopLine(pendingRestoreTopLine, pendingRestoreTopLineOffset);
+    pendingRestoreTopLine = null;
+    pendingRestoreTopLineOffset = 0;
+  }
+};
+
+const refreshEditorSurface = (): void => {
+  if (!editor) {
+    return;
+  }
+  if (typeof editor.refreshLayout === 'function') {
+    editor.refreshLayout();
+  }
+};
+
+const runEditorSurfaceRecovery = (): void => {
+  pendingEditorSurfaceRecoveryRaf = null;
+  refreshEditorSurface();
+  applyPendingRestoreTopLine();
+  scheduleViewPositionCapture();
+};
+
+const scheduleEditorSurfaceRecovery = (): void => {
+  if (pendingEditorSurfaceRecoveryRaf !== null) {
+    return;
+  }
+  pendingEditorSurfaceRecoveryRaf = window.requestAnimationFrame(runEditorSurfaceRecovery);
+};
+
 const clampRevealOffset = (value: number, max: number): number => {
   if (!Number.isFinite(value)) {
     return 0;
@@ -674,11 +793,14 @@ const applyRevealSelectionFromHost = (revealMessage: any) => {
   const max = editor.getText().length;
   const clampedAnchor = clampRevealOffset(anchor, max);
   const clampedHead = clampRevealOffset(head, max);
+  pendingRestoreTopLine = null;
+  pendingRestoreTopLineOffset = 0;
   editor.revealSelection(clampedAnchor, clampedHead, {
     focusEditor: focus !== false,
     align: 'center'
   });
   pendingRevealSelection = null;
+  scheduleViewPositionCapture();
 };
 
 const focusEditorFromHost = () => {
@@ -687,6 +809,7 @@ const focusEditorFromHost = () => {
     return;
   }
 
+  scheduleEditorSurfaceRecovery();
   editor.focus();
   pendingEditorFocus = false;
 };
@@ -952,6 +1075,8 @@ const mountInitialEditor = async () => {
   try {
     const createEditor = await loadCreateEditorFactory();
     const initialText = pendingInitialText;
+    const initialTopLine = pendingRevealSelection === null ? pendingRestoreTopLine : null;
+    const initialTopLineOffset = pendingRevealSelection === null ? pendingRestoreTopLineOffset : 0;
     if (editor || initialText === null) {
       return;
     }
@@ -959,6 +1084,8 @@ const mountInitialEditor = async () => {
       parent: editorHost,
       text: initialText,
       initialMode: currentMode,
+      initialTopLine,
+      initialTopLineOffset,
       initialLineNumbers: lineNumbersVisible,
       initialGitGutter: gitChangesGutterVisible,
       initialVimMode: vimModeEnabled,
@@ -967,12 +1094,17 @@ const mountInitialEditor = async () => {
         vscode.postMessage({ type: 'openLink', href });
       },
       onSelectionChange: (state: any) => selectionMenuController.update(state),
+      onViewportChange: () => scheduleViewPositionCapture(),
       onRequestGitBlame: requestGitBlameForLine,
       onOpenGitRevisionForLine: openGitRevisionForLine,
       onOpenGitWorktreeForLine: openGitWorktreeForLine
     });
     gitClient?.applyBaselineToEditor(editor);
     syncGitDiffLineHighlights();
+    if (initialTopLine !== null) {
+      pendingRestoreTopLine = null;
+      pendingRestoreTopLineOffset = 0;
+    }
     editor.focus();
     pendingInitialText = null;
     initialMountRecoveryAttempted = false;
@@ -998,6 +1130,7 @@ const mountInitialEditor = async () => {
     setLocalLinkRefreshContext({
       refreshDecorations: () => editor?.refreshDecorations?.()
     });
+    scheduleEditorSurfaceRecovery();
   } catch (error) {
     logWebviewRenderError('mountInitialEditor', error);
 
@@ -1032,15 +1165,33 @@ const scheduleInitialEditorMount = () => {
   if (editor || initialEditorMountQueued) {
     return;
   }
-  initialEditorMountQueued = true;
-  window.requestAnimationFrame(() => {
+
+  const runScheduledMount = () => {
+    if (!initialEditorMountQueued) {
+      return;
+    }
     initialEditorMountQueued = false;
+    if (initialEditorMountFallbackTimer !== null) {
+      window.clearTimeout(initialEditorMountFallbackTimer);
+      initialEditorMountFallbackTimer = null;
+    }
     void mountInitialEditor();
     findPanelController.updateFindStatusSummary();
-  });
+  };
+
+  initialEditorMountQueued = true;
+  window.requestAnimationFrame(runScheduledMount);
+  initialEditorMountFallbackTimer = window.setTimeout(
+    runScheduledMount,
+    INITIAL_EDITOR_MOUNT_FALLBACK_MS
+  );
 };
 
 const handleInit = (message: any) => {
+  pendingRestoreTopLine = normalizeLineNumber(message.restoreTopLine);
+  pendingRestoreTopLineOffset = normalizeLineOffset(message.restoreTopLineOffset);
+  lastSentTopLine = null;
+  lastSentTopLineOffset = null;
   if (!editor) {
     pendingInitialText = message.text;
     scheduleInitialEditorMount();
@@ -1070,6 +1221,7 @@ const handleInit = (message: any) => {
   if (editor && outlineController.isVisible()) {
     outlineController.refresh();
   }
+  scheduleEditorSurfaceRecovery();
   scheduleWikiLinkStatusRefresh(message.text);
   scheduleLocalLinkStatusRefresh(message.text);
   findPanelController.updateFindStatusSummary();
@@ -1359,16 +1511,28 @@ window.addEventListener('paste', async (event) => {
 
 window.addEventListener('blur', () => {
   flushPendingChangesNow();
+  flushViewPositionNow();
 });
 
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    if (pendingEditorSurfaceRecoveryRaf !== null) {
+      window.cancelAnimationFrame(pendingEditorSurfaceRecoveryRaf);
+      pendingEditorSurfaceRecoveryRaf = null;
+    }
     forceFlushChanges();
+    return;
   }
+  scheduleEditorSurfaceRecovery();
+});
+
+window.addEventListener('focus', () => {
+  scheduleEditorSurfaceRecovery();
 });
 
 const forceFlushChanges = () => {
   flushChanges();
+  flushViewPositionNow();
 };
 
 window.addEventListener('beforeunload', () => {
@@ -1376,6 +1540,15 @@ window.addEventListener('beforeunload', () => {
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();
   clearGitBlameCache({ hideTooltip: false });
+
+  if (initialEditorMountFallbackTimer !== null) {
+    window.clearTimeout(initialEditorMountFallbackTimer);
+    initialEditorMountFallbackTimer = null;
+  }
+  if (pendingEditorSurfaceRecoveryRaf !== null) {
+    window.cancelAnimationFrame(pendingEditorSurfaceRecoveryRaf);
+    pendingEditorSurfaceRecoveryRaf = null;
+  }
 
   if (pendingDebounce !== null) {
     window.clearTimeout(pendingDebounce);

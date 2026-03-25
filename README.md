@@ -13,12 +13,13 @@ An optimized markdown editor with live editing mode for VS Code.
 - **Toolbar formatting** - Insert headings, lists, tasks, tables, code blocks, links, images, and quotes in one click
 - **Floating selection menu** - Instantly apply bold, italic, strikethrough, inline code, or links on any text selection
 - **Interactive editing** - Toggle tasks, open links, find/replace, render full-screen Mermaid diagrams, and LaTeX syntax
-- **Images** - Paste images for inline rendering with automatic path resolution
+- **Images** - Paste images directly into notes with inline rendering and automatic path resolution
 
 ### Navigation & Organisation
 
 - **Contents outline sidebar** - Jump to and reorder sections in long documents with ease
 - **Table editing** - Insert and edit tables inline without writing raw syntax
+- **Scroll memory** - Reopening a long file restores your previous scroll position
 
 ### Git and Agents Integration
 
@@ -30,7 +31,7 @@ An optimized markdown editor with live editing mode for VS Code.
 ### Customisation & Export
 
 - **Theming** - [Guide](./docs/theming.md) - Customise syntax colors, fonts, and line height to match your style
-- **Syntax highlighting** - Monokai-inspired theme for clear, readable markdown
+- **Default themes** - One Monokai, One Dark Pro, Dracula, Gruvbox, Nord, Solarized Dark, Catppuccin Mocha, Tokyo Night, and GitHub Dark
 - **Export** - Save your document as HTML or PDF
 
 ## Getting Started

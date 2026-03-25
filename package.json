@@ -203,6 +203,13 @@
           "order": 6,
           "description": "Enable Vim keybindings in Source mode."
         },
+        "markdownEditorOptimized.rememberPosition.lines": {
+          "type": "number",
+          "default": 100,
+          "minimum": 0,
+          "order": 7,
+          "description": "Markdown files with at least this many lines will remember the last viewed line and restore the scroll position when opened."
+        },
         "markdownEditorOptimized.export.browserPath": {
           "type": "string",
           "default": "",

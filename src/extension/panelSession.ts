@@ -10,6 +10,7 @@ import {
   getGitDiffLineHighlightsEnabled,
   getOutlinePosition,
   getOutlineVisible,
+  getRememberPositionLines,
   getThemeSettings,
   getVimModeEnabled
 } from '../shared/extensionConfig';
@@ -42,6 +43,8 @@ type InitMessage = {
   outlinePosition: OutlinePosition;
   outlineVisible: boolean;
   theme: ThemeSettings;
+  restoreTopLine?: number;
+  restoreTopLineOffset?: number;
 };
 
 type DocChangedMessage = {
@@ -156,6 +159,12 @@ type SetFindOptionsMessage = {
   findOptions?: Partial<FindOptions>;
 };
 
+type ViewPositionChangedMessage = {
+  type: 'viewPositionChanged';
+  topLine: number;
+  topLineOffset?: number;
+};
+
 type ResolvedImageSrcMessage = {
   type: 'resolvedImageSrc';
   requestId: string;
@@ -236,6 +245,7 @@ type WebviewMessage =
   | SetGitChangesGutterMessage
   | SetOutlineVisibleMessage
   | SetFindOptionsMessage
+  | ViewPositionChangedMessage
   | OpenLinkMessage
   | ResolveImageSrcMessage
   | ResolveWikiLinksMessage
@@ -260,6 +270,15 @@ type PendingExportSnapshot = {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+
+type RememberedViewPosition = {
+  line: number;
+  lineOffset: number;
+  updatedAt: number;
+};
+
+const REMEMBERED_VIEW_POSITIONS_STATE_KEY = 'rememberedViewPositionsByDocument';
+const MAX_REMEMBERED_VIEW_POSITIONS = 300;
 
 type PanelSessionControllerParams = {
   panel: vscode.WebviewPanel;
@@ -323,7 +342,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   let gitRefreshPendingForceReload = false;
   let lastSentRevealSelectionKey: string | null = null;
   let pendingRevealSelection: RevealSelectionPayload | null = null;
+  let pendingRestoreTopLine: number | null = null;
+  let pendingRestoreTopLineOffset = 0;
   let pendingDraftText: string | null = null;
+  let lastSavedRememberedLine: number | null = null;
+  let lastSavedRememberedLineOffset = 0;
   let disposed = false;
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
   const gitDocumentState = new GitDocumentState(documentUri.fsPath, workspaceRoot);
@@ -379,6 +402,52 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     return vscode.workspace.applyEdit(edit);
   };
 
+  const clearRememberedViewPosition = async (): Promise<void> => {
+    const rememberedPositions = getRememberedViewPositionMap(context.workspaceState);
+    if (!(documentKey in rememberedPositions)) {
+      return;
+    }
+    delete rememberedPositions[documentKey];
+    await context.workspaceState.update(REMEMBERED_VIEW_POSITIONS_STATE_KEY, rememberedPositions);
+    lastSavedRememberedLine = null;
+    lastSavedRememberedLineOffset = 0;
+  };
+
+  const saveRememberedViewPosition = async (topLine: number, topLineOffset: number | undefined): Promise<void> => {
+    const minLines = getRememberPositionLines();
+    if (document.lineCount < minLines) {
+      await clearRememberedViewPosition();
+      return;
+    }
+
+    const clampedLine = clampLineNumber(topLine, document.lineCount);
+    const normalizedOffset = normalizeLineOffset(topLineOffset);
+    if (lastSavedRememberedLine === clampedLine && lastSavedRememberedLineOffset === normalizedOffset) {
+      return;
+    }
+
+    const rememberedPositions = getRememberedViewPositionMap(context.workspaceState);
+    const existing = rememberedPositions[documentKey];
+    if (existing?.line === clampedLine && existing.lineOffset === normalizedOffset) {
+      lastSavedRememberedLine = clampedLine;
+      lastSavedRememberedLineOffset = normalizedOffset;
+      return;
+    }
+
+    rememberedPositions[documentKey] = {
+      line: clampedLine,
+      lineOffset: normalizedOffset,
+      updatedAt: Date.now()
+    };
+
+    await context.workspaceState.update(
+      REMEMBERED_VIEW_POSITIONS_STATE_KEY,
+      pruneRememberedViewPositionMap(rememberedPositions)
+    );
+    lastSavedRememberedLine = clampedLine;
+    lastSavedRememberedLineOffset = normalizedOffset;
+  };
+
   const sendInit = async (): Promise<boolean> => {
     const message: InitMessage = {
       type: 'init',
@@ -392,7 +461,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       findOptions: getFindOptions(),
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),
-      theme: getThemeSettings()
+      theme: getThemeSettings(),
+      restoreTopLine: pendingRestoreTopLine ?? undefined,
+      restoreTopLineOffset: pendingRestoreTopLine === null ? undefined : pendingRestoreTopLineOffset
     };
     return postToWebview(message);
   };
@@ -657,12 +728,44 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     return vscode.window.visibleTextEditors.find((editor) => isTextEditorForDocument(editor));
   };
 
+  const resolveRememberedTopLineForInit = (): { line: number; lineOffset: number } | null => {
+    const minLines = getRememberPositionLines();
+    if (document.lineCount < minLines) {
+      runBackground(clearRememberedViewPosition(), 'clearRememberedViewPosition.initThreshold');
+      return null;
+    }
+
+    if (pendingRevealSelection !== null) {
+      return null;
+    }
+
+    const rememberedPositions = getRememberedViewPositionMap(context.workspaceState);
+    const remembered = rememberedPositions[documentKey];
+    if (!remembered) {
+      return null;
+    }
+
+    const clampedLine = clampLineNumber(remembered.line, document.lineCount);
+    const lineOffset = normalizeLineOffset(remembered.lineOffset);
+    lastSavedRememberedLine = clampedLine;
+    lastSavedRememberedLineOffset = lineOffset;
+    return {
+      line: clampedLine,
+      lineOffset
+    };
+  };
+
   const initialRevealEditor = findEditorForDocumentReveal();
   if (initialRevealEditor) {
     pendingRevealSelection = revealSelectionForTextEditor(initialRevealEditor);
   } else {
     const initialOffset = parseRevealOffsetFromUriFragment(document.uri);
     pendingRevealSelection = initialOffset === null ? null : { anchor: initialOffset, head: initialOffset };
+  }
+  const rememberedTopLine = resolveRememberedTopLineForInit();
+  if (rememberedTopLine) {
+    pendingRestoreTopLine = rememberedTopLine.line;
+    pendingRestoreTopLineOffset = rememberedTopLine.lineOffset;
   }
 
   const session: PanelSession = {
@@ -726,6 +829,13 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         });
         return;
       }
+      case 'viewPositionChanged':
+        if (Number.isFinite(raw.topLine)) {
+          await enqueue(async () => {
+            await saveRememberedViewPosition(raw.topLine, raw.topLineOffset);
+          });
+        }
+        return;
       case 'exportDocument':
         await onExportDocument(session, raw.format);
         return;
@@ -916,6 +1026,56 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     handleMessage,
     dispose
   };
+}
+
+function clampLineNumber(value: number, maxLine: number): number {
+  const numeric = Number.isFinite(value) ? Math.floor(value) : 1;
+  const max = Math.max(1, Math.floor(maxLine));
+  return Math.max(1, Math.min(numeric, max));
+}
+
+function normalizeLineOffset(value: number | undefined): number {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return Math.max(0, Math.round(numeric * 100) / 100);
+}
+
+function getRememberedViewPositionMap(workspaceState: vscode.Memento): Record<string, RememberedViewPosition> {
+  const stored = workspaceState.get<unknown>(REMEMBERED_VIEW_POSITIONS_STATE_KEY);
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+    return {};
+  }
+
+  const entries: Record<string, RememberedViewPosition> = {};
+  for (const [key, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (typeof key !== 'string' || !key) {
+      continue;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      continue;
+    }
+    const record = value as Partial<RememberedViewPosition>;
+    const line = Number(record.line);
+    const lineOffset = Number(record.lineOffset);
+    const updatedAt = Number(record.updatedAt);
+    if (!Number.isFinite(line) || !Number.isFinite(updatedAt)) {
+      continue;
+    }
+    entries[key] = {
+      line: Math.max(1, Math.floor(line)),
+      lineOffset: normalizeLineOffset(lineOffset),
+      updatedAt: Math.floor(updatedAt)
+    };
+  }
+  return entries;
+}
+
+function pruneRememberedViewPositionMap(
+  entries: Record<string, RememberedViewPosition>
+): Record<string, RememberedViewPosition> {
+  const sortedEntries = Object.entries(entries)
+    .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+    .slice(0, MAX_REMEMBERED_VIEW_POSITIONS);
+  return Object.fromEntries(sortedEntries);
 }
 
 async function applyDocumentChanges(

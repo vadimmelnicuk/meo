@@ -136,10 +136,13 @@ export function createEditor({
   onApplyChanges,
   onOpenLink,
   onSelectionChange,
+  onViewportChange,
   onRequestGitBlame,
   onOpenGitRevisionForLine,
   onOpenGitWorktreeForLine,
   initialMode = 'source',
+  initialTopLine = null,
+  initialTopLineOffset = 0,
   initialLineNumbers = true,
   initialGitGutter = true,
   initialVimMode = false
@@ -174,8 +177,34 @@ export function createEditor({
   let gitBlameHover = null;
   let gitDiffOverviewRuler = null;
   let sourceLinkHoverPointerActive = false;
+  const normalizeTopLineOffset = (value) => {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.max(0, Number(value));
+  };
   const vimExtensionsForState = () => (vimModeEnabled && currentMode === 'source' ? vim() : []);
+  const getLineStartOffset = (docText, targetLineNumber) => {
+    const targetLine = Math.max(1, Math.floor(targetLineNumber));
+    if (targetLine === 1) {
+      return 0;
+    }
+    let line = 1;
+    for (let index = 0; index < docText.length; index += 1) {
+      if (docText.charCodeAt(index) !== 10) {
+        continue;
+      }
+      line += 1;
+      if (line === targetLine) {
+        return index + 1;
+      }
+    }
+    return docText.length;
+  };
   const initialCursorPos = (() => {
+    if (typeof initialTopLine === 'number' && Number.isFinite(initialTopLine)) {
+      return getLineStartOffset(text ?? '', initialTopLine);
+    }
     if (!text) {
       return 0;
     }
@@ -842,6 +871,78 @@ export function createEditor({
     }
   };
 
+  const TOP_LINE_VISIBILITY_EPSILON = 0.5;
+  const SCROLL_RESTORE_EPSILON = 0.5;
+  const SCROLL_RESTORE_MAX_ATTEMPTS = 3;
+
+  const getTopLineMetrics = (scrollTopValue = view.scrollDOM.scrollTop) => {
+    const scrollTop = Math.max(0, scrollTopValue);
+    const lineBlock = view.lineBlockAtHeight(scrollTop);
+    const line = view.state.doc.lineAt(lineBlock.from);
+    return {
+      line,
+      lineBlock,
+      hiddenTopPixels: scrollTop - lineBlock.top
+    };
+  };
+
+  const topVisibleLineAtCurrentScroll = () => {
+    const { line, hiddenTopPixels } = getTopLineMetrics();
+    if (hiddenTopPixels <= TOP_LINE_VISIBILITY_EPSILON) {
+      return line;
+    }
+
+    const nextLineNumber = Math.min(view.state.doc.lines, line.number + 1);
+    return view.state.doc.line(nextLineNumber);
+  };
+
+  const syncCursorToTopVisibleLine = () => {
+    const line = topVisibleLineAtCurrentScroll();
+    const anchor = line.from;
+    const selection = view.state.selection.main;
+    if (selection.anchor === anchor && selection.head === anchor) {
+      return;
+    }
+    view.dispatch({
+      selection: { anchor },
+      annotations: Transaction.addToHistory.of(false)
+    });
+  };
+
+  const computeTopVisiblePosition = () => {
+    const { line, hiddenTopPixels } = getTopLineMetrics();
+    return {
+      lineNumber: line.number,
+      lineOffset: normalizeTopLineOffset(hiddenTopPixels)
+    };
+  };
+
+  const restoreTopVisibleLine = (lineNumber, lineOffset = 0, { syncCursor = true } = {}) => {
+    const targetLineNumber = Math.min(Math.max(1, Math.floor(lineNumber || 1)), view.state.doc.lines);
+    const targetOffset = normalizeTopLineOffset(lineOffset);
+    let attempts = 0;
+    const restoreScroll = () => {
+      if (!view || ++attempts > SCROLL_RESTORE_MAX_ATTEMPTS) {
+        if (syncCursor && view) {
+          syncCursorToTopVisibleLine();
+        }
+        return;
+      }
+      const targetLine = view.state.doc.line(targetLineNumber);
+      const targetTop = Math.max(0, view.lineBlockAt(targetLine.from).top + targetOffset);
+      const currentTop = view.scrollDOM.scrollTop;
+      view.scrollDOM.scrollTop = targetTop;
+      if (Math.abs(currentTop - targetTop) <= SCROLL_RESTORE_EPSILON) {
+        if (syncCursor) {
+          syncCursorToTopVisibleLine();
+        }
+        return;
+      }
+      requestAnimationFrame(restoreScroll);
+    };
+    restoreScroll();
+  };
+
   const findMatch = (
     query,
     backward = false,
@@ -1116,6 +1217,7 @@ export function createEditor({
           emitSelectionChange();
         } else if (update.viewportChanged) {
           emitSelectionChange();
+          onViewportChange?.();
         }
 
         if (!update.docChanged || applyingExternal || applyingRenumber) {
@@ -1148,10 +1250,23 @@ export function createEditor({
     ]
   });
 
+  const initialScrollTo = (() => {
+    if (typeof initialTopLine !== 'number' || !Number.isFinite(initialTopLine)) {
+      return undefined;
+    }
+    const lineNumber = Math.min(Math.max(1, Math.floor(initialTopLine)), state.doc.lines);
+    const line = state.doc.line(lineNumber);
+    return EditorView.scrollIntoView(line.from, { y: 'start' });
+  })();
+
   view = new EditorView({
     state,
-    parent
+    parent,
+    scrollTo: initialScrollTo
   });
+  if (typeof initialTopLine === 'number' && Number.isFinite(initialTopLine)) {
+    restoreTopVisibleLine(initialTopLine, initialTopLineOffset, { syncCursor: true });
+  }
   onTableInteraction = (event) => {
     const active = Boolean(event?.detail?.active);
     setTableInteractionActive(active);
@@ -1172,6 +1287,7 @@ export function createEditor({
   onScroll = () => {
     emitSelectionChange();
     gitBlameHover?.hide();
+    onViewportChange?.();
   };
   view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
   if (typeof onRequestGitBlame === 'function') {
@@ -1353,8 +1469,7 @@ export function createEditor({
         return;
       }
 
-      const lineBlock = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 1);
-      const lineNumber = view.state.doc.lineAt(lineBlock.from).number;
+      const topPosition = computeTopVisiblePosition();
 
       const previousMode = currentMode;
       currentMode = nextMode;
@@ -1377,21 +1492,7 @@ export function createEditor({
       syncModeClasses();
       syncGitGutterVisibility();
 
-      let attempts = 0;
-      const restoreScroll = () => {
-        if (!view || ++attempts > 3) {
-          return;
-        }
-        const targetLine = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
-        const targetTop = view.lineBlockAt(targetLine.from).top;
-        const currentTop = view.scrollDOM.scrollTop;
-        view.scrollDOM.scrollTop = targetTop;
-        if (Math.abs(currentTop - targetTop) <= 1) {
-          return;
-        }
-        requestAnimationFrame(restoreScroll);
-      };
-      requestAnimationFrame(restoreScroll);
+      restoreTopVisibleLine(topPosition.lineNumber, topPosition.lineOffset, { syncCursor: false });
     },
     setLineNumbers(visible) {
       const nextVisible = visible !== false;
@@ -1540,6 +1641,19 @@ export function createEditor({
       const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
       applyRevealSelection(line.from, line.from, { focusEditor: true, align });
     },
+    restoreTopLine(lineNumber, lineOffset) {
+      restoreTopVisibleLine(lineNumber, lineOffset, { syncCursor: true });
+    },
+    getTopVisiblePosition() {
+      const position = computeTopVisiblePosition();
+      return {
+        line: position.lineNumber,
+        lineOffset: position.lineOffset
+      };
+    },
+    getTopVisibleLine() {
+      return computeTopVisiblePosition().lineNumber;
+    },
     revealSelection(anchor, head, options) {
       applyRevealSelection(anchor, head, options);
     },
@@ -1548,6 +1662,13 @@ export function createEditor({
     },
     refreshDecorations() {
       view.dispatch({ effects: refreshDecorationsEffect.of(null) });
+    },
+    refreshLayout() {
+      view.requestMeasure();
+      if (currentMode === 'live') {
+        forceParsing(view, view.state.doc.length, 500);
+      }
+      emitSelectionChange();
     },
     setGitBaseline(snapshot) {
       applyGitBaseline(view, snapshot);

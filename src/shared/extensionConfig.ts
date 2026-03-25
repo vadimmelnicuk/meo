@@ -12,6 +12,7 @@ export const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
+export const REMEMBER_POSITION_LINES_SETTING_KEY = 'rememberPosition.lines';
 export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.enabled';
 export const LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY = 'lineNumbers.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
@@ -63,6 +64,11 @@ export function getGitDiffLineHighlightsEnabled(): boolean {
 
 export function getVimModeEnabled(context: vscode.ExtensionContext): boolean {
   return getToggleSettingValue(context, VIM_MODE_SETTING_KEY, VIM_MODE_KEY, [], false);
+}
+
+export function getRememberPositionLines(): number {
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  return normalizeRememberPositionLineCount(config.get<number>(REMEMBER_POSITION_LINES_SETTING_KEY, 100));
 }
 
 export function getOutlinePosition(): OutlinePosition {
@@ -171,6 +177,13 @@ function getToggleSettingValue(
     }
   }
   return context.globalState.get<boolean>(legacyStateKey, fallbackDefault);
+}
+
+function normalizeRememberPositionLineCount(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 100;
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 async function migrateLegacyToggleSetting(
