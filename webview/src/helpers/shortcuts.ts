@@ -68,7 +68,7 @@ export const handleEditorShortcut = (
     return true;
   }
 
-  if (hasPrimaryModifier && isShortcutKey(event, 'f', 'KeyF') && !event.altKey) {
+  if (hasPrimaryModifier && isShortcutKey(event, 'f', 'KeyF') && !event.altKey && !event.shiftKey) {
     if (vimWinsCtrlConflicts) {
       return false;
     }
