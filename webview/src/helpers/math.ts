@@ -29,6 +29,12 @@ interface SimpleRange {
 const MATH_RENDER_CACHE_LIMIT = 300;
 const mathHtmlCache = new Map<string, string | null>();
 const loggedMathRenderErrors = new Set<string>();
+const INLINE_MATH_MARKDOWN_STRUCTURE_MARKERS = ['**', '__', '~~', '`', '](', '!['] as const;
+const INLINE_MATH_PROSE_LENGTH_LIMIT = 120;
+const INLINE_MATH_CURRENCY_CONTENT_RE = /^[0-9][0-9\s,._%+-]*$/;
+const INLINE_MATH_TEX_COMMAND_RE = /\\[A-Za-z]+/;
+const INLINE_MATH_TEX_SYMBOL_RE = /[_^{}]/;
+const INLINE_MATH_ALPHA_WORD_RE = /\b[A-Za-z]{3,}\b/g;
 
 function isEscaped(text: string, index: number): boolean {
   let slashCount = 0;
@@ -95,11 +101,55 @@ function hasOwnLineDisplayFences(text: string, openIndex: number, closeIndex: nu
 }
 
 function looksLikeCurrencyContent(content: string): boolean {
+  return INLINE_MATH_CURRENCY_CONTENT_RE.test(content);
+}
+
+function hasTexCue(content: string): boolean {
+  return INLINE_MATH_TEX_COMMAND_RE.test(content) || INLINE_MATH_TEX_SYMBOL_RE.test(content);
+}
+
+function hasMarkdownStructureMarker(content: string): boolean {
+  for (const marker of INLINE_MATH_MARKDOWN_STRUCTURE_MARKERS) {
+    if (content.includes(marker)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasAtLeastTwoAlphaWords(content: string): boolean {
+  INLINE_MATH_ALPHA_WORD_RE.lastIndex = 0;
+  let count = 0;
+  while (INLINE_MATH_ALPHA_WORD_RE.exec(content)) {
+    count += 1;
+    if (count >= 2) {
+      INLINE_MATH_ALPHA_WORD_RE.lastIndex = 0;
+      return true;
+    }
+  }
+  INLINE_MATH_ALPHA_WORD_RE.lastIndex = 0;
+  return false;
+}
+
+function shouldRejectInlineMathCandidate(content: string): boolean {
   const trimmed = content.trim();
   if (!trimmed) {
-    return false;
+    return true;
   }
-  return /^[0-9][0-9\s,._%+-]*$/.test(trimmed);
+  if (looksLikeCurrencyContent(trimmed)) {
+    return true;
+  }
+  if (hasMarkdownStructureMarker(content)) {
+    return true;
+  }
+  const hasTex = hasTexCue(content);
+  if (!hasTex && trimmed.length > INLINE_MATH_PROSE_LENGTH_LIMIT) {
+    return true;
+  }
+  if (!hasTex && hasAtLeastTwoAlphaWords(content)) {
+    return true;
+  }
+  return false;
 }
 
 function isInlineMathOpen(text: string, index: number): boolean {
@@ -296,7 +346,7 @@ export function parseLatexMathAt(
   }
 
   const content = text.slice(index + 1, closeResult.close);
-  if (!content || looksLikeCurrencyContent(content)) {
+  if (shouldRejectInlineMathCandidate(content)) {
     return null;
   }
 
@@ -376,8 +426,9 @@ export function collectLatexMathRanges(
     }
 
     const content = text.slice(index + 1, closeResult.close);
-    if (!content || looksLikeCurrencyContent(content)) {
-      index = closeResult.close + 1;
+    if (shouldRejectInlineMathCandidate(content)) {
+      // Skip only the opening '$' so later inline candidates on this line are still discovered.
+      index += 1;
       continue;
     }
 

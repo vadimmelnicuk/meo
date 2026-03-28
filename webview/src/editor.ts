@@ -27,6 +27,7 @@ import { resolvedSyntaxTree, extractHeadings, extractHeadingSections } from './h
 import {
   sourceListBorderField,
   sourceListMarkerField,
+  listMarkerData,
   handleArrowLeftAtListContentStart,
   handleArrowRightAtListLineStart,
   handleBackspaceAtListContentStart,
@@ -62,6 +63,14 @@ type SearchQueryState = {
 type SearchMatchRange = {
   start: number;
   end: number;
+};
+
+type InlineSelectionRange = {
+  from: number;
+  to: number;
+  anchor: number;
+  head: number;
+  empty: boolean;
 };
 
 type MarkerReplacementContext = {
@@ -746,6 +755,46 @@ export function createEditor({
     return isMatchSelection;
   };
 
+  const resolveNativeSelectionAnchor = (): { anchorX: number; anchorY: number } | null => {
+    if (!view) {
+      return null;
+    }
+
+    const nativeSelection = window.getSelection();
+    if (!nativeSelection || nativeSelection.isCollapsed || nativeSelection.rangeCount === 0) {
+      return null;
+    }
+
+    let topRect: DOMRect | null = null;
+    for (let rangeIndex = 0; rangeIndex < nativeSelection.rangeCount; rangeIndex += 1) {
+      const range = nativeSelection.getRangeAt(rangeIndex);
+      const ancestor = range.commonAncestorContainer;
+      if (!view.dom.contains(ancestor)) {
+        continue;
+      }
+
+      const rects = range.getClientRects();
+      for (let rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
+        const rect = rects.item(rectIndex);
+        if (!rect || (rect.width <= 0 && rect.height <= 0)) {
+          continue;
+        }
+        if (!topRect || rect.top < topRect.top || (rect.top === topRect.top && rect.left < topRect.left)) {
+          topRect = rect;
+        }
+      }
+    }
+
+    if (!topRect) {
+      return null;
+    }
+
+    return {
+      anchorX: topRect.left,
+      anchorY: topRect.top
+    };
+  };
+
   const emitSelectionChange = () => {
     if (!view || typeof onSelectionChange !== 'function') {
       return;
@@ -772,6 +821,18 @@ export function createEditor({
 
     if (!isRegularInlineSelection(view.state, from, to)) {
       onSelectionChange({ visible: false });
+      return;
+    }
+
+    const nativeAnchor = resolveNativeSelectionAnchor();
+    if (nativeAnchor) {
+      onSelectionChange({
+        visible: true,
+        from,
+        to,
+        anchorX: nativeAnchor.anchorX,
+        anchorY: nativeAnchor.anchorY
+      });
       return;
     }
 
@@ -1528,6 +1589,16 @@ export function createEditor({
 
       const { state } = view;
       const selection = state.selection.main;
+      let cachedInlineSelection: InlineSelectionRange | null = null;
+      const inlineSelection = (): InlineSelectionRange => {
+        if (cachedInlineSelection) {
+          return cachedInlineSelection;
+        }
+        cachedInlineSelection = currentMode === 'live'
+          ? normalizeLiveInlineSelectionForListContent(state, selection)
+          : selection;
+        return cachedInlineSelection;
+      };
 
       let insert = '';
       switch (action) {
@@ -1546,16 +1617,16 @@ export function createEditor({
         case 'codeBlock':
           return insertCodeBlock(view, selection);
         case 'inlineCode':
-          return insertInlineCode(view, selection);
+          return insertInlineCode(view, inlineSelection());
         case 'kbd':
-          return insertKbd(view, selection);
+          return insertKbd(view, inlineSelection());
         case 'bold':
-          return insertInlineFence(view, selection, '**');
+          return insertInlineFence(view, inlineSelection(), '**');
         case 'italic':
-          return insertInlineFence(view, selection, '*');
+          return insertInlineFence(view, inlineSelection(), '*');
         case 'lineover':
         case 'strike':
-          return insertInlineFence(view, selection, '~~');
+          return insertInlineFence(view, inlineSelection(), '~~');
         case 'quote':
           return insertQuote(view, selection);
         case 'hr':
@@ -1563,11 +1634,11 @@ export function createEditor({
         case 'table':
           return insertTable(view, selection, level?.cols, level?.rows);
         case 'link':
-          return insertLink(view, selection);
+          return insertLink(view, inlineSelection());
         case 'wikiLink':
-          return insertWikiLink(view, selection);
+          return insertWikiLink(view, inlineSelection());
         case 'image':
-          return insertImage(view, selection);
+          return insertImage(view, inlineSelection());
       }
 
       if (!selection.empty && (action === 'bulletList' || action === 'numberedList')) {
@@ -1912,6 +1983,48 @@ function replaceMatchRanges(text: string, matches: SearchMatchRange[], replaceme
   }
   nextText += text.slice(offset);
   return nextText;
+}
+
+function normalizeLiveInlineSelectionForListContent(
+  state: EditorState,
+  selection: InlineSelectionRange
+): InlineSelectionRange {
+  if (selection.empty) {
+    return selection;
+  }
+
+  let from = Math.min(selection.from, selection.to);
+  const to = Math.max(selection.from, selection.to);
+  if (to <= from) {
+    return selection;
+  }
+
+  const startLine = state.doc.lineAt(from);
+  const endLine = state.doc.lineAt(to - 1);
+  if (startLine.number !== endLine.number) {
+    return selection;
+  }
+
+  const lineText = state.doc.sliceString(startLine.from, startLine.to);
+  const marker = listMarkerData(lineText);
+  if (!marker) {
+    return selection;
+  }
+
+  const contentFrom = startLine.from + marker.toOffset;
+  if (from >= contentFrom || to <= contentFrom) {
+    return selection;
+  }
+
+  from = contentFrom;
+  if (from >= to) {
+    return selection;
+  }
+
+  if (selection.anchor <= selection.head) {
+    return { from, to, anchor: from, head: to, empty: false };
+  }
+  return { from, to, anchor: to, head: from, empty: false };
 }
 
 function insertInlineCode(view, selection) {
