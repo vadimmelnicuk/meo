@@ -25,6 +25,30 @@ function isEscaped(text: string, index: number): boolean {
   return backslashes % 2 === 1;
 }
 
+function isWhitespace(char: string): boolean {
+  return char !== '' && /\s/u.test(char);
+}
+
+function isWordChar(char: string): boolean {
+  return char !== '' && /[0-9A-Za-z_]/u.test(char);
+}
+
+function isBoundaryChar(char: string): boolean {
+  return char === '' || isWhitespace(char) || !isWordChar(char);
+}
+
+function canOpenSingleTilde(text: string, index: number): boolean {
+  const previous = index > 0 ? text[index - 1] : '';
+  const next = index + 1 < text.length ? text[index + 1] : '';
+  return !isWhitespace(next) && isBoundaryChar(previous);
+}
+
+function canCloseSingleTilde(text: string, index: number): boolean {
+  const previous = index > 0 ? text[index - 1] : '';
+  const next = index + 1 < text.length ? text[index + 1] : '';
+  return !isWhitespace(previous) && isBoundaryChar(next);
+}
+
 export function collectStrikethroughRanges(tree: any): StrikeRange[] {
   const ranges: StrikeRange[] = [];
   tree.iterate({
@@ -58,6 +82,10 @@ export function collectSingleTildeStrikePairs(state: EditorState, strikeRanges: 
         index += 1;
         continue;
       }
+      if (!canOpenSingleTilde(text, index)) {
+        index += 1;
+        continue;
+      }
 
       let close = -1;
       for (let i = index + 1; i < text.length; i += 1) {
@@ -65,6 +93,9 @@ export function collectSingleTildeStrikePairs(state: EditorState, strikeRanges: 
           continue;
         }
         if (text[i - 1] === '~' || text[i + 1] === '~') {
+          continue;
+        }
+        if (!canCloseSingleTilde(text, i)) {
           continue;
         }
         close = i;
