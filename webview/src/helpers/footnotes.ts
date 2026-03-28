@@ -1,10 +1,13 @@
 import { EditorState } from '@codemirror/state';
 import { parseFrontmatter, isInsideFrontmatter } from './frontmatter';
 import { resolvedSyntaxTree } from './markdownSyntax';
+import { collectInlineFootnoteMarkerRanges } from './inlineFootnotes';
 
 export interface FootnoteReference {
   from: number;
   to: number;
+  containerFrom: number;
+  containerTo: number;
   label: string;
   normalizedLabel: string;
   number: number | null;
@@ -40,7 +43,7 @@ export interface ParsedFootnotes {
   references: FootnoteReference[];
   definitions: FootnoteDefinition[];
   numberByLabel: Map<string, number>;
-  referenceByKey: Map<string, FootnoteReference>;
+  referencesByContainerKey: Map<string, FootnoteReference[]>;
 }
 
 interface ProtectedRange {
@@ -50,7 +53,6 @@ interface ProtectedRange {
 
 const footnoteCache = new WeakMap<object, ParsedFootnotes>();
 const definitionMarkerPattern = /^[ \t]{0,3}\[\^([^\]\r\n]+)\]:(?:[ \t]|$)/;
-const referencePattern = /^\[\^([^\]\r\n]+)\]$/;
 
 export function normalizeFootnoteLabel(rawLabel: string): string {
   return String(rawLabel ?? '')
@@ -121,16 +123,22 @@ export function parseFootnotes(state: EditorState): ParsedFootnotes {
     definition.firstReferenceFrom = firstReferenceByLabel.get(definition.normalizedLabel) ?? null;
   }
 
-  const referenceByKey = new Map<string, FootnoteReference>();
+  const referencesByContainerKey = new Map<string, FootnoteReference[]>();
   for (const reference of references) {
-    referenceByKey.set(footnoteReferenceKey(reference.from, reference.to), reference);
+    const containerKey = footnoteReferenceKey(reference.containerFrom, reference.containerTo);
+    const containerRefs = referencesByContainerKey.get(containerKey);
+    if (containerRefs) {
+      containerRefs.push(reference);
+      continue;
+    }
+    referencesByContainerKey.set(containerKey, [reference]);
   }
 
   const parsed: ParsedFootnotes = {
     references,
     definitions,
     numberByLabel,
-    referenceByKey
+    referencesByContainerKey
   };
 
   footnoteCache.set(state.doc, parsed);
@@ -275,25 +283,32 @@ function collectReferences(
       }
 
       const rawText = state.doc.sliceString(node.from, node.to);
-      const markerMatch = referencePattern.exec(rawText);
-      if (!markerMatch) {
+      const markerRanges = collectInlineFootnoteMarkerRanges(rawText);
+      if (!markerRanges.length) {
         return;
       }
 
-      const label = markerMatch[1];
-      const normalizedLabel = normalizeFootnoteLabel(label);
-      if (!normalizedLabel) {
-        return;
-      }
+      for (const markerRange of markerRanges) {
+        const normalizedLabel = normalizeFootnoteLabel(markerRange.label);
+        if (!normalizedLabel) {
+          continue;
+        }
+        const definition = definitions.get(normalizedLabel);
+        if (!definition) {
+          continue;
+        }
 
-      references.push({
-        from: node.from,
-        to: node.to,
-        label,
-        normalizedLabel,
-        number: null,
-        definition: definitions.get(normalizedLabel) ?? null
-      });
+        references.push({
+          from: node.from + markerRange.fromOffset,
+          to: node.from + markerRange.toOffset,
+          containerFrom: node.from,
+          containerTo: node.to,
+          label: markerRange.label,
+          normalizedLabel,
+          number: null,
+          definition
+        });
+      }
     }
   });
 

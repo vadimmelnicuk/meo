@@ -56,6 +56,7 @@ import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRen
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
 import { findRawSourceUrlMatches, normalizeSourceHref } from './helpers/rawUrls';
 import { trimDecoratedUrlRange } from './helpers/urlDecorationRange';
+import { collectInlineFootnoteMarkerRanges } from './helpers/inlineFootnotes';
 import {
   collectLatexMathRanges,
   renderLatexMathToHtml,
@@ -69,6 +70,25 @@ const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
 const frontmatterBoundaryMarkerDeco = Decoration.mark({ class: 'meo-md-frontmatter-boundary-marker' });
 const linkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker' });
 const activeLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active' });
+const linkLabelBracketDeco = Decoration.mark({
+  class: 'meo-md-link-label-bracket',
+  attributes: {
+    style: 'color: var(--meo-color-base02) !important; -webkit-text-fill-color: var(--meo-color-base02) !important;'
+  }
+});
+const activeLinkLabelBracketDeco = Decoration.mark({
+  class: 'meo-md-link-label-bracket-active',
+  attributes: {
+    style: 'color: var(--meo-color-base02) !important; -webkit-text-fill-color: var(--meo-color-base02) !important;'
+  }
+});
+const footnoteMarkerDeco = Decoration.mark({
+  class: 'meo-md-footnote-marker',
+  attributes: {
+    style: 'color: var(--meo-color-base02) !important; -webkit-text-fill-color: var(--meo-color-base02) !important;'
+  }
+});
+const footnoteLiteralDeco = Decoration.mark({ class: 'meo-md-footnote-literal' });
 const wikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker' });
 const activeWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active meo-md-wiki-marker' });
 const emptyWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker meo-md-wiki-empty-marker' });
@@ -199,6 +219,26 @@ class FootnoteBackrefSpacerWidget extends WidgetType {
     return marker;
   }
 }
+
+class FootnoteReferenceSeparatorWidget extends WidgetType {
+  eq(other: WidgetType): boolean {
+    return other instanceof FootnoteReferenceSeparatorWidget;
+  }
+
+  toDOM(): HTMLElement {
+    const sep = document.createElement('span');
+    sep.className = 'meo-md-footnote-separator';
+    sep.textContent = ',';
+    sep.setAttribute('aria-hidden', 'true');
+    return sep;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const footnoteReferenceSeparatorWidget = new FootnoteReferenceSeparatorWidget();
 
 function listLineDeco(
   contentOffsetColumns,
@@ -697,19 +737,43 @@ function addMarkdownLinkDecorations(builder, state, node, activeLines) {
   );
 }
 
-function addFootnoteReferenceDecorations(builder, state, reference, activeLines) {
-  const line = state.doc.lineAt(reference.from);
-  const editingReference = activeLines.has(line.number) || overlapsSelection(state, reference.from, reference.to);
-  if (editingReference || !reference.number || !reference.definition) {
-    return;
+function addFootnoteReferenceDecorations(builder, state, reference, activeLines): boolean {
+  if (!shouldRenderFootnoteReference(state, reference, activeLines)) {
+    return false;
   }
 
   builder.push(
     Decoration.replace({
-      widget: new FootnoteReferenceWidget(reference.number, reference.definition.lineFrom),
+      widget: new FootnoteReferenceWidget(reference.number as number, reference.definition!.lineFrom),
       inclusive: false
     }).range(reference.from, reference.to)
   );
+
+  return true;
+}
+
+function shouldRenderFootnoteReference(state, reference, activeLines): boolean {
+  const line = state.doc.lineAt(reference.from);
+  const editingReference = activeLines.has(line.number) || overlapsSelection(state, reference.from, reference.to);
+  return !editingReference && Boolean(reference.number) && Boolean(reference.definition);
+}
+
+function addInlineFootnoteMarkerSyntaxDecorations(
+  builder,
+  containerFrom: number,
+  markerRanges: Array<{ label: string; fromOffset: number; toOffset: number }>
+) {
+  for (const markerRange of markerRanges) {
+    const markerFrom = containerFrom + markerRange.fromOffset;
+    const markerTo = containerFrom + markerRange.toOffset;
+    if (markerTo - markerFrom < 3) {
+      continue;
+    }
+
+    addRange(builder, markerFrom, markerFrom + 1, footnoteMarkerDeco);
+    addRange(builder, markerFrom + 1, markerFrom + 2, footnoteMarkerDeco);
+    addRange(builder, markerTo - 1, markerTo, footnoteMarkerDeco);
+  }
 }
 
 function getEmptyImageLinkUrl(state, node) {
@@ -1152,10 +1216,52 @@ function buildDecorations(state) {
         addRange(ranges, node.from, node.to, inlineStyleDecos.strike);
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
+      } else if (node.name === 'LinkLabel') {
+        const parentName = node.node.parent?.name ?? '';
+        if (parentName === 'Link' && node.to - node.from >= 2) {
+          const line = state.doc.lineAt(node.from);
+          const markerDecoForLine = activeLines.has(line.number) ? activeLinkLabelBracketDeco : linkLabelBracketDeco;
+          addRange(ranges, node.from, node.from + 1, markerDecoForLine);
+          addRange(ranges, node.to - 1, node.to, markerDecoForLine);
+        }
       } else if (node.name === 'Link') {
-        const footnoteReference = footnotes.referenceByKey.get(footnoteReferenceKey(node.from, node.to));
-        if (footnoteReference) {
-          addFootnoteReferenceDecorations(ranges, state, footnoteReference, activeLines);
+        const markerRanges = collectInlineFootnoteMarkerRanges(state.doc.sliceString(node.from, node.to));
+        if (markerRanges.length) {
+          addInlineFootnoteMarkerSyntaxDecorations(ranges, node.from, markerRanges);
+        }
+
+        const footnoteReferences = footnotes.referencesByContainerKey.get(footnoteReferenceKey(node.from, node.to));
+        if (markerRanges.length) {
+          const resolvedReferenceKeys = new Set(
+            (footnoteReferences ?? []).map((reference) => footnoteReferenceKey(reference.from, reference.to))
+          );
+          const renderedFootnoteReferences = [];
+          for (const footnoteReference of footnoteReferences ?? []) {
+            if (addFootnoteReferenceDecorations(ranges, state, footnoteReference, activeLines)) {
+              renderedFootnoteReferences.push(footnoteReference);
+            }
+          }
+          for (let index = 0; index < renderedFootnoteReferences.length - 1; index += 1) {
+            const currentReference = renderedFootnoteReferences[index];
+            const nextReference = renderedFootnoteReferences[index + 1];
+            if (currentReference.to !== nextReference.from) {
+              continue;
+            }
+            ranges.push(
+              Decoration.widget({
+                widget: footnoteReferenceSeparatorWidget,
+                side: 1
+              }).range(currentReference.to)
+            );
+          }
+          for (const markerRange of markerRanges) {
+            const markerFrom = node.from + markerRange.fromOffset;
+            const markerTo = node.from + markerRange.toOffset;
+            if (resolvedReferenceKeys.has(footnoteReferenceKey(markerFrom, markerTo))) {
+              continue;
+            }
+            addRange(ranges, markerFrom + 2, markerTo - 1, footnoteLiteralDeco);
+          }
           return;
         }
         if (addWikiLinkDecorations(ranges, state, node, activeLines)) {
@@ -1244,7 +1350,7 @@ function buildDecorations(state) {
         const parentName = node.node.parent?.name ?? '';
         if (
           parentName === 'Link' &&
-          footnotes.referenceByKey.has(
+          footnotes.referencesByContainerKey.has(
             footnoteReferenceKey(node.node.parent?.from ?? -1, node.node.parent?.to ?? -1)
           )
         ) {
@@ -1275,6 +1381,16 @@ function buildDecorations(state) {
           }
         }
         addRange(ranges, node.from, node.to, useActiveDeco ? activeLinkMarkerDeco : linkMarkerDeco);
+      } else if (
+        node.name === 'SuperscriptMark' &&
+        node.node.parent?.parent?.name === 'Link' &&
+        footnotes.referencesByContainerKey.has(
+          footnoteReferenceKey(node.node.parent.parent.from, node.node.parent.parent.to)
+        )
+      ) {
+        // Keep "^" visible for unresolved markers inside partially-resolved
+        // adjacent footnote sequences (e.g. "[^4][^5]" where only "[^4]" resolves).
+        return;
       } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, activeLineMarkerDeco);
       } else {

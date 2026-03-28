@@ -12,6 +12,7 @@ import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { sourceWikiMarkerField } from './helpers/wikiLinks';
 import { sourceFileLinkField } from './helpers/sourceRawLinks';
 import { sourceUrlBoundaryField } from './helpers/sourceUrlBoundaries';
+import { sourceFootnoteMarkerField } from './helpers/sourceFootnotes';
 import { getLinkHrefAtPointer, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
 import {
   gitDiffGutterBaselineExtensions,
@@ -2243,6 +2244,7 @@ function sourceMode() {
     sourceWikiMarkerField,
     sourceFileLinkField,
     sourceUrlBoundaryField,
+    sourceFootnoteMarkerField,
     sourceTableHeaderLineField,
     sourceFrontmatterField,
     gitDiffLineHighlightsField,

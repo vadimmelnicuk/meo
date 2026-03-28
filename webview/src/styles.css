@@ -985,6 +985,16 @@ body {
   color: var(--meo-color-base02) !important;
 }
 
+.cm-editor .meo-md-link-label-bracket,
+.cm-editor .meo-md-link-label-bracket-active,
+.cm-editor .meo-md-link-label-bracket *,
+.cm-editor .meo-md-link-label-bracket-active *,
+.cm-editor .meo-md-footnote-marker,
+.cm-editor .meo-md-footnote-marker * {
+  color: var(--meo-color-base02) !important;
+  -webkit-text-fill-color: var(--meo-color-base02) !important;
+}
+
 .cm-editor .meo-md-footnote-ref,
 .cm-editor .meo-md-footnote-backref {
   display: inline-flex;
@@ -1003,6 +1013,29 @@ body {
 .cm-editor .meo-md-footnote-ref {
   vertical-align: super;
   font-size: 0.78em;
+}
+
+.cm-editor .meo-md-footnote-ref + .meo-md-footnote-ref {
+  margin-left: 0.24em;
+}
+
+.cm-editor .meo-md-footnote-separator {
+  display: inline-block;
+  margin: 0 0.16em 0 0.04em;
+  vertical-align: super;
+  font-size: 0.72em;
+  line-height: 1;
+  color: var(--meo-color-base05);
+  pointer-events: none;
+}
+
+.cm-editor.meo-mode-live .meo-md-footnote-literal,
+.cm-editor.meo-mode-live .meo-md-footnote-literal * {
+  color: var(--meo-token-link-color, var(--meo-color-base05)) !important;
+  -webkit-text-fill-color: var(--meo-token-link-color, var(--meo-color-base05)) !important;
+  text-decoration: none !important;
+  vertical-align: baseline !important;
+  font-size: inherit !important;
 }
 
 .cm-editor .meo-md-footnote-ref sup {
