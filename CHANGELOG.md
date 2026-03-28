@@ -1,5 +1,9 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.23
+- Added inline footnote support with decorations and styling
+- Enhanced full list line decorations and currency vs latex rendering
+
 ## 0.1.22
 - Added support for additional task statuses in-progress [~] and dropped [-]
 - Added drag threshold handling for git blame gutter
