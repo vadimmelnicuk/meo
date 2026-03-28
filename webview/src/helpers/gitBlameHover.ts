@@ -4,6 +4,8 @@ import { getLiveGitCollapsedBlockAtLine, getLiveRenderedBlockAtLine } from './li
 const hoverDelayMs = 0;
 const defaultGutterHoverHitLeftPx = 0;
 const defaultGutterHoverHitWidthPx = 10;
+const gutterClickDragThresholdPx = 4;
+const gutterClickDragThresholdSquared = gutterClickDragThresholdPx * gutterClickDragThresholdPx;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -371,6 +373,20 @@ export function createGitBlameHoverController({
   let activeGutterRowHoverKind = null;
   let activeRenderedBlockRange = null;
   let pendingBlameLineNumber = 0;
+  let pointerDownInBand = false;
+  let pointerDownWasLeftButton = false;
+  let pointerDownClientX = 0;
+  let pointerDownClientY = 0;
+
+  const pointerMoveDistanceSquaredFromDown = (event) => {
+    const deltaX = event.clientX - pointerDownClientX;
+    const deltaY = event.clientY - pointerDownClientY;
+    return (deltaX * deltaX) + (deltaY * deltaY);
+  };
+
+  const hasPointerMovedPastDragThreshold = (event) => (
+    pointerMoveDistanceSquaredFromDown(event) > gutterClickDragThresholdSquared
+  );
 
   const getGutterBandLayout = () => {
     const gutter = view.dom.querySelector('.cm-gutter.meo-git-gutter');
@@ -999,6 +1015,18 @@ export function createGitBlameHoverController({
       return;
     }
 
+    if ((event.buttons & 1) === 1) {
+      if (pointerDownWasLeftButton && hasPointerMovedPastDragThreshold(event)) {
+        hide();
+        return;
+      }
+      const hasSelection = view.state.selection.ranges.some((range) => !range.empty);
+      if (hasSelection) {
+        hide();
+        return;
+      }
+    }
+
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('.meo-md-fold-toggle')) {
       hide();
@@ -1117,13 +1145,41 @@ export function createGitBlameHoverController({
   };
 
   const onScroll = () => hide();
-  const onPointerDown = () => hide();
+  const onPointerDown = (event) => {
+    hide();
+    pointerDownWasLeftButton = event.button === 0;
+    pointerDownClientX = event.clientX;
+    pointerDownClientY = event.clientY;
+    pointerDownInBand = false;
+
+    if (
+      !pointerDownWasLeftButton ||
+      destroyed ||
+      !isSupportedMode(getMode?.()) ||
+      view.dom.classList.contains('meo-git-gutter-hidden')
+    ) {
+      return;
+    }
+
+    const layout = getGutterBandLayout();
+    if (!layout) {
+      return;
+    }
+
+    pointerDownInBand = isWithinBand(layout, event.clientX, event.clientY);
+  };
   const pointerDownCapture = true;
   const onClick = (event) => {
     if (destroyed || !isSupportedMode(getMode?.()) || view.dom.classList.contains('meo-git-gutter-hidden')) {
       return;
     }
     if (event.button !== 0 || event.defaultPrevented) {
+      return;
+    }
+    if (!pointerDownWasLeftButton || !pointerDownInBand) {
+      return;
+    }
+    if (hasPointerMovedPastDragThreshold(event)) {
       return;
     }
     const target = event.target instanceof Element ? event.target : null;
