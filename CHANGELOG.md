@@ -1,5 +1,10 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.22
+- Added support for additional task statuses in-progress [~] and dropped [-]
+- Added drag threshold handling for git blame gutter
+- Enhanced single tilde strike handling with whitespace and boundary checks
+
 ## 0.1.21
 - Added scroll position restoration for long markdown files
 - Fixed shortcut handling for local search shortcut to exclude shift key
