@@ -16,8 +16,10 @@ interface ListMarkerData {
   isTask: boolean;
   taskHiddenPrefixColumns: number;
   taskBracketStart?: number;
-  taskState?: boolean;
+  taskStatus?: TaskStatus;
 }
+
+type TaskStatus = 'todo' | 'inprogress' | 'done' | 'dropped';
 
 interface ListIndentStyle {
   columns: number;
@@ -25,9 +27,11 @@ interface ListIndentStyle {
 }
 
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
+const sourceTaskBracketDeco = Decoration.mark({ class: 'meo-md-task-bracket' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
+const taskDroppedDeco = Decoration.mark({ class: 'meo-task-dropped' });
 const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])(?:\s+|$)/;
-const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))(?:\s+(?:\[([ xX])\]\s+)?|$)/;
+const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))(?:\s+(?:\[([ xX~\-])\]\s+)?|$)/;
 const TWO_SPACE_INDENT = '  ';
 const FOUR_SPACE_INDENT = '    ';
 const TAB_INDENT = '\t';
@@ -51,6 +55,18 @@ const listIndentStyle = {
 
 const defaultListIndentStyle = listIndentStyle.twoSpaces;
 const listBorderDecoCache = new Map();
+const taskStatusByMarker: Record<string, TaskStatus> = {
+  x: 'done',
+  '~': 'inprogress',
+  '-': 'dropped',
+  ' ': 'todo'
+};
+const taskStatusClassByStatus: Record<TaskStatus, string> = {
+  todo: 'is-todo',
+  inprogress: 'is-inprogress',
+  done: 'is-done',
+  dropped: 'is-dropped'
+};
 
 function listBorderDecoration(widthColumns = 1) {
   const width = Math.max(1, widthColumns);
@@ -333,6 +349,14 @@ function parseListMarkerParts(lineText) {
   };
 }
 
+function taskStatusFromMarker(markerChar: string): TaskStatus {
+  return taskStatusByMarker[markerChar.toLowerCase()] ?? 'todo';
+}
+
+function taskStatusCssClass(status: TaskStatus): string {
+  return taskStatusClassByStatus[status];
+}
+
 function buildListMarkerText(parts, orderedNumber = parts?.orderedNumber) {
   if (!parts) {
     return null;
@@ -363,7 +387,7 @@ export function listMarkerData(lineText: string, orderedDisplayIndex: string | n
   const leadingWhitespace = match[1];
   const orderedNumber = match[3];
   const orderedSuffix = match[4];
-  const taskState = match[5];
+  const taskMarker = match[5];
 
   let markerText = '•';
   let classes = 'meo-md-list-marker-bullet';
@@ -393,10 +417,10 @@ export function listMarkerData(lineText: string, orderedDisplayIndex: string | n
     taskHiddenPrefixColumns: 0
   };
 
-  if (taskState !== undefined) {
+  if (taskMarker !== undefined) {
     const hiddenTaskPrefixLength = Math.max(0, (match[0].length - indent) - 1);
     result.taskBracketStart = markerEndOffset + 1;
-    result.taskState = taskState.toLowerCase() === 'x';
+    result.taskStatus = taskStatusFromMarker(taskMarker);
     result.isTask = true;
     result.taskHiddenPrefixColumns = hiddenTaskPrefixLength;
   }
@@ -428,25 +452,26 @@ class ListMarkerWidget extends WidgetType {
 }
 
 class CheckboxWidget extends WidgetType {
-  checked: boolean;
+  status: TaskStatus;
   bracketStart: number;
 
-  constructor(checked: boolean, bracketStart: number) {
+  constructor(status: TaskStatus, bracketStart: number) {
     super();
-    this.checked = checked;
+    this.status = status;
     this.bracketStart = bracketStart;
   }
 
   eq(other: WidgetType): boolean {
-    return other instanceof CheckboxWidget && other.checked === this.checked && other.bracketStart === this.bracketStart;
+    return other instanceof CheckboxWidget && other.status === this.status && other.bracketStart === this.bracketStart;
   }
 
   toDOM(view: EditorView): HTMLElement {
+    const isDone = this.status === 'done';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'meo-task-checkbox';
-    checkbox.checked = this.checked;
-    checkbox.setAttribute('aria-label', this.checked ? 'Mark task as incomplete' : 'Mark task as complete');
+    checkbox.className = `meo-task-checkbox ${taskStatusCssClass(this.status)}`;
+    checkbox.checked = isDone;
+    checkbox.setAttribute('aria-label', isDone ? 'Mark task as incomplete' : 'Mark task as complete');
 
     checkbox.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -496,17 +521,18 @@ export function addListMarkerDecoration(
   if (marker.taskBracketStart !== undefined) {
     const bracketStart = line.from + marker.taskBracketStart;
     const fullEnd = markerTo - 1;
+    const taskStatus = marker.taskStatus ?? 'todo';
     builder.push(
       Decoration.replace({
-        widget: new CheckboxWidget(marker.taskState, bracketStart),
+        widget: new CheckboxWidget(taskStatus, bracketStart),
         inclusive: false
       }).range(indentEnd, fullEnd)
     );
 
-    if (marker.taskState) {
+    if (taskStatus === 'done' || taskStatus === 'dropped') {
       const textStart = line.from + marker.toOffset;
       if (textStart < line.to) {
-        builder.push(taskCompleteDeco.range(textStart, line.to));
+        builder.push((taskStatus === 'done' ? taskCompleteDeco : taskDroppedDeco).range(textStart, line.to));
       }
     }
   } else if (markerEnd > indentEnd) {
@@ -870,9 +896,15 @@ function computeSourceListMarkers(state) {
     }
 
     const markerFrom = line.from + marker.fromOffset;
-    const markerTo = line.from + marker.toOffset;
+    const markerTo = line.from + (marker.isTask ? marker.markerEndOffset : marker.toOffset);
     if (markerTo > markerFrom) {
       ranges.add(markerFrom, markerTo, sourceListMarkerDeco);
+    }
+    if (marker.taskBracketStart !== undefined) {
+      const openBracket = line.from + marker.taskBracketStart;
+      const closeBracket = openBracket + 2;
+      ranges.add(openBracket, openBracket + 1, sourceTaskBracketDeco);
+      ranges.add(closeBracket, closeBracket + 1, sourceTaskBracketDeco);
     }
   }
   return ranges.finish();

@@ -279,6 +279,8 @@ type RememberedViewPosition = {
 
 const REMEMBERED_VIEW_POSITIONS_STATE_KEY = 'rememberedViewPositionsByDocument';
 const MAX_REMEMBERED_VIEW_POSITIONS = 300;
+const REMEMBERED_EOF_NEAR_THRESHOLD_LINES = 10;
+const REMEMBERED_EOF_BACKOFF_LINES = 10;
 
 type PanelSessionControllerParams = {
   panel: vscode.WebviewPanel;
@@ -420,8 +422,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
 
-    const clampedLine = clampLineNumber(topLine, document.lineCount);
-    const normalizedOffset = normalizeLineOffset(topLineOffset);
+    const normalizedRemembered = normalizeRememberedTopLine(topLine, topLineOffset, document.lineCount);
+    const clampedLine = normalizedRemembered.line;
+    const normalizedOffset = normalizedRemembered.lineOffset;
     if (lastSavedRememberedLine === clampedLine && lastSavedRememberedLineOffset === normalizedOffset) {
       return;
     }
@@ -745,8 +748,26 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return null;
     }
 
-    const clampedLine = clampLineNumber(remembered.line, document.lineCount);
-    const lineOffset = normalizeLineOffset(remembered.lineOffset);
+    const normalizedRemembered = normalizeRememberedTopLine(remembered.line, remembered.lineOffset, document.lineCount);
+    const clampedLine = normalizedRemembered.line;
+    const lineOffset = normalizedRemembered.lineOffset;
+    if (
+      normalizedRemembered.adjustedForEof &&
+      (remembered.line !== clampedLine || normalizeLineOffset(remembered.lineOffset) !== lineOffset)
+    ) {
+      rememberedPositions[documentKey] = {
+        line: clampedLine,
+        lineOffset,
+        updatedAt: Date.now()
+      };
+      runBackground(
+        context.workspaceState.update(
+          REMEMBERED_VIEW_POSITIONS_STATE_KEY,
+          pruneRememberedViewPositionMap(rememberedPositions)
+        ),
+        'saveRememberedViewPosition.eofBackoff'
+      );
+    }
     lastSavedRememberedLine = clampedLine;
     lastSavedRememberedLineOffset = lineOffset;
     return {
@@ -1037,6 +1058,28 @@ function clampLineNumber(value: number, maxLine: number): number {
 function normalizeLineOffset(value: number | undefined): number {
   const numeric = typeof value === 'number' && Number.isFinite(value) ? value : 0;
   return Math.max(0, Math.round(numeric * 100) / 100);
+}
+
+function normalizeRememberedTopLine(
+  line: number,
+  lineOffset: number | undefined,
+  maxLine: number
+): { line: number; lineOffset: number; adjustedForEof: boolean } {
+  const clampedLine = clampLineNumber(line, maxLine);
+  const normalizedOffset = normalizeLineOffset(lineOffset);
+  const nearEndLine = Math.max(1, maxLine - REMEMBERED_EOF_NEAR_THRESHOLD_LINES + 1);
+  if (clampedLine < nearEndLine) {
+    return {
+      line: clampedLine,
+      lineOffset: normalizedOffset,
+      adjustedForEof: false
+    };
+  }
+  return {
+    line: Math.max(1, clampedLine - REMEMBERED_EOF_BACKOFF_LINES),
+    lineOffset: 0,
+    adjustedForEof: true
+  };
 }
 
 function getRememberedViewPositionMap(workspaceState: vscode.Memento): Record<string, RememberedViewPosition> {

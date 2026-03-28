@@ -1352,6 +1352,12 @@ body {
   color: var(--meo-color-base02) !important;
 }
 
+.cm-editor.meo-mode-source .meo-md-task-bracket,
+.cm-editor.meo-mode-source .meo-md-task-bracket * {
+  color: var(--meo-token-link-color, var(--meo-color-base05)) !important;
+  -webkit-text-fill-color: var(--meo-token-link-color, var(--meo-color-base05)) !important;
+}
+
 .cm-editor .meo-md-list-marker-ordered,
 .cm-editor .meo-md-list-marker-task {
   min-width: 3ch;
@@ -1383,7 +1389,7 @@ body {
   border: 1px solid var(--meo-foreground);
 }
 
-.cm-editor .meo-task-checkbox:checked::after {
+.cm-editor .meo-task-checkbox.is-done::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -1395,6 +1401,29 @@ body {
   transform: rotate(45deg);
 }
 
+.cm-editor .meo-task-checkbox.is-inprogress::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--meo-foreground);
+  font-size: 12px;
+  line-height: 1;
+  content: '◐';
+  font-weight: 500;
+}
+
+.cm-editor .meo-task-checkbox.is-dropped::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  border-top: 2px solid var(--meo-foreground);
+  transform: translateY(-50%);
+}
+
 .cm-editor .meo-task-checkbox:focus {
   outline: none;
 }
@@ -1402,6 +1431,13 @@ body {
 .cm-editor .meo-task-complete,
 .cm-editor .meo-task-complete * {
   color: var(--meo-color-base02) !important;
+  text-decoration-color: currentColor !important;
+}
+
+.cm-editor .meo-task-dropped,
+.cm-editor .meo-task-dropped * {
+  color: var(--meo-color-base02) !important;
+  text-decoration: line-through !important;
   text-decoration-color: currentColor !important;
 }
 

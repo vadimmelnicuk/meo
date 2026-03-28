@@ -73,9 +73,9 @@ type MarkerReplacementContext = {
 const setSearchQueryEffect = StateEffect.define<SearchQueryState>();
 const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
-const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX]\]|[-+*]|\d+[.)])\s+/;
+const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX~\-]\]|[-+*]|\d+[.)])\s+/;
 const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
-const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX]\]/;
+const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX~\-]\]/;
 const blockquoteLinePrefixRegex = /^[ \t]{0,3}(?:>[ \t]?)+/;
 const quotedCodeBlockAncestorNames = new Set(['FencedCode', 'CodeBlock']);
 

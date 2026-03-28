@@ -424,30 +424,42 @@ function installTaskListTransform(md: MarkdownIt): void {
       }
       current.firstInlineHandled = true;
 
-      const match = /^\[(x|X| )\]\s+/.exec(token.content ?? '');
+      const match = /^\[([ xX~\-])\]\s+/.exec(token.content ?? '');
       if (!match) {
         continue;
       }
 
-      const checked = match[1].toLowerCase() === 'x';
+      const statusClass = taskStatusClassFromMarker(match[1]);
       current.token.attrJoin('class', 'meo-export-task-item');
-      if (checked) {
-        current.token.attrJoin('class', 'is-checked');
-      }
+      current.token.attrJoin('class', statusClass);
 
       removeTaskPrefixFromInlineToken(token, match[0].length);
 
       const children = Array.isArray(token.children) ? token.children : [];
       const checkboxToken = new state.Token('html_inline', '', 0);
-      checkboxToken.content = `<span class="meo-export-task-checkbox${checked ? ' is-checked' : ''}" aria-hidden="true"></span>`;
+      checkboxToken.content = `<span class="meo-export-task-checkbox ${statusClass}" aria-hidden="true"></span>`;
       const openTextToken = new state.Token('html_inline', '', 0);
-      openTextToken.content = `<span class="meo-export-task-text${checked ? ' is-checked' : ''}">`;
+      openTextToken.content = `<span class="meo-export-task-text ${statusClass}">`;
       const closeTextToken = new state.Token('html_inline', '', 0);
       closeTextToken.content = '</span>';
 
       token.children = [checkboxToken, openTextToken, ...children, closeTextToken];
     }
   });
+}
+
+function taskStatusClassFromMarker(marker: string): string {
+  const normalized = marker.toLowerCase();
+  if (normalized === 'x') {
+    return 'is-done';
+  }
+  if (normalized === '~') {
+    return 'is-inprogress';
+  }
+  if (normalized === '-') {
+    return 'is-dropped';
+  }
+  return 'is-todo';
 }
 
 function removeTaskPrefixFromInlineToken(token: any, prefixLength: number): void {

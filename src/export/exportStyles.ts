@@ -333,7 +333,7 @@ ol ol {
   top: -1px;
 }
 
-.meo-export-task-checkbox.is-checked::after {
+.meo-export-task-checkbox.is-done::after {
   content: '';
   position: absolute;
   left: 5px;
@@ -345,8 +345,36 @@ ol ol {
   transform: rotate(45deg);
 }
 
-.meo-export-task-text.is-checked {
+.meo-export-task-checkbox.is-inprogress::after,
+.meo-export-task-checkbox.is-dropped::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--meo-fg);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.meo-export-task-checkbox.is-inprogress::after {
+  content: '◐';
+  font-weight: 500;
+}
+
+.meo-export-task-checkbox.is-dropped::after {
+  content: '-';
+  font-weight: 700;
+}
+
+.meo-export-task-text.is-done {
   color: var(--meo-muted);
+}
+
+.meo-export-task-text.is-dropped {
+  color: var(--meo-muted);
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
 }
 
 a {
