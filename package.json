@@ -203,6 +203,12 @@
           "order": 6,
           "description": "Enable Vim keybindings in Source mode."
         },
+        "markdownEditorOptimized.codeBlocks.useVscodeTheme": {
+          "type": "boolean",
+          "default": false,
+          "order": 7,
+          "description": "Highlight fenced code blocks using your active VS Code color theme (via Shiki/TextMate), including bracket pair colorization. When off, code blocks use the built-in highlighter. Languages without a Shiki grammar always fall back to the built-in highlighter."
+        },
         "markdownEditorOptimized.rememberPosition.lines": {
           "type": "number",
           "default": 100,
@@ -741,7 +747,8 @@
     "markdown-it-emoji": "^3.0.0",
     "mermaid": "^11.4.1",
     "puppeteer-core": "^24.1.1",
-    "sanitize-html": "^2.17.0"
+    "sanitize-html": "^2.17.0",
+    "shiki": "^4.2.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
