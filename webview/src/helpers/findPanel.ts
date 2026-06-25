@@ -1,4 +1,4 @@
-import { createElement, CaseSensitive, ChevronUp, ChevronDown, Replace, ReplaceAll, WholeWord } from 'lucide';
+import { createElement, CaseSensitive, ChevronUp, ChevronDown, Replace, ReplaceAll, WholeWord, X } from 'lucide';
 
 export interface FindPanelElements {
   panel: HTMLDivElement;
@@ -9,6 +9,7 @@ export interface FindPanelElements {
   findStatus: HTMLSpanElement;
   findPrevBtn: HTMLButtonElement;
   findNextBtn: HTMLButtonElement;
+  closeBtn: HTMLButtonElement;
   replaceBtn: HTMLButtonElement;
   replaceAllBtn: HTMLButtonElement;
   toggleBtn: HTMLButtonElement;
@@ -68,6 +69,13 @@ export const createFindPanel = (toggleBtn: HTMLButtonElement): FindPanelElements
   findNextBtn.title = 'Next Match';
   findNextBtn.appendChild(createElement(ChevronDown, { width: 16, height: 16 }));
 
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'format-button find-close-button';
+  closeBtn.title = 'Close Find';
+  closeBtn.setAttribute('aria-label', 'Close Find');
+  closeBtn.appendChild(createElement(X, { width: 16, height: 16 }));
+
   findInputWrap.append(findInput, findStatus);
   findRow.append(findInputWrap, wholeWordBtn, caseSensitiveBtn, findPrevBtn, findNextBtn);
 
@@ -92,7 +100,11 @@ export const createFindPanel = (toggleBtn: HTMLButtonElement): FindPanelElements
   replaceAllBtn.title = 'Replace All Matches';
   replaceAllBtn.appendChild(createElement(ReplaceAll, { width: 16, height: 16 }));
 
-  replaceRow.append(replaceInput, replaceBtn, replaceAllBtn);
+  const closeSpacer = document.createElement('span');
+  closeSpacer.className = 'find-button-spacer';
+  closeSpacer.setAttribute('aria-hidden', 'true');
+
+  replaceRow.append(replaceInput, replaceBtn, replaceAllBtn, closeSpacer, closeBtn);
   panel.append(findRow, replaceRow);
 
   return {
@@ -104,6 +116,7 @@ export const createFindPanel = (toggleBtn: HTMLButtonElement): FindPanelElements
     findStatus,
     findPrevBtn,
     findNextBtn,
+    closeBtn,
     replaceBtn,
     replaceAllBtn,
     toggleBtn

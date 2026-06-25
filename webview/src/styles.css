@@ -268,14 +268,28 @@ body {
   width: var(--find-input-width);
 }
 
-.find-row .format-button {
+.find-row .format-button,
+.find-button-spacer {
   flex: 0 0 auto;
+}
+
+.find-button-spacer {
+  width: 24px;
+  height: 24px;
 }
 
 .find-option-button {
   width: 24px;
   min-width: 24px;
   padding: 0;
+}
+
+.find-close-button {
+  color: var(--vscode-descriptionForeground, var(--vscode-icon-foreground));
+}
+
+.find-close-button:hover {
+  color: var(--vscode-editor-foreground);
 }
 
 .find-input:focus {
@@ -875,10 +889,22 @@ body {
   background-color: var(--meo-selection-bg) !important;
 }
 
+.cm-editor.has-search-selection .cm-selectionBackground,
+.cm-editor.has-search-selection.cm-focused .cm-selectionBackground {
+  background-color: transparent !important;
+}
+
 .cm-editor .meo-search-match {
-  background: color-mix(in srgb, var(--vscode-editor-findMatchBackground, #515c6a) 75%, transparent);
-  outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+  color: #1f1f1f;
+  background: #fff59d;
+  outline: 1px solid #d6b400;
   border-radius: 2px;
+}
+
+.cm-editor .meo-search-match-active {
+  color: #1f1f1f;
+  background: #ffff00;
+  outline: 1px solid #f0c000;
 }
 
 .cm-editor .meo-diagnostic {
@@ -906,10 +932,6 @@ body {
 
 .cm-editor .cm-activeLine {
   background-color: var(--meo-active-line-bg);
-}
-
-.cm-editor.has-selection .cm-activeLine {
-  background-color: transparent;
 }
 
 .cm-editor.meo-table-interaction-active .cm-activeLine {
@@ -2172,6 +2194,60 @@ body {
   min-width: 0;
   overflow-x: auto;
   overflow-y: visible;
+  scrollbar-color: var(
+    --vscode-scrollbarSlider-background,
+    color-mix(in srgb, var(--meo-color-base03) 70%, transparent)
+  ) transparent;
+  scrollbar-width: thin;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar-track {
+  -webkit-appearance: none;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar-thumb {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-background,
+    color-mix(in srgb, var(--meo-color-base03) 70%, transparent)
+  ) !important;
+  background-clip: border-box !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar-thumb:hover {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-hoverBackground,
+    var(--vscode-scrollbarSlider-background, var(--meo-color-base03))
+  ) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar-thumb:active {
+  -webkit-appearance: none;
+  background: var(
+    --vscode-scrollbarSlider-activeBackground,
+    var(--vscode-scrollbarSlider-hoverBackground, var(--meo-color-base03))
+  ) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.cm-editor .meo-md-html-table-wrap::-webkit-scrollbar-corner {
+  background: transparent !important;
 }
 
 .cm-editor .meo-md-html-table {

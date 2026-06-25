@@ -1769,6 +1769,10 @@ findPanelElements.findNextBtn.addEventListener('click', () => {
   findPanelController.runFind(false);
 });
 
+findPanelElements.closeBtn.addEventListener('click', () => {
+  findPanelController.close();
+});
+
 findPanelElements.replaceBtn.addEventListener('click', () => {
   findPanelController.runReplace();
 });

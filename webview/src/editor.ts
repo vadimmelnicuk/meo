@@ -85,22 +85,30 @@ type MarkerReplacementContext = {
 const setSearchQueryEffect = StateEffect.define<SearchQueryState>();
 const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
+const activeSearchMatchMark = Decoration.mark({ class: 'meo-search-match meo-search-match-active' });
 const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX~\-]\]|[-+*]|\d+[.)])\s+/;
 const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
 const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX~\-]\]/;
 const blockquoteLinePrefixRegex = /^[ \t]{0,3}(?:>[ \t]?)+/;
 const quotedCodeBlockAncestorNames = new Set(['FencedCode', 'CodeBlock']);
 
-const buildSearchDecorations = (doc, searchQuery: SearchQueryState) => {
+const buildSearchDecorations = (state: EditorState, searchQuery: SearchQueryState) => {
   if (!searchQuery.text) {
     return Decoration.none;
   }
 
   const builder = new RangeSetBuilder();
+  const doc = state.doc;
   const textValue = doc.toString();
   const matches = findSearchMatchRanges(textValue, searchQuery.text, searchQuery);
+  const selection = state.selection.main;
+  const selectionFrom = Math.min(selection.from, selection.to);
+  const selectionTo = Math.max(selection.from, selection.to);
   for (const match of matches) {
-    builder.add(match.start, match.end, searchMatchMark);
+    const mark = match.start === selectionFrom && match.end === selectionTo
+      ? activeSearchMatchMark
+      : searchMatchMark;
+    builder.add(match.start, match.end, mark);
   }
   return builder.finish();
 };
@@ -124,14 +132,14 @@ const searchMatchField = StateField.define<any>({
     return Decoration.none;
   },
   update(value: any, tr: Transaction) {
-    if (tr.docChanged) {
+    if (tr.docChanged || tr.selection) {
       const searchQuery = tr.state.field(searchQueryField);
-      return buildSearchDecorations(tr.state.doc, searchQuery);
+      return buildSearchDecorations(tr.state, searchQuery);
     }
 
     for (const effect of tr.effects) {
       if (effect.is(setSearchQueryEffect)) {
-        return buildSearchDecorations(tr.state.doc, effect.value);
+        return buildSearchDecorations(tr.state, effect.value);
       }
     }
 
@@ -508,7 +516,11 @@ export function createEditor({
       return;
     }
     const hasSelection = view.state.selection.ranges.some((range) => !range.empty);
+    const hasSearchSelection = view.state.selection.ranges.some((range) =>
+      isSearchMatchSelection(Math.min(range.from, range.to), Math.max(range.from, range.to))
+    );
     view.dom.classList.toggle('has-selection', hasSelection);
+    view.dom.classList.toggle('has-search-selection', hasSearchSelection);
   };
 
   const getActiveTableInput = () => {
