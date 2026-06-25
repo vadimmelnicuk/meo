@@ -207,7 +207,7 @@
           "type": "boolean",
           "default": false,
           "order": 7,
-          "description": "Highlight fenced code blocks using your active VS Code color theme (via Shiki/TextMate), including bracket pair colorization. When off, code blocks use the built-in highlighter. Languages without a Shiki grammar always fall back to the built-in highlighter."
+          "description": "Highlight fenced code blocks using your active VS Code color theme."
         },
         "markdownEditorOptimized.rememberPosition.lines": {
           "type": "number",
