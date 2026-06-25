@@ -1,6 +1,6 @@
 # MEO Theming Guide
 
-Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and line-height in Markdown Editor Optimized.
+Guide on how to customise the editor background, colors, syntax highlighting, fonts, heading sizes, and line-height in Markdown Editor Optimized.
 
 ## Quick Start
 
@@ -21,6 +21,7 @@ Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and
 7. Catppuccin Mocha
 8. Tokyo Night
 9. GitHub Dark
+10. GitHub Light
 
 ## Commands
 
@@ -45,6 +46,16 @@ Guide on how to customise colors, syntax highlighting, fonts, heading sizes, and
 - Display-only metadata (it does not change color/font rendering).
 - Can be changed safely without affecting how the theme looks.
 - Keep it concise so it is easy to distinguish in the theme picker.
+
+## backgroundColor
+
+`backgroundColor` controls the editor document background.
+
+- Applies to the markdown document surface in Source and Live mode.
+- Also drives document-local surfaces such as table headers and task checkboxes.
+- Does not retheme toolbar, outline/sidebar, editor widgets, or code block backgrounds; code blocks use the same background as the outline/sidebar surface.
+- Exported HTML/PDF documents use this background color.
+- Color values must be valid `#hex`, `rgb()/rgba()`, `hsl()/hsla()`, or `var(--...)`.
 
 ## colors
 
@@ -125,6 +136,7 @@ Each key in `syntaxTokens` maps to a syntax category. Color values must use `#he
 ## Defaults and Fallbacks
 
 - Empty syntax token color (`""`) falls back to that token's palette-derived default.
+- Missing `backgroundColor` in older theme files falls back to `var(--vscode-editor-background)`.
 - Empty `fonts.liveFont` or `fonts.sourceFont` falls back to VS Code editor font family.
 - `fonts.liveFontSize: null` and `fonts.sourceFontSize: null` fall back to VS Code editor font size.
 - Empty `fonts.liveFontWeight` or `fonts.sourceFontWeight` falls back to VS Code editor font weight.

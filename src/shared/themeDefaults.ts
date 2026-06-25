@@ -334,6 +334,7 @@ type ThemeSyntaxTokenPalette = Record<ThemeSyntaxTokenKey, ThemeColorKey>;
 export type ThemeSettings = {
   id: string;
   name: string;
+  backgroundColor: string;
   colors: ThemeColors;
   syntaxTokens: ThemeSyntaxTokens;
   fonts: ThemeFonts;
@@ -354,6 +355,9 @@ export const defaultThemeColors: ThemeColors = {
   base08: '#c678dd',
   base09: '#98c379'
 };
+
+export const defaultThemeBackgroundColor = 'var(--vscode-editor-background)';
+export const defaultCodeBlockBackgroundColor = '#1e1e1e';
 
 export const defaultThemeFonts: ThemeFonts = {
   liveFont: '',
@@ -400,6 +404,7 @@ const buildSyntaxTokenColors = (
 const createThemeFromColors = (params: {
   id: string;
   name: string;
+  backgroundColor?: string;
   colors?: Partial<ThemeColors>;
   syntaxTokenPaletteOverrides?: Partial<ThemeSyntaxTokenPalette>;
   syntaxTokenOverrides?: Partial<ThemeSyntaxTokens>;
@@ -410,6 +415,7 @@ const createThemeFromColors = (params: {
   return {
     id: params.id,
     name: params.name,
+    backgroundColor: params.backgroundColor ?? defaultThemeBackgroundColor,
     colors,
     syntaxTokens: {
       ...buildSyntaxTokenColors(colors, params.syntaxTokenPaletteOverrides),
@@ -541,6 +547,27 @@ export const themePresets: readonly ThemeSettings[] = [
       base07: '#d29922',
       base08: '#d2a8ff',
       base09: '#56d364'
+    }
+  }),
+  createThemeFromColors({
+    id: 'github-light',
+    name: 'GitHub Light',
+    backgroundColor: '#ffffff',
+    colors: {
+      base01: '#24292f',
+      base02: '#57606a',
+      base03: '#d0d7de',
+      base04: '#cf222e',
+      base05: '#0969da',
+      base06: '#1a7f37',
+      base07: '#9a6700',
+      base08: '#8250df',
+      base09: '#116329'
+    },
+    syntaxTokenPaletteOverrides: {
+      string: 'base09',
+      comment: 'base02',
+      quote: 'base02'
     }
   })
 ] as const;
@@ -718,6 +745,7 @@ export const serializeThemeSettings = (theme: ThemeSettings): ThemeSettingsPaylo
   return {
     id: theme.id,
     name: theme.name,
+    backgroundColor: theme.backgroundColor,
     colors: { ...theme.colors },
     syntaxTokens,
     fonts: { ...theme.fonts }
@@ -729,6 +757,7 @@ export const resolveTheme = (themeOverride?: Partial<ThemeSettings>): ThemeSetti
   return {
     id: normalizeString(themeOverride?.id, defaultThemeSettings.id),
     name: normalizeString(themeOverride?.name, defaultThemeSettings.name),
+    backgroundColor: sanitizeThemeColor(themeOverride?.backgroundColor, defaultThemeBackgroundColor),
     colors,
     syntaxTokens: resolveThemeSyntaxTokens(themeOverride?.syntaxTokens, colors),
     fonts: resolveThemeFonts(themeOverride?.fonts)
@@ -756,6 +785,12 @@ export const validateThemePayload = (value: unknown): ThemeValidationResult => {
 
   if (typeof value.name !== 'string' || !value.name.trim()) {
     errors.push('Theme "name" must be a non-empty string.');
+  }
+
+  if (value.backgroundColor !== undefined) {
+    if (typeof value.backgroundColor !== 'string' || !isValidThemeColor(value.backgroundColor)) {
+      errors.push('Theme "backgroundColor" must be a valid hex, rgb, hsl, or var(--...) color string.');
+    }
   }
 
   const rawColors = value.colors;

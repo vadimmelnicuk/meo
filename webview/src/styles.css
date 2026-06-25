@@ -1,8 +1,21 @@
 :root {
   color-scheme: light dark;
+  --meo-background: var(--vscode-editor-background);
+  --meo-code-background: color-mix(
+    in srgb,
+    var(--meo-background, var(--vscode-editor-background)) 80%,
+    var(--meo-color-base03, var(--vscode-panel-border, var(--vscode-textCodeBlock-background))) 20%
+  );
+  --meo-surface-background: var(--vscode-sideBar-background);
   --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 20%, transparent 80%);
-  --meo-selection-bg: var(--vscode-editor-selectionBackground);
-  --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-textCodeBlock-background) 50%, transparent 50%);
+  --meo-selection-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 55%, transparent 45%);
+  --meo-inline-code-background: var(--meo-code-background);
+  --meo-code-block-active-line-bg: color-mix(
+    in srgb,
+    var(--meo-code-background, var(--vscode-textCodeBlock-background)) 82%,
+    var(--vscode-editor-selectionBackground) 18%
+  );
+  --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-sideBar-background) 50%, transparent 50%);
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
   --meo-font-live-weight: var(--vscode-editor-font-weight);
@@ -26,6 +39,7 @@
   --meo-active-editor-font-weight: var(--vscode-editor-font-weight);
   --meo-active-editor-font-size: var(--vscode-editor-font-size, 13px);
   --meo-foreground: var(--meo-color-base01, var(--vscode-editor-foreground));
+  --meo-caret-color: var(--meo-foreground);
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
@@ -45,7 +59,7 @@ body {
 body {
   font-family: var(--vscode-font-family);
   color: var(--vscode-editor-foreground);
-  background: var(--vscode-editor-background);
+  background: var(--meo-background);
   line-height: 1.5em;
 }
 
@@ -76,6 +90,7 @@ body {
   min-height: 0;
   min-width: 0;
   flex: 1;
+  background: var(--meo-background);
 }
 
 .selection-inline-menu {
@@ -485,11 +500,13 @@ body {
 }
 
 .format-button.toggle-button:not(.is-active) {
-  color: var(--meo-color-base03);
+  color: var(--vscode-descriptionForeground, var(--vscode-icon-foreground));
+  opacity: 0.5;
 }
 
 .format-button.toggle-button:not(.is-active):hover {
-  color: var(--meo-color-base01, var(--vscode-editor-foreground));
+  color: var(--vscode-editor-foreground);
+  opacity: 1;
 }
 
 .heading-dropdown-option {
@@ -544,7 +561,7 @@ body {
 }
 
 .meo-copy-code-btn:hover {
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-color-base02);
 }
 
 .meo-code-language-label {
@@ -564,6 +581,7 @@ body {
   font-weight: var(--meo-active-editor-font-weight);
   font-size: var(--meo-active-editor-font-size);
   color: var(--meo-foreground);
+  background: var(--meo-background);
   min-width: 0;
   position: relative;
 }
@@ -587,6 +605,7 @@ body {
 .cm-editor .cm-line {
   font-family: var(--meo-active-editor-font);
   color: var(--meo-foreground);
+  background: var(--meo-background);
   min-width: 0;
   min-height: 1.2em;
 }
@@ -650,7 +669,7 @@ body {
   width: auto;
   min-width: 23px;
   max-width: 89px;
-  background: var(--vscode-editor-background);
+  background: var(--meo-background);
   border-right: 0;
   overflow: visible;
 }
@@ -829,7 +848,7 @@ body {
 
 .cm-editor .cm-content {
   padding-top: 0;
-  caret-color: var(--vscode-editorCursor-foreground, #ffffff);
+  caret-color: var(--meo-caret-color);
   width: 100%;
   max-width: var(--meo-content-max-width);
   margin-left: auto;
@@ -848,6 +867,11 @@ body {
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content *::selection {
   background-color: var(--meo-selection-bg);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: var(--meo-selection-bg) !important;
 }
 
 .cm-editor .meo-search-match {
@@ -869,7 +893,7 @@ body {
 }
 
 .cm-editor .cm-activeLine.meo-md-code-block {
-  background-color: var(--vscode-textCodeBlock-background);
+  background-color: var(--meo-code-block-active-line-bg);
 }
 
 .cm-editor.meo-mode-source .meo-md-colon-fence-marker,
@@ -883,7 +907,7 @@ body {
 }
 
 .cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
-  background-color: var(--meo-code-block-active-line-bg-live);
+  background-color: var(--meo-code-block-active-line-bg);
 }
 
 .cm-editor.meo-mode-live .cm-content {
@@ -1217,7 +1241,7 @@ body {
 }
 
 .cm-editor .meo-md-inline-code {
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-inline-code-background);
   border-radius: 0.35em;
 }
 
@@ -1248,7 +1272,7 @@ body {
   min-width: 1.3em;
   border: 1px solid var(--meo-color-base03);
   border-radius: 0.35em;
-  background: var(--vscode-sideBar-background);
+  background: var(--meo-surface-background);
   /* Keep fill out of the border area so the bottom edge stays crisp. */
   background-clip: padding-box;
   color: var(--meo-foreground);
@@ -1292,7 +1316,7 @@ body {
   width: 100%;
   margin: 0;
   padding: 0;
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
   border-radius: 0;
   line-height: 1;
   text-align: center;
@@ -1321,7 +1345,7 @@ body {
 .cm-editor .meo-md-code-block,
 .cm-editor .meo-mermaid-block {
   position: relative;
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-code-block,
@@ -1364,8 +1388,8 @@ body {
     ),
     linear-gradient(
       to right,
-      var(--vscode-editor-selectionBackground),
-      var(--vscode-editor-selectionBackground)
+      var(--meo-selection-bg),
+      var(--meo-selection-bg)
     );
   background-size: var(--meo-list-indent-columns) 100%, var(--meo-effective-list-hanging-indent) 100%;
   background-position: left top, left top;
@@ -1416,7 +1440,7 @@ body {
   padding: 0;
   border: 1px solid var(--meo-color-base03);
   border-radius: 4px;
-  background: var(--vscode-sideBar-background);
+  background: var(--meo-surface-background);
   cursor: pointer;
   vertical-align: middle;
   position: relative;
@@ -1500,7 +1524,7 @@ body {
 
 .cm-editor .meo-mermaid-block.meo-mermaid-math-block {
   padding: 0;
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
   cursor: default;
 }
 
@@ -1574,8 +1598,8 @@ body {
 .meo-mermaid-zoom-btn {
   font-size: 16px;
   line-height: 1;
-  color: var(--vscode-foreground);
-  background-color: var(--vscode-editor-background);
+  color: var(--meo-foreground);
+  background-color: var(--meo-surface-background);
   pointer-events: auto;
 }
 
@@ -1600,7 +1624,7 @@ body {
 .cm-editor .meo-mermaid-fallback {
   margin: 0;
   padding: 8px;
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
   border-radius: 4px;
   overflow-x: auto;
 }
@@ -1653,7 +1677,7 @@ body {
 
 .cm-editor .meo-md-image-fallback {
   display: inline;
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
   border-radius: 2px;
 }
 
@@ -1675,7 +1699,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background-color: var(--vscode-editor-background);
+  background-color: var(--meo-background);
 }
 
 .meo-mermaid-fullscreen {
@@ -1686,7 +1710,7 @@ body {
   justify-content: center;
   position: relative;
   cursor: grab;
-  background-color: var(--vscode-textCodeBlock-background);
+  background-color: var(--meo-code-background);
 }
 
 .outline-sidebar {
@@ -1696,7 +1720,7 @@ body {
   flex-shrink: 0;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--vscode-textCodeBlock-background);
+  background-color: var(--vscode-sideBar-background);
 }
 
 .editor-root.outline-visible .outline-sidebar {
@@ -2169,7 +2193,7 @@ body {
 
 .cm-editor .meo-md-html-table th {
   position: relative;
-  background-color: var(--vscode-sideBar-background);
+  background-color: var(--meo-surface-background);
   font-weight: inherit;
   text-align: inherit;
 }
@@ -2257,8 +2281,8 @@ body {
   padding: 0 5px;
   border: 1px solid var(--meo-color-base03);
   border-radius: 5px;
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-editor-foreground);
+  background: var(--meo-surface-background);
+  color: var(--meo-foreground);
   font-size: 10px;
   line-height: 1;
   cursor: pointer;
@@ -2287,8 +2311,8 @@ body {
   padding: 0;
   border: 1px solid var(--meo-color-base03);
   border-radius: 5px;
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-editor-foreground);
+  background: var(--meo-surface-background);
+  color: var(--meo-foreground);
   font-size: 10px;
   line-height: 1;
   cursor: pointer;
@@ -2342,8 +2366,8 @@ body {
   padding: 0;
   border: 1px solid var(--meo-color-base03);
   border-radius: 5px;
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-editor-foreground);
+  background: var(--meo-surface-background);
+  color: var(--meo-foreground);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -2415,7 +2439,7 @@ body {
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell {
   border-top: 1px solid var(--vscode-panel-border);
-  background-color: var(--vscode-sideBar-background);
+  background-color: var(--meo-surface-background);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-line:not(.meo-md-table-delim-line) {
@@ -2433,19 +2457,20 @@ body {
 }
 
 .cm-editor .cm-cursor {
-  border-left-color: var(--vscode-editorCursor-foreground, #ffffff) !important;
+  border-left-color: var(--meo-caret-color) !important;
+  border-left-width: 2px !important;
   background-color: transparent !important;
 }
 
 .cm-editor .cm-fat-cursor {
-  background: var(--vscode-editorCursor-foreground, #ffffff) !important;
+  background: var(--meo-caret-color) !important;
   border: none !important;
   box-sizing: border-box;
 }
 
 .cm-editor:not(.cm-focused) .cm-fat-cursor {
   background: none !important;
-  border: solid 1px var(--vscode-editorCursor-foreground, #ffffff) !important;
+  border: solid 1px var(--meo-caret-color) !important;
   outline: none !important;
   color: transparent !important;
 }
@@ -2618,7 +2643,7 @@ body {
 }
 
 .cm-editor .cm-line.meo-md-alert:is(.meo-md-code-block, .meo-mermaid-block) {
-  background: var(--vscode-textCodeBlock-background);
+  background: var(--meo-code-background);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-alert .meo-md-marker-active,

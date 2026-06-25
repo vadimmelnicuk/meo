@@ -5,6 +5,7 @@ import {
   EXTENSION_CONFIG_SECTION,
   LINE_NUMBERS_SETTING_KEY,
   GIT_CHANGES_GUTTER_SETTING_KEY,
+  CONTENT_MAX_WIDTH_SETTING_KEY,
   getContentMaxWidthEnabled,
   getLineNumbersEnabled,
   getGitChangesGutterEnabled,
@@ -310,7 +311,6 @@ type PanelSessionControllerParams = {
   getFindOptions: () => FindOptions;
   setFindOptions: (options: FindOptions) => Promise<void>;
   setOutlineVisible: (visible: boolean) => Promise<void>;
-  setContentMaxWidthEnabled: (enabled: boolean) => Promise<void>;
   onPanelActivated: (panel: vscode.WebviewPanel) => void;
   onPanelViewStateChanged: () => void;
   onPanelDisposed: (panel: vscode.WebviewPanel) => void;
@@ -346,7 +346,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     getFindOptions,
     setFindOptions,
     setOutlineVisible,
-    setContentMaxWidthEnabled,
     onPanelActivated,
     onPanelViewStateChanged,
     onPanelDisposed
@@ -867,7 +866,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await setOutlineVisible(raw.visible);
         return;
       case 'setContentMaxWidth':
-        await setContentMaxWidthEnabled(raw.enabled);
+        await vscode.workspace
+          .getConfiguration(EXTENSION_CONFIG_SECTION)
+          .update(CONTENT_MAX_WIDTH_SETTING_KEY, raw.enabled === true, vscode.ConfigurationTarget.Global);
         return;
       case 'setFindOptions': {
         const wholeWord = raw.findOptions?.wholeWord ?? raw.wholeWord;

@@ -1,4 +1,4 @@
-import { themeColorKeys } from '../../../src/shared/themeDefaults';
+import { defaultCodeBlockBackgroundColor, themeColorKeys } from '../../../src/shared/themeDefaults';
 
 export interface ExportStyleEnvironment {
   editorBackgroundColor: string;
@@ -32,6 +32,10 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
     const value = rootStyles.getPropertyValue(name).trim();
     return value || fallback;
   };
+  const resolvedColorVar = (name: string, fallback = ''): string => {
+    const value = colorVar(name);
+    return /^var\(/i.test(value) ? fallback : value || fallback;
+  };
 
   const editorFontSizeRaw = rootStyles.getPropertyValue('--vscode-editor-font-size').trim();
   const fontSizeRaw = editorFontSizeRaw || (editorStyles?.fontSize || bodyStyles.fontSize || '').trim();
@@ -51,10 +55,19 @@ export const getExportStyleEnvironment = (): ExportStyleEnvironment => {
   }
 
   return {
-    editorBackgroundColor: colorVar('--vscode-editor-background', bodyStyles.backgroundColor || ''),
-    editorForegroundColor: colorVar('--vscode-editor-foreground', bodyStyles.color || ''),
-    codeBlockBackgroundColor: colorVar('--vscode-textCodeBlock-background', ''),
-    sideBarBackgroundColor: colorVar('--vscode-sideBar-background', ''),
+    editorBackgroundColor: resolvedColorVar(
+      '--meo-background',
+      colorVar('--vscode-editor-background', bodyStyles.backgroundColor || '')
+    ),
+    editorForegroundColor: resolvedColorVar(
+      '--meo-color-base01',
+      editorStyles?.color || bodyStyles.color || colorVar('--vscode-editor-foreground', '')
+    ),
+    codeBlockBackgroundColor: resolvedColorVar(
+      '--meo-code-background',
+      colorVar('--vscode-sideBar-background', defaultCodeBlockBackgroundColor)
+    ),
+    sideBarBackgroundColor: resolvedColorVar('--meo-surface-background', colorVar('--vscode-sideBar-background', '')),
     panelBorderColor: colorVar('--vscode-panel-border', ''),
     editorFontFamily: editorFontFamilyRaw || (editorStyles?.fontFamily || bodyStyles.fontFamily || '').trim(),
     editorFontWeight: editorFontWeightRaw || 'normal',

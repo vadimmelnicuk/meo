@@ -12,6 +12,7 @@ import { isPrimaryModifier, isShortcutKey, normalizeEol, handleEditorShortcut, t
 import { createFindPanel, createFindPanelController, type FindPanelController } from './helpers/findPanel';
 import { createSelectionMenu, createSelectionMenuController, type SelectionMenuController } from './helpers/selectionMenu';
 import { createExportHandler, type ExportHandlerContext } from './helpers/export';
+import { refreshMermaidTheme } from './helpers/mermaidDiagram';
 
 type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 
@@ -1343,7 +1344,9 @@ window.addEventListener('message', (event) => {
   if (message.type === 'themeChanged') {
     withMessageErrorBoundary('themeChanged handler', () => {
       applyThemeSettings(message.theme);
+      refreshMermaidTheme();
       setShikiTheme(message.codeTheme);
+      editor?.refreshDecorations();
     });
     return;
   }

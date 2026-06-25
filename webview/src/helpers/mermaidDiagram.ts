@@ -20,6 +20,7 @@ interface MermaidResult {
 }
 
 let mermaidInitialized = false;
+let mermaidThemeSignature = '';
 let mermaidRuntimePromise: Promise<MermaidRuntime> | null = null;
 const MERMAID_CACHE_LIMIT = 100;
 const mermaidCache = new Map<string, MermaidResult>();
@@ -48,6 +49,101 @@ const MERMAID_DISPLAY_MATH_THEME_CSS =
   '.nodeLabel foreignObject{overflow:visible !important;}' +
   '.katex-display{margin:0 !important;}' +
   '.katex{line-height:1 !important;}';
+
+function resolveCssColor(value: string, fallback: string, property: 'color' | 'backgroundColor' = 'backgroundColor'): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  const probe = document.createElement('span');
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style[property] = trimmed;
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe)[property];
+  probe.remove();
+  return resolved || fallback;
+}
+
+function getThemeCssColor(
+  name: string,
+  fallback: string,
+  property: 'color' | 'backgroundColor' = 'backgroundColor'
+): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!value || /^var\(/i.test(value)) {
+    return fallback;
+  }
+  return resolveCssColor(value, fallback, property);
+}
+
+function isProbablyDarkColor(color: string): boolean {
+  const match = /rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i.exec(color);
+  if (!match) {
+    return false;
+  }
+  const red = Number(match[1]);
+  const green = Number(match[2]);
+  const blue = Number(match[3]);
+  if (![red, green, blue].every(Number.isFinite)) {
+    return false;
+  }
+  return (red * 0.299 + green * 0.587 + blue * 0.114) < 128;
+}
+
+function getMermaidThemeConfig() {
+  const bodyStyles = getComputedStyle(document.body);
+  const background = getThemeCssColor('--meo-background', bodyStyles.backgroundColor || '#ffffff');
+  const codeBackground = getThemeCssColor('--meo-code-background', background);
+  const surfaceBackground = getThemeCssColor('--meo-surface-background', codeBackground);
+  const foreground = getThemeCssColor('--meo-foreground', bodyStyles.color || '#24292f', 'color');
+  const muted = getThemeCssColor('--meo-color-base02', foreground, 'color');
+  const border = getThemeCssColor('--meo-color-base03', muted, 'color');
+  const accent = getThemeCssColor('--meo-color-base05', border, 'color');
+  const signature = [
+    background,
+    codeBackground,
+    surfaceBackground,
+    foreground,
+    muted,
+    border,
+    accent
+  ].join('|');
+
+  return {
+    signature,
+    config: {
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'base',
+      themeVariables: {
+        background: codeBackground,
+        mainBkg: surfaceBackground,
+        secondBkg: surfaceBackground,
+        tertiaryColor: codeBackground,
+        primaryColor: surfaceBackground,
+        primaryTextColor: foreground,
+        primaryBorderColor: border,
+        lineColor: border,
+        textColor: foreground,
+        nodeTextColor: foreground,
+        edgeLabelBackground: codeBackground,
+        clusterBkg: codeBackground,
+        clusterBorder: border,
+        titleColor: foreground,
+        darkMode: isProbablyDarkColor(bodyStyles.backgroundColor || background)
+      },
+      htmlLabels: true,
+      markdownAutoWrap: true,
+      flowchart: {
+        htmlLabels: true
+      },
+      // VS Code webviews can vary in MathML support, so force KaTeX-backed output.
+      legacyMathML: true,
+      forceLegacyMathML: true
+    }
+  };
+}
 
 function getMermaidRuntimeSource() {
   return document.body?.dataset?.meoMermaidSrc ?? '';
@@ -103,23 +199,13 @@ function loadMermaidRuntime() {
 
 async function initMermaid() {
   const runtime = await loadMermaidRuntime();
-  if (mermaidInitialized) {
+  const { signature, config } = getMermaidThemeConfig();
+  if (mermaidInitialized && mermaidThemeSignature === signature) {
     return runtime;
   }
 
-  runtime.initialize({
-    startOnLoad: false,
-    securityLevel: 'strict',
-    theme: 'dark',
-    htmlLabels: true,
-    markdownAutoWrap: true,
-    flowchart: {
-      htmlLabels: true
-    },
-    // VS Code webviews can vary in MathML support, so force KaTeX-backed output.
-    legacyMathML: true,
-    forceLegacyMathML: true
-  });
+  runtime.initialize(config);
+  mermaidThemeSignature = signature;
   mermaidInitialized = true;
   return runtime;
 }
@@ -152,12 +238,14 @@ function cacheMermaidResult(diagramText, result) {
 
 async function renderMermaidDiagram(diagramText: string): Promise<MermaidResult> {
   const normalizedDiagramText = normalizeMermaidDiagramText(diagramText);
-  const cached = getCachedMermaidResult(diagramText);
+  const { signature } = getMermaidThemeConfig();
+  const cacheKey = `${signature}\n${diagramText}`;
+  const cached = getCachedMermaidResult(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const inFlight = mermaidRenderInFlight.get(diagramText);
+  const inFlight = mermaidRenderInFlight.get(cacheKey);
   if (inFlight) {
     return inFlight;
   }
@@ -167,20 +255,27 @@ async function renderMermaidDiagram(diagramText: string): Promise<MermaidResult>
     .then((runtime) => runtime.render(id, normalizedDiagramText))
     .then(({ svg }) => {
       const result: MermaidResult = { svg };
-      cacheMermaidResult(diagramText, result);
+      cacheMermaidResult(cacheKey, result);
       return result;
     })
     .catch((err) => {
       const result: MermaidResult = { error: err.message || String(err) };
-      cacheMermaidResult(diagramText, result);
+      cacheMermaidResult(cacheKey, result);
       return result;
     })
     .finally(() => {
-      mermaidRenderInFlight.delete(diagramText);
+      mermaidRenderInFlight.delete(cacheKey);
     });
 
-  mermaidRenderInFlight.set(diagramText, renderPromise);
+  mermaidRenderInFlight.set(cacheKey, renderPromise);
   return renderPromise;
+}
+
+export function refreshMermaidTheme(): void {
+  mermaidCache.clear();
+  mermaidRenderInFlight.clear();
+  mermaidInitialized = false;
+  mermaidThemeSignature = '';
 }
 
 function isDisplayMathDiagram(diagramText) {

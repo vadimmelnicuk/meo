@@ -1,4 +1,10 @@
-import { defaultThemeColors, defaultThemeFonts, type ThemeColorKey, type ThemeColors, type ThemeSettings } from '../shared/themeDefaults';
+import {
+  defaultThemeColors,
+  defaultThemeFonts,
+  type ThemeColorKey,
+  type ThemeColors,
+  type ThemeSettings
+} from '../shared/themeDefaults';
 
 const styleValueInjectionPattern = /[\n\r;{}]/g;
 
@@ -25,10 +31,16 @@ export function buildExportStyles(theme: ThemeSettings, environment: ExportStyle
   const fonts = theme.fonts ?? defaultThemeFonts;
   const editorFontFamily = sanitizeCssFont(environment.editorFontFamily ?? '');
   const editorFontWeight = sanitizeFontWeight(environment.editorFontWeight, 'normal');
-  const editorBackgroundColor = sanitizeCssColor(environment.editorBackgroundColor ?? '') || colors.base03;
-  const editorForegroundColor = sanitizeCssColor(environment.editorForegroundColor ?? '') || colors.base02;
-  const codeBlockBackgroundColor = sanitizeCssColor(environment.codeBlockBackgroundColor ?? '') || editorBackgroundColor;
-  const sideBarBackgroundColor = sanitizeCssColor(environment.sideBarBackgroundColor ?? '') || editorBackgroundColor;
+  const editorBackgroundColor =
+    sanitizeCssColor(environment.editorBackgroundColor ?? '') ||
+    sanitizeCssColor(theme.backgroundColor ?? '') ||
+    colors.base03;
+  const editorForegroundColor = sanitizeCssColor(environment.editorForegroundColor ?? '') || colors.base01;
+  const defaultCodeBlockColor = `color-mix(in srgb, ${editorBackgroundColor} 80%, ${colors.base03} 20%)`;
+  const defaultSurfaceColor = `color-mix(in srgb, ${editorBackgroundColor} 86%, ${colors.base03} 14%)`;
+  const codeBlockBackgroundColor =
+    sanitizeCssColor(environment.codeBlockBackgroundColor ?? '') || defaultCodeBlockColor;
+  const sideBarBackgroundColor = sanitizeCssColor(environment.sideBarBackgroundColor ?? '') || defaultSurfaceColor;
   const panelBorderColor = sanitizeCssColor(environment.panelBorderColor ?? '') || colors.base03;
   const liveFont = resolveThemeFontChoice(
     sanitizeCssFont(environment.liveFontFamily ?? ''),

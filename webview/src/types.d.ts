@@ -58,6 +58,7 @@ type ExtensionMessage =
 interface ThemeSettings {
   id: string;
   name: string;
+  backgroundColor?: string;
   colors: Record<string, string>;
   syntaxTokens: Record<string, string>;
   fonts: {

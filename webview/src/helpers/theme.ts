@@ -65,6 +65,28 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
   }
 
   const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--meo-background', resolvedTheme.backgroundColor);
+  rootStyle.setProperty(
+    '--meo-code-background',
+    `color-mix(in srgb, ${resolvedTheme.backgroundColor} 80%, ${resolvedTheme.colors.base03} 20%)`
+  );
+  rootStyle.setProperty(
+    '--meo-code-block-active-line-bg-live',
+    `color-mix(in srgb, ${resolvedTheme.backgroundColor} 88%, ${resolvedTheme.colors.base03} 12%)`
+  );
+  rootStyle.setProperty(
+    '--meo-surface-background',
+    `color-mix(in srgb, ${resolvedTheme.backgroundColor} 86%, ${resolvedTheme.colors.base03} 14%)`
+  );
+  rootStyle.setProperty(
+    '--meo-selection-bg',
+    `color-mix(in srgb, ${resolvedTheme.colors.base05} 28%, transparent 72%)`
+  );
+  rootStyle.setProperty('--meo-caret-color', resolvedTheme.colors.base01);
+  rootStyle.setProperty(
+    '--meo-active-line-bg',
+    `color-mix(in srgb, ${resolvedTheme.colors.base03} 35%, transparent 65%)`
+  );
 
   for (const key of themeColorKeys) {
     rootStyle.setProperty(`--meo-color-${key}`, resolvedTheme.colors[key]);

@@ -16,6 +16,7 @@ export const VIM_MODE_BEHAVIOR_SETTING_KEY = 'vimMode.behavior';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
 export const CODE_BLOCKS_VSCODE_THEME_SETTING_KEY = 'codeBlocks.useVscodeTheme';
 export const REMEMBER_POSITION_LINES_SETTING_KEY = 'rememberPosition.lines';
+export const CONTENT_MAX_WIDTH_SETTING_KEY = 'contentMaxWidth.visible';
 export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.enabled';
 export const LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY = 'lineNumbers.visibility';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
@@ -172,7 +173,7 @@ export function getOutlineVisible(context: vscode.ExtensionContext): boolean {
 }
 
 export function getContentMaxWidthEnabled(context: vscode.ExtensionContext): boolean {
-  return context.globalState.get<boolean>(CONTENT_MAX_WIDTH_ENABLED_KEY, false);
+  return getToggleSettingValue(context, CONTENT_MAX_WIDTH_SETTING_KEY, CONTENT_MAX_WIDTH_ENABLED_KEY, [], false);
 }
 
 export function getExportPdfBrowserPath(): string | undefined {

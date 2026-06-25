@@ -230,6 +230,75 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     }));
   };
 
+  const getExportThemeVar = (name, fallback) => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  };
+
+  const resolveCssColor = (value, fallback, property) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return fallback;
+    const probe = document.createElement('span');
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style[property || 'backgroundColor'] = trimmed;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe)[property || 'backgroundColor'];
+    probe.remove();
+    return resolved || fallback;
+  };
+
+  const getExportThemeColor = (name, fallback, property) => {
+    return resolveCssColor(getExportThemeVar(name, fallback), fallback, property || 'backgroundColor');
+  };
+
+  const isProbablyDarkColor = (color) => {
+    const match = /rgba?\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)/i.exec(String(color || ''));
+    if (!match) return false;
+    const red = Number(match[1]);
+    const green = Number(match[2]);
+    const blue = Number(match[3]);
+    if (![red, green, blue].every(Number.isFinite)) return false;
+    return (red * 0.299 + green * 0.587 + blue * 0.114) < 128;
+  };
+
+  const getMermaidThemeConfig = () => {
+    const bodyStyles = getComputedStyle(document.body);
+    const background = getExportThemeColor('--meo-bg', bodyStyles.backgroundColor || '#ffffff');
+    const codeBackground = getExportThemeColor('--meo-code-bg', background);
+    const panelBackground = getExportThemeColor('--meo-panel-bg', codeBackground);
+    const foreground = getExportThemeColor('--meo-fg', bodyStyles.color || '#24292f', 'color');
+    const border = getExportThemeColor('--meo-border', foreground, 'color');
+    return {
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'base',
+      themeVariables: {
+        background: codeBackground,
+        mainBkg: panelBackground,
+        secondBkg: panelBackground,
+        tertiaryColor: codeBackground,
+        primaryColor: panelBackground,
+        primaryTextColor: foreground,
+        primaryBorderColor: border,
+        lineColor: border,
+        textColor: foreground,
+        nodeTextColor: foreground,
+        edgeLabelBackground: codeBackground,
+        clusterBkg: codeBackground,
+        clusterBorder: border,
+        titleColor: foreground,
+        darkMode: isProbablyDarkColor(background)
+      },
+      htmlLabels: true,
+      markdownAutoWrap: true,
+      flowchart: { htmlLabels: true },
+      legacyMathML: true,
+      forceLegacyMathML: true,
+      fontFamily: bodyStyles.fontFamily || undefined
+    };
+  };
+
   const renderMermaidBlocks = async () => {
     if (!${mermaidFlag}) {
       return;
@@ -246,17 +315,7 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     }
 
     try {
-      mermaidApi.initialize({
-        startOnLoad: false,
-        securityLevel: 'strict',
-        theme: 'dark',
-        htmlLabels: true,
-        markdownAutoWrap: true,
-        flowchart: { htmlLabels: true },
-        legacyMathML: true,
-        forceLegacyMathML: true,
-        fontFamily: getComputedStyle(document.body).fontFamily || undefined
-      });
+      mermaidApi.initialize(getMermaidThemeConfig());
     } catch {
       // Continue with default Mermaid configuration.
     }
