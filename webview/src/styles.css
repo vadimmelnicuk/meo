@@ -2158,18 +2158,23 @@ body {
   font-family: var(--meo-active-editor-font);
 }
 
-.cm-editor .meo-md-html-table-wrap {
+.cm-editor .meo-md-html-table-shell {
   position: relative;
-  padding: 30px 0 18px;
+  padding: 30px 0 0;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow: visible;
+}
+
+.cm-editor .meo-md-html-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .cm-editor .meo-md-html-table {
-  width: 100%;
-  max-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -2237,8 +2242,9 @@ body {
   padding: 0.25em 0.5em;
   color: var(--meo-foreground);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  word-break: normal;
   cursor: text;
 }
 
@@ -2249,6 +2255,8 @@ body {
 
 .cm-editor .meo-md-html-table-cell-preview .meo-md-link {
   color: var(--meo-color-base05);
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .cm-editor .meo-md-html-table-cell-preview .meo-md-math-display {
@@ -2300,16 +2308,18 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  appearance: none;
   width: max-content;
-  height: 22px;
-  padding: 0 7px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--meo-foreground);
-  font-size: 10px;
-  line-height: 1;
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background-color: var(--meo-color-base03, var(--vscode-button-secondaryBackground, var(--vscode-button-background))) !important;
+  color: var(--vscode-editor-foreground);
+  font-size: 11px;
+  line-height: 1.35;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .cm-editor .meo-md-html-apply-sort-btn[hidden] {
@@ -2317,6 +2327,15 @@ body {
 }
 
 .cm-editor .meo-md-html-apply-sort-btn:hover,
+.cm-editor .meo-md-html-apply-sort-btn:focus-visible {
+  background-color: color-mix(in srgb, var(--meo-color-base03) 92%, black) !important;
+  outline: none;
+}
+
+.cm-editor .meo-md-html-apply-sort-btn:active {
+  background-color: color-mix(in srgb, var(--meo-color-base03) 88%, black) !important;
+}
+
 .cm-editor .meo-md-html-sort-btn:hover {
   background: var(--vscode-toolbar-hoverBackground);
 }
@@ -2365,7 +2384,7 @@ body {
   transition: opacity 0.12s ease;
 }
 
-.cm-editor .meo-md-html-table-wrap:focus-within .meo-md-html-table-toolbar {
+.cm-editor .meo-md-html-table-shell:focus-within .meo-md-html-table-toolbar {
   opacity: 1;
 }
 

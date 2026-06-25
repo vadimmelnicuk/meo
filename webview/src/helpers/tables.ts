@@ -41,7 +41,9 @@ interface DomRefs {
   table: HTMLTableElement;
   tbody: HTMLTableSectionElement;
   container: HTMLElement;
+  shell: HTMLElement;
   wrap: HTMLElement;
+  toolbar: HTMLElement;
   cellGrid: HTMLTableCellElement[][];
   rowEntries: RowEntry[];
   colEls: HTMLElement[];
@@ -108,6 +110,9 @@ const tableCellSelector = 'th[data-table-row][data-table-col], td[data-table-row
 const tableControlSelector = '.meo-md-html-table-toolbar, .meo-md-html-table-toolbar-btn, .meo-md-html-sort-btn, .meo-md-html-apply-sort-btn';
 const minColumnWidthCh = 10;
 const maxColumnWidthCh = 40;
+const cellHorizontalPaddingCh = 1;
+const headerSortButtonPaddingCh = 2.5;
+const cellBorderPx = 2;
 const tableSortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 // Icons are inline SVG path data from Tabler Icons (MIT), vendored to avoid a
 // broad icon dependency for this table-only toolbar.
@@ -834,14 +839,28 @@ function serializeTableMarkdown(indent, headerCells, alignments, rows) {
   return [header, delimiter, ...dataRows].map((line) => `${indent}${line}`).join('\n');
 }
 
+function longestUnbreakableSegmentLength(value) {
+  return Math.max(0, ...String(value ?? '').split(/\s+/).map((part) => part.length));
+}
+
+function preferredCellWidthCh(value, extraCh = 0) {
+  return Math.max(
+    minColumnWidthCh,
+    Math.min(
+      maxColumnWidthCh,
+      Math.max(String(value ?? '').length, longestUnbreakableSegmentLength(value) + extraCh) + 2
+    )
+  );
+}
+
 function computePreferredColumnCharWidths(headerCells, rows, colCount) {
   const widths = new Array(colCount).fill(minColumnWidthCh);
-  const update = (value, col) => {
-    widths[col] = Math.max(widths[col], Math.min(maxColumnWidthCh, Math.max(minColumnWidthCh, value.length + 2)));
+  const update = (value, col, extraCh = 0) => {
+    widths[col] = Math.max(widths[col], preferredCellWidthCh(value, extraCh));
   };
 
   for (let col = 0; col < colCount; col++) {
-    update(headerCells[col] ?? '', col);
+    update(headerCells[col] ?? '', col, headerSortButtonPaddingCh);
   }
   for (const row of rows) {
     for (let col = 0; col < colCount; col++) {
@@ -1433,13 +1452,14 @@ class HtmlTableWidget extends WidgetType {
 
   wireTableSelection(table) {
     const getWrap = () => this.domRefs?.wrap ?? table;
+    const getContainer = () => this.domRefs?.container ?? getWrap();
 
     const onWrapPointerDown = (event) => {
       if (!(event.target instanceof Node)) return;
-      const wrap = getWrap();
-      if (!wrap.contains(event.target)) return;
+      const container = getContainer();
+      if (!container.contains(event.target)) return;
       if (isModifierLinkActivationEvent(event)) return;
-      this.setTableInteractionActive(wrap, true);
+      this.setTableInteractionActive(getWrap(), true);
     };
 
     const onPointerDown = (event) => {
@@ -1530,7 +1550,8 @@ class HtmlTableWidget extends WidgetType {
     const onFocusOut = (event) => {
       const nextTarget = event.relatedTarget;
       const wrap = this.domRefs?.wrap ?? table;
-      if (nextTarget instanceof Node && wrap.contains(nextTarget)) return;
+      const container = this.domRefs?.container ?? wrap;
+      if (nextTarget instanceof Node && container.contains(nextTarget)) return;
       this.commit(wrap);
       this.exitTableInteraction(wrap);
     };
@@ -1538,11 +1559,12 @@ class HtmlTableWidget extends WidgetType {
     const onDocumentPointerDown = (event) => {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
+      const container = getContainer();
       if (isSelectionMenuTarget(event.target)) {
         return;
       }
-      if (wrap.contains(event.target) && isModifierLinkActivationEvent(event)) return;
-      if (!wrap.contains(event.target)) {
+      if (container.contains(event.target) && isModifierLinkActivationEvent(event)) return;
+      if (!container.contains(event.target)) {
         this.setTableInteractionActive(wrap, false);
       }
       if (isTableControlTarget(event.target)) {
@@ -1580,7 +1602,7 @@ class HtmlTableWidget extends WidgetType {
     };
 
     table.addEventListener('pointerdown', onPointerDown);
-    getWrap().addEventListener('pointerdown', onWrapPointerDown, true);
+    getContainer().addEventListener('pointerdown', onWrapPointerDown, true);
     table.addEventListener('pointermove', onPointerMove);
     table.addEventListener('pointerup', endPointerSelection);
     table.addEventListener('pointercancel', endPointerSelection);
@@ -1590,7 +1612,7 @@ class HtmlTableWidget extends WidgetType {
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     this.cleanupFns.push(() => {
       table.removeEventListener('pointerdown', onPointerDown);
-      getWrap().removeEventListener('pointerdown', onWrapPointerDown, true);
+      getContainer().removeEventListener('pointerdown', onWrapPointerDown, true);
       table.removeEventListener('pointermove', onPointerMove);
       table.removeEventListener('pointerup', endPointerSelection);
       table.removeEventListener('pointercancel', endPointerSelection);
@@ -1824,29 +1846,31 @@ class HtmlTableWidget extends WidgetType {
     if (!this.domRefs) return false;
     const { wrap, table, colEls, headerInputs, rowInputs } = this.domRefs;
     const chPx = this.measureChPx(wrap);
-    const minPx = minColumnWidthCh * chPx;
-    const maxPx = maxColumnWidthCh * chPx;
+    const cellChromePx = (cellHorizontalPaddingCh * chPx) + cellBorderPx;
+    const minPx = (minColumnWidthCh * chPx) + cellChromePx;
+    const maxPx = (maxColumnWidthCh * chPx) + cellChromePx;
     const livePreferredCh = computePreferredColumnCharWidthsFromInputs(headerInputs, rowInputs, this.tableData.colCount);
-    const preferredPx = livePreferredCh.map((ch) => Math.max(minPx, Math.min(maxPx, ch * chPx)));
+    const preferredPx = livePreferredCh.map((ch) => Math.max(minPx, Math.min(maxPx, (ch * chPx) + cellChromePx)));
     const preferredTotal = preferredPx.reduce((sum, value) => sum + value, 0);
-    const total = preferredTotal || 1;
+    const availableWidth = Math.max(0, Math.floor(wrap.clientWidth) - cellBorderPx);
+    const targetTotal = Math.max(Math.round(preferredTotal), availableWidth);
+    const extraWidth = Math.max(0, targetTotal - preferredTotal);
+    const extraPerColumn = colEls.length > 0 ? extraWidth / colEls.length : 0;
 
     const nextAppliedWidths = new Array(colEls.length);
     let changed = colEls.length !== this.lastAppliedWidths.length;
     for (let i = 0; i < colEls.length; i++) {
-      const ratio = preferredPx[i] / total;
-      const widthPermille = Math.round(ratio * 1000);
-      nextAppliedWidths[i] = widthPermille;
-      if (!changed && this.lastAppliedWidths[i] !== widthPermille) changed = true;
-      colEls[i].style.width = `${(ratio * 100).toFixed(4)}%`;
-      colEls[i].style.minWidth = '0';
+      const widthPx = Math.max(1, Math.round((preferredPx[i] ?? minPx) + extraPerColumn));
+      nextAppliedWidths[i] = widthPx;
+      if (!changed && this.lastAppliedWidths[i] !== widthPx) changed = true;
+      colEls[i].style.width = `${widthPx}px`;
+      colEls[i].style.minWidth = `${widthPx}px`;
       colEls[i].style.maxWidth = 'none';
     }
     this.lastAppliedWidths = nextAppliedWidths;
-    wrap.style.width = `${Math.round(preferredTotal)}px`;
-    wrap.style.maxWidth = '100%';
-    table.style.width = '100%';
-    table.style.maxWidth = '100%';
+    table.style.width = `${targetTotal}px`;
+    table.style.minWidth = `${targetTotal}px`;
+    table.style.maxWidth = 'none';
     return changed;
   }
 
@@ -1998,15 +2022,17 @@ class HtmlTableWidget extends WidgetType {
   }
 
   toDOM() {
+    const shell = document.createElement('div');
+    shell.className = 'meo-md-html-table-shell';
     const wrap = document.createElement('div');
     wrap.className = 'meo-md-html-table-wrap';
     if (Number.isFinite(this.tableData.startLine)) {
-      wrap.dataset.meoRenderedBlockStartLine = String(this.tableData.startLine);
+      shell.dataset.meoRenderedBlockStartLine = String(this.tableData.startLine);
     }
     if (Number.isFinite(this.tableData.endLine)) {
-      wrap.dataset.meoRenderedBlockEndLine = String(this.tableData.endLine);
+      shell.dataset.meoRenderedBlockEndLine = String(this.tableData.endLine);
     }
-    wrap.dataset.meoRenderedBlockKind = 'table';
+    shell.dataset.meoRenderedBlockKind = 'table';
     const { toolbar, buttons: toolbarButtons } = this.createTableToolbar(wrap);
 
     const applySortButton = document.createElement('button');
@@ -2103,12 +2129,15 @@ class HtmlTableWidget extends WidgetType {
     }
     table.appendChild(tbody);
 
-    wrap.append(toolbar, table, applySortButton);
+    wrap.append(table);
+    shell.append(toolbar, wrap, applySortButton);
     this.domRefs = {
+      shell,
       wrap,
       table,
       tbody,
-      container: wrap,
+      container: shell,
+      toolbar,
       colEls,
       rowEntries,
       headerInputs,
@@ -2134,13 +2163,13 @@ class HtmlTableWidget extends WidgetType {
       });
       observer.observe(wrap);
       const view = EditorView.findFromDOM(wrap);
-      const resizeTargets = [view?.contentDOM, view?.scrollDOM, view?.dom, wrap.parentElement];
+      const resizeTargets = [view?.contentDOM, view?.scrollDOM, view?.dom, shell.parentElement];
       for (const target of resizeTargets) {
         if (target && target !== wrap) observer.observe(target);
       }
       wrap._meoTableResizeObserver = observer;
     }
-    return wrap;
+    return shell;
   }
 
   ignoreEvent() {
