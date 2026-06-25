@@ -36,6 +36,9 @@ import {
   LINE_NUMBERS_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
   VIM_MODE_SETTING_KEY,
+  CODE_BLOCKS_VSCODE_THEME_SETTING_KEY,
+  getUseVscodeThemeForCodeBlocks,
+  getCodeBlockVscodeTheme,
   syncEditorAssociations,
   type ExportHtmlImageMode,
   getExportHtmlImageMode,
@@ -162,6 +165,12 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       void provider.handleConfigurationChanged(event);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      provider.notifyThemeChanged();
     })
   );
 
@@ -541,12 +550,20 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     if (
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.theme`)
     ) {
-      this.broadcast({ type: 'themeChanged', theme: getThemeSettings() });
+      this.broadcast({ type: 'themeChanged', theme: getThemeSettings(), codeTheme: getCodeBlockVscodeTheme() });
+    }
+
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${CODE_BLOCKS_VSCODE_THEME_SETTING_KEY}`)) {
+      this.broadcast({
+        type: 'shikiCodeBlocksChanged',
+        enabled: getUseVscodeThemeForCodeBlocks(),
+        codeTheme: getCodeBlockVscodeTheme()
+      });
     }
   }
 
   notifyThemeChanged(): void {
-    this.broadcast({ type: 'themeChanged', theme: getThemeSettings() });
+    this.broadcast({ type: 'themeChanged', theme: getThemeSettings(), codeTheme: getCodeBlockVscodeTheme() });
   }
 
   async toggleActiveEditorMode(): Promise<void> {
@@ -891,7 +908,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       `img-src ${webview.cspSource} https:`,
       `font-src ${webview.cspSource}`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `script-src ${webview.cspSource} 'nonce-${nonce}'`
+      `script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval'`
     ].join('; ');
 
     return `<!DOCTYPE html>

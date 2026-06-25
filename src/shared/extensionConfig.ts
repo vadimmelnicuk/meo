@@ -6,12 +6,14 @@ import {
   type ThemeSettings,
   validateThemePayload
 } from './themeDefaults';
+import { getActiveVscodeRawTheme, type RawVscodeTheme } from './vscodeTheme';
 
 export const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
 export const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
+export const CODE_BLOCKS_VSCODE_THEME_SETTING_KEY = 'codeBlocks.useVscodeTheme';
 export const REMEMBER_POSITION_LINES_SETTING_KEY = 'rememberPosition.lines';
 export const LINE_NUMBERS_LEGACY_SETTING_KEY = 'lineNumbers.enabled';
 export const LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY = 'lineNumbers.visibility';
@@ -64,6 +66,16 @@ export function getGitDiffLineHighlightsEnabled(): boolean {
 
 export function getVimModeEnabled(context: vscode.ExtensionContext): boolean {
   return getToggleSettingValue(context, VIM_MODE_SETTING_KEY, VIM_MODE_KEY, [], false);
+}
+
+export function getUseVscodeThemeForCodeBlocks(): boolean {
+  return vscode.workspace
+    .getConfiguration(EXTENSION_CONFIG_SECTION)
+    .get<boolean>(CODE_BLOCKS_VSCODE_THEME_SETTING_KEY, false);
+}
+
+export function getCodeBlockVscodeTheme(): RawVscodeTheme | null {
+  return getUseVscodeThemeForCodeBlocks() ? getActiveVscodeRawTheme() : null;
 }
 
 export function getRememberPositionLines(): number {
