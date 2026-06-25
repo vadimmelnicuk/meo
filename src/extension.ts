@@ -38,6 +38,7 @@ import {
   VIM_MODE_BEHAVIOR_SETTING_KEY,
   VIM_MODE_SETTING_KEY,
   CODE_BLOCKS_VSCODE_THEME_SETTING_KEY,
+  CONTENT_MAX_WIDTH_ENABLED_KEY,
   getUseVscodeThemeForCodeBlocks,
   getCodeBlockVscodeTheme,
   syncEditorAssociations,
@@ -636,6 +637,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getFindOptions: () => this.getFindOptions(),
       setFindOptions: (options) => this.setFindOptions(options),
       setOutlineVisible: (visible) => this.setOutlineVisible(visible),
+      setContentMaxWidthEnabled: (enabled) => this.setContentMaxWidthEnabled(enabled),
       onPanelActivated: (activePanel) => {
         this.lastActivePanel = activePanel;
       },
@@ -699,6 +701,16 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     await this.context.globalState.update(OUTLINE_VISIBLE_KEY, nextVisible);
     this.broadcast({ type: 'outlineVisibilityChanged', visible: nextVisible });
+  }
+
+  private async setContentMaxWidthEnabled(enabled: boolean): Promise<void> {
+    const nextEnabled = enabled === true;
+    if (this.context.globalState.get<boolean>(CONTENT_MAX_WIDTH_ENABLED_KEY, false) === nextEnabled) {
+      return;
+    }
+
+    await this.context.globalState.update(CONTENT_MAX_WIDTH_ENABLED_KEY, nextEnabled);
+    this.broadcast({ type: 'contentMaxWidthChanged', enabled: nextEnabled });
   }
 
   private updateActiveEditorContext(): void {

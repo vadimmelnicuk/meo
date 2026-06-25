@@ -5,6 +5,7 @@ import {
   EXTENSION_CONFIG_SECTION,
   LINE_NUMBERS_SETTING_KEY,
   GIT_CHANGES_GUTTER_SETTING_KEY,
+  getContentMaxWidthEnabled,
   getLineNumbersEnabled,
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
@@ -44,6 +45,7 @@ type InitMessage = {
   lineNumbers: boolean;
   gitChangesGutter: boolean;
   gitDiffLineHighlights: boolean;
+  contentMaxWidthEnabled: boolean;
   vimMode: boolean;
   vimKeybindings: VimKeybinding[];
   vimLeader: string;
@@ -162,6 +164,11 @@ type SetOutlineVisibleMessage = {
   visible: boolean;
 };
 
+type SetContentMaxWidthMessage = {
+  type: 'setContentMaxWidth';
+  enabled: boolean;
+};
+
 type SetFindOptionsMessage = {
   type: 'setFindOptions';
   wholeWord?: boolean;
@@ -254,6 +261,7 @@ type WebviewMessage =
   | SetLineNumbersMessage
   | SetGitChangesGutterMessage
   | SetOutlineVisibleMessage
+  | SetContentMaxWidthMessage
   | SetFindOptionsMessage
   | ViewPositionChangedMessage
   | OpenLinkMessage
@@ -302,6 +310,7 @@ type PanelSessionControllerParams = {
   getFindOptions: () => FindOptions;
   setFindOptions: (options: FindOptions) => Promise<void>;
   setOutlineVisible: (visible: boolean) => Promise<void>;
+  setContentMaxWidthEnabled: (enabled: boolean) => Promise<void>;
   onPanelActivated: (panel: vscode.WebviewPanel) => void;
   onPanelViewStateChanged: () => void;
   onPanelDisposed: (panel: vscode.WebviewPanel) => void;
@@ -337,6 +346,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     getFindOptions,
     setFindOptions,
     setOutlineVisible,
+    setContentMaxWidthEnabled,
     onPanelActivated,
     onPanelViewStateChanged,
     onPanelDisposed
@@ -470,6 +480,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       lineNumbers: getLineNumbersEnabled(context),
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
+      contentMaxWidthEnabled: getContentMaxWidthEnabled(context),
       vimMode: getVimModeEnabled(context),
       vimKeybindings: getVimKeybindings(),
       vimLeader: getVimLeaderKey(),
@@ -854,6 +865,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       }
       case 'setOutlineVisible':
         await setOutlineVisible(raw.visible);
+        return;
+      case 'setContentMaxWidth':
+        await setContentMaxWidthEnabled(raw.enabled);
         return;
       case 'setFindOptions': {
         const wholeWord = raw.findOptions?.wholeWord ?? raw.wholeWord;

@@ -29,6 +29,7 @@
   --meo-line-height-live: 1.5;
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
+  --meo-content-max-width: 100%;
   --meo-task-checkbox-size: 17px;
   --git-added: #4a9e82;
   --git-changed: #317ae7;
@@ -829,6 +830,11 @@ body {
 .cm-editor .cm-content {
   padding-top: 0;
   caret-color: var(--vscode-editorCursor-foreground, #ffffff);
+  width: 100%;
+  max-width: var(--meo-content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
 .cm-editor,

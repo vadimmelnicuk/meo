@@ -1,4 +1,4 @@
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare, PanelLeftRightDashed } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -151,6 +151,10 @@ let vimLeaderState = '\\';
 let lineNumbersVisible = true;
 let gitChangesGutterVisible = true;
 let gitDiffLineHighlightsEnabled = true;
+let contentMaxWidthEnabled = false;
+
+const CONTENT_MAX_WIDTH_ENABLED_VALUE = '800px';
+const CONTENT_MAX_WIDTH_DISABLED_VALUE = '100%';
 
 const outlineBtn = document.createElement('button');
 outlineBtn.type = 'button';
@@ -158,6 +162,13 @@ outlineBtn.className = 'format-button toggle-button';
 outlineBtn.dataset.action = 'outline';
 outlineBtn.title = 'Toggle Outline';
 outlineBtn.appendChild(createElement(ListTree, { width: 18, height: 18 }));
+
+const contentMaxWidthBtn = document.createElement('button');
+contentMaxWidthBtn.type = 'button';
+contentMaxWidthBtn.className = 'format-button toggle-button';
+contentMaxWidthBtn.dataset.action = 'contentMaxWidth';
+contentMaxWidthBtn.title = 'Constrain Content Width';
+contentMaxWidthBtn.appendChild(createElement(PanelLeftRightDashed, { width: 18, height: 18 }));
 
 const lineNumbersBtn = document.createElement('button');
 lineNumbersBtn.type = 'button';
@@ -183,6 +194,12 @@ const updateGitChangesGutterUI = () => {
   gitChangesGutterBtn.classList.toggle('is-active', gitChangesGutterVisible);
   gitChangesGutterBtn.setAttribute('aria-pressed', gitChangesGutterVisible ? 'true' : 'false');
   gitChangesGutterBtn.title = gitChangesGutterVisible ? 'Hide Git Changes' : 'Show Git Changes';
+};
+
+const updateContentMaxWidthUI = () => {
+  contentMaxWidthBtn.classList.toggle('is-active', contentMaxWidthEnabled);
+  contentMaxWidthBtn.setAttribute('aria-pressed', contentMaxWidthEnabled ? 'true' : 'false');
+  contentMaxWidthBtn.title = contentMaxWidthEnabled ? 'Use Full Content Width' : 'Constrain Content Width';
 };
 
 const syncGitDiffLineHighlights = () => {
@@ -219,6 +236,22 @@ const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
   updateGitChangesGutterUI();
   if (post && changed) {
     vscode.postMessage({ type: 'setGitChangesGutter', visible: gitChangesGutterVisible });
+  }
+};
+
+const setContentMaxWidthEnabled = (enabled, { post = true } = {}) => {
+  const nextEnabled = enabled === true;
+  const changed = nextEnabled !== contentMaxWidthEnabled;
+  if (changed) {
+    contentMaxWidthEnabled = nextEnabled;
+  }
+  document.documentElement.style.setProperty(
+    '--meo-content-max-width',
+    contentMaxWidthEnabled ? CONTENT_MAX_WIDTH_ENABLED_VALUE : CONTENT_MAX_WIDTH_DISABLED_VALUE
+  );
+  updateContentMaxWidthUI();
+  if (post && changed) {
+    vscode.postMessage({ type: 'setContentMaxWidth', enabled: contentMaxWidthEnabled });
   }
 };
 
@@ -418,7 +451,7 @@ const exportWrapper = document.createElement('div');
 exportWrapper.className = 'export-wrapper';
 exportWrapper.append(exportBtn, exportDropdownWrapper);
 
-rightGroup.append(outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, exportWrapper);
+rightGroup.append(contentMaxWidthBtn, outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, exportWrapper);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -1213,6 +1246,9 @@ const handleInit = (message: any) => {
     gitDiffLineHighlightsEnabled = message.gitDiffLineHighlights;
     syncGitDiffLineHighlights();
   }
+  if (typeof message.contentMaxWidthEnabled === 'boolean') {
+    setContentMaxWidthEnabled(message.contentMaxWidthEnabled, { post: false });
+  }
   if (typeof message.vimMode === 'boolean') {
     setVimModeEnabled(message.vimMode);
   }
@@ -1439,6 +1475,11 @@ window.addEventListener('message', (event) => {
   if (message.type === 'gitDiffLineHighlightsChanged') {
     gitDiffLineHighlightsEnabled = message.enabled;
     syncGitDiffLineHighlights();
+    return;
+  }
+
+  if (message.type === 'contentMaxWidthChanged') {
+    setContentMaxWidthEnabled(message.enabled, { post: false });
     return;
   }
 
@@ -1735,6 +1776,9 @@ exportPdfOption.addEventListener('click', () => {
 });
 outlineBtn.addEventListener('click', () => {
   setOutlineVisible(!outlineController.isVisible());
+});
+contentMaxWidthBtn.addEventListener('click', () => {
+  setContentMaxWidthEnabled(!contentMaxWidthEnabled);
 });
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);

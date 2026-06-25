@@ -25,6 +25,7 @@ export const LINE_NUMBERS_KEY = 'lineNumbersEnabled';
 export const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 export const VIM_MODE_KEY = 'vimModeEnabled';
 export const OUTLINE_VISIBLE_KEY = 'outlineVisible';
+export const CONTENT_MAX_WIDTH_ENABLED_KEY = 'contentMaxWidthEnabled';
 export const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
 const VSCODEVIM_EXTENSION_ID = 'vscodevim.vim';
 const VSCODE_NEOVIM_EXTENSION_ID = 'asvetliakov.vscode-neovim';
@@ -168,6 +169,10 @@ export function getOutlinePosition(): OutlinePosition {
 
 export function getOutlineVisible(context: vscode.ExtensionContext): boolean {
   return context.globalState.get<boolean>(OUTLINE_VISIBLE_KEY, false);
+}
+
+export function getContentMaxWidthEnabled(context: vscode.ExtensionContext): boolean {
+  return context.globalState.get<boolean>(CONTENT_MAX_WIDTH_ENABLED_KEY, false);
 }
 
 export function getExportPdfBrowserPath(): string | undefined {
