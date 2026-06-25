@@ -2105,6 +2105,7 @@ body {
 }
 
 .cm-editor .meo-md-html-table-wrap {
+  position: relative;
   padding: 18px 0;
   width: 100%;
   max-width: 100%;
@@ -2187,6 +2188,11 @@ body {
   cursor: text;
 }
 
+.cm-editor .meo-md-html-table th .meo-md-html-table-cell-preview,
+.cm-editor .meo-md-html-table th textarea {
+  padding-right: 1.75em;
+}
+
 .cm-editor .meo-md-html-table-cell-preview .meo-md-link {
   color: var(--meo-color-base05);
 }
@@ -2230,6 +2236,63 @@ body {
 
 .cm-editor .meo-md-html-table textarea:focus {
   background: var(--meo-active-line-bg);
+}
+
+.cm-editor .meo-md-html-apply-sort-btn {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  z-index: 220;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  height: 15px;
+  padding: 0 5px;
+  border: 1px solid var(--meo-color-base03);
+  border-radius: 5px;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-editor-foreground);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cm-editor .meo-md-html-apply-sort-btn[hidden] {
+  display: none;
+}
+
+.cm-editor .meo-md-html-apply-sort-btn:hover,
+.cm-editor .meo-md-html-sort-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.cm-editor .meo-md-html-sort-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  z-index: 205;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--meo-color-base03);
+  border-radius: 5px;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-editor-foreground);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.cm-editor .meo-md-html-table th:hover .meo-md-html-sort-btn,
+.cm-editor .meo-md-html-sort-btn:focus,
+.cm-editor .meo-md-html-sort-btn.is-active {
+  opacity: 1;
 }
 
 .cm-editor .meo-md-html-col-controls {
