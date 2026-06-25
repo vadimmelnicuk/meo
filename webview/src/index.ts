@@ -680,6 +680,10 @@ const getCurrentEditorText = () => {
   return syncedText;
 };
 
+const commitEditorTransientEdits = () => {
+  editor?.commitTransientEdits?.();
+};
+
 const syncPendingDraftState = () => {
   const draftText = pendingText ?? inFlightText;
   const nextDraftText =
@@ -881,6 +885,7 @@ const openGitWorktreeForLine = ({ lineNumber }: { lineNumber: number }) => {
 };
 
 const flushChanges = () => {
+  commitEditorTransientEdits();
   if (!editor || inFlight || pendingText === null || normalizeEol(pendingText) === syncedText) {
     return;
   }
@@ -900,13 +905,12 @@ const flushChanges = () => {
 
   inFlight = true;
   inFlightText = nextText;
-  syncedText = normalizeEol(nextText);
-  documentVersion++;
   syncPendingDraftState();
   vscode.postMessage(message);
 };
 
 const flushPendingChangesNow = () => {
+  commitEditorTransientEdits();
   if (pendingDebounce !== null) {
     window.clearTimeout(pendingDebounce);
     pendingDebounce = null;
@@ -934,6 +938,7 @@ const maybeSaveAfterSync = () => {
 };
 
 const requestSave = async () => {
+  commitEditorTransientEdits();
   saveAfterSync = true;
   flushPendingChangesNow();
 
@@ -1040,6 +1045,7 @@ const applyMode = (mode: 'live' | 'source', { post = true, persist = true, userT
     return false;
   }
 
+  commitEditorTransientEdits();
   const previousMode = currentMode;
   const shouldRestoreEditorFocus = modeToggleShouldRestoreEditorFocus;
   modeToggleShouldRestoreEditorFocus = false;
@@ -1398,6 +1404,8 @@ window.addEventListener('message', (event) => {
     const currentText = normalizeEol(editor.getText());
     const pendingNormalized = pendingText === null ? null : normalizeEol(pendingText);
     const inFlightNormalized = inFlightText === null ? null : normalizeEol(inFlightText);
+    const localDraftText = pendingText ?? inFlightText;
+    const localDraftNormalized = localDraftText === null ? null : normalizeEol(localDraftText);
 
     documentVersion = message.version;
 
@@ -1440,6 +1448,23 @@ window.addEventListener('message', (event) => {
       return;
     }
 
+    if (localDraftText !== null && localDraftNormalized !== incomingText) {
+      syncedText = incomingText;
+      pendingText = localDraftText;
+      inFlight = false;
+      inFlightText = null;
+
+      if (pendingDebounce !== null) {
+        window.clearTimeout(pendingDebounce);
+        pendingDebounce = null;
+      }
+
+      flushChanges();
+      maybeSaveAfterSync();
+      syncPendingDraftState();
+      return;
+    }
+
     syncedText = incomingText;
     pendingText = null;
     inFlight = false;
@@ -1465,6 +1490,9 @@ window.addEventListener('message', (event) => {
     documentVersion = message.version;
     if (inFlightText !== null) {
       syncedText = normalizeEol(inFlightText);
+    }
+    if (pendingText !== null && normalizeEol(pendingText) === syncedText) {
+      pendingText = null;
     }
     inFlight = false;
     inFlightText = null;
@@ -1618,6 +1646,7 @@ window.addEventListener('focus', () => {
 });
 
 const forceFlushChanges = () => {
+  commitEditorTransientEdits();
   flushChanges();
   flushViewPositionNow();
 };

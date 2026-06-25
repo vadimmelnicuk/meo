@@ -2302,8 +2302,9 @@ body {
 
 .cm-editor .meo-md-html-apply-sort-btn {
   position: absolute;
-  right: 0;
+  left: var(--meo-html-table-right-edge, 0);
   top: 4px;
+  transform: translateX(-100%);
   z-index: 220;
   display: inline-flex;
   align-items: center;
@@ -2356,10 +2357,13 @@ body {
   border-radius: 5px;
   background: transparent;
   color: var(--meo-foreground);
-  font-size: 14px;
-  line-height: 18px;
   cursor: pointer;
   opacity: 0;
+}
+
+.cm-editor .meo-md-html-sort-icon {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .cm-editor .meo-md-html-table th:hover .meo-md-html-sort-btn,

@@ -525,6 +525,17 @@ export function createEditor({
     return active.closest('.meo-md-html-table-wrap') ? active : null;
   };
 
+  const commitActiveTableInput = () => {
+    if (!view) {
+      return false;
+    }
+    const detail = { committed: false };
+    document.dispatchEvent(new CustomEvent('meo-commit-table-edits', {
+      detail
+    }));
+    return detail.committed;
+  };
+
   const measureTextareaSelectionStart = (input, index) => {
     const doc = input.ownerDocument;
     const mirror = doc.createElement('div');
@@ -1203,7 +1214,7 @@ export function createEditor({
           }
 
           // Let interactive HTML table widget controls handle focus/click natively.
-          if (targetElement && targetElement.closest('.meo-md-html-table-wrap')) {
+          if (targetElement && targetElement.closest('.meo-md-html-table-shell')) {
             inlineCodeClick = null;
             checkboxClick = null;
             return false;
@@ -1428,7 +1439,11 @@ export function createEditor({
     view,
     state: view.state,
     getText() {
+      commitActiveTableInput();
       return view.state.doc.toString();
+    },
+    commitTransientEdits() {
+      return commitActiveTableInput();
     },
     selectAll() {
       view.dispatch({
@@ -1578,6 +1593,7 @@ export function createEditor({
     },
     setMode(mode) {
       gitBlameHover?.hide();
+      commitActiveTableInput();
       const nextMode = mode === 'live' ? 'live' : 'source';
       if (nextMode === currentMode) {
         return;

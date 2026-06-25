@@ -434,7 +434,6 @@ export function createPanelSessionController(params: PanelSessionControllerParam
 
   const applyPendingDraftIfNeeded = async (): Promise<boolean> => {
     const draftText = pendingDraftText;
-    pendingDraftText = null;
     if (draftText === null) {
       return false;
     }
@@ -443,6 +442,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     const normalizedCurrent = currentText.replace(/\r\n/g, '\n');
     const normalizedDraft = draftText.replace(/\r\n/g, '\n');
     if (normalizedCurrent === normalizedDraft) {
+      pendingDraftText = null;
       return false;
     }
 
@@ -450,7 +450,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(currentText.length));
     agentReviewHandoff.noteRecentMEOOwnedFileChangeForUri(document.uri);
     edit.replace(document.uri, fullRange, draftText);
-    return vscode.workspace.applyEdit(edit);
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (applied) {
+      pendingDraftText = null;
+    }
+    return applied;
   };
 
   const clearRememberedViewPosition = async (): Promise<void> => {
@@ -1048,6 +1052,13 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         isApplyingOwnChange = true;
         try {
           await enqueue(async () => {
+            const appliedDraft = await applyPendingDraftIfNeeded();
+            if (appliedDraft) {
+              await sendDocChanged();
+            } else if (pendingDraftText !== null) {
+              await sendDocChanged();
+              return;
+            }
             await document.save();
           });
         } finally {

@@ -95,6 +95,11 @@ interface TableActionTarget {
   col: number;
 }
 
+interface PendingCellFocus {
+  row: number;
+  col: number;
+}
+
 type TableSortDirection = 'asc' | 'desc';
 
 interface TableSortState {
@@ -163,6 +168,28 @@ const tableToolbarIcons: Record<string, TableToolbarIcon> = {
       'M6 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1',
       'M16 10l4 4',
       'M16 14l4 -4'
+    ]
+  },
+  sortNeutral: {
+    className: 'icon-tabler-arrows-sort',
+    paths: [
+      'M7 7l5 -5l5 5',
+      'M12 2v20',
+      'M17 17l-5 5l-5 -5'
+    ]
+  },
+  sortAsc: {
+    className: 'icon-tabler-arrow-up',
+    paths: [
+      'M12 19v-14',
+      'M5 12l7 -7l7 7'
+    ]
+  },
+  sortDesc: {
+    className: 'icon-tabler-arrow-down',
+    paths: [
+      'M12 5v14',
+      'M19 12l-7 7l-7 -7'
     ]
   }
 };
@@ -787,8 +814,10 @@ function parseTableRowCells(lineText, lineFrom = 0) {
     segments.push({ from: lineFrom + from, to: lineFrom + to, cellIndex: i, empty: false });
   }
 
+  const hasExplicitSingleCell = cells.length === 1 && cells[0] === '' && allSeparatorPipes.length >= 2;
+
   return {
-    cells: cells.length === 1 && cells[0] === '' ? [] : cells,
+    cells: cells.length === 1 && cells[0] === '' && !hasExplicitSingleCell ? [] : cells,
     pipes: allSeparatorPipes,
     segments
   };
@@ -986,6 +1015,7 @@ function buildTableDataForLineRange(state, startLineNo, endLineNo) {
 
 class HtmlTableWidget extends WidgetType {
   tableData: TableData;
+  view: EditorView | null;
   layoutFrame: number;
   pendingResizeRows: boolean;
   lastAppliedWidths: number[];
@@ -1003,6 +1033,7 @@ class HtmlTableWidget extends WidgetType {
   constructor(tableData: TableData) {
     super();
     this.tableData = tableData;
+    this.view = null;
     this.layoutFrame = 0;
     this.pendingResizeRows = false;
     this.lastAppliedWidths = [];
@@ -1024,6 +1055,12 @@ class HtmlTableWidget extends WidgetType {
       other.tableData.signature === this.tableData.signature &&
       other.tableData.indent === this.tableData.indent
     );
+  }
+
+  getEditorView(dom?: HTMLElement): EditorView | null {
+    if (this.view) return this.view;
+    if (!dom) return null;
+    return EditorView.findFromDOM(dom);
   }
 
   resolveCurrentTableRange(view: EditorView, dom: HTMLElement): TableRange | null {
@@ -1135,7 +1172,7 @@ class HtmlTableWidget extends WidgetType {
       const active = this.sortState?.column === col;
       button.classList.toggle('is-active', active);
       button.dataset.sortDirection = active ? this.sortState.direction : '';
-      button.textContent = active ? (this.sortState.direction === 'desc' ? '↓' : '↑') : '↕';
+      this.setSortButtonIcon(button, active ? this.sortState.direction : null);
       button.title = active
         ? `Sorted ${this.sortState.direction === 'desc' ? 'descending' : 'ascending'}; click to toggle`
         : 'Sort column descending';
@@ -1143,6 +1180,19 @@ class HtmlTableWidget extends WidgetType {
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
     applySortButton.hidden = !this.sortState;
+  }
+
+  setSortButtonIcon(button: HTMLButtonElement, direction: TableSortDirection | null) {
+    const icon = direction === 'asc'
+      ? tableToolbarIcons.sortAsc
+      : direction === 'desc'
+        ? tableToolbarIcons.sortDesc
+        : tableToolbarIcons.sortNeutral;
+    const svg = this.createToolbarIcon(icon);
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.classList.add('meo-md-html-sort-icon');
+    button.replaceChildren(svg);
   }
 
   clearVisualSort() {
@@ -1306,7 +1356,7 @@ class HtmlTableWidget extends WidgetType {
   }
 
   moveVerticalOutOfTable(container, direction, preferredColumn = 0) {
-    const view = EditorView.findFromDOM(container);
+    const view = this.getEditorView(container);
     if (!view) return false;
 
     const range = this.resolveCurrentTableRange(view, container);
@@ -1390,19 +1440,19 @@ class HtmlTableWidget extends WidgetType {
   }
 
   setTableInteractionActive(container, active) {
-    const view = EditorView.findFromDOM(container);
+    const view = this.getEditorView(container);
     if (!view) return;
     view.dom.dispatchEvent(new CustomEvent('meo-table-interaction', { detail: { active } }));
   }
 
   emitTableSelectionChange(container) {
-    const view = EditorView.findFromDOM(container);
+    const view = this.getEditorView(container);
     if (!view) return;
     view.dom.dispatchEvent(new CustomEvent('meo-table-selection-change'));
   }
 
   hasFocusedTableInput(container) {
-    const view = EditorView.findFromDOM(container);
+    const view = this.getEditorView(container);
     if (!view) return false;
     const active = document.activeElement;
     if (!(active instanceof Element)) return false;
@@ -1437,7 +1487,7 @@ class HtmlTableWidget extends WidgetType {
     event.preventDefault();
     event.stopPropagation();
     const wrap = this.domRefs?.wrap ?? table;
-    const view = EditorView.findFromDOM(wrap);
+    const view = this.getEditorView(wrap);
     if (!view) return true;
     const { scrollTop, scrollLeft } = view.scrollDOM;
     this.commit(wrap);
@@ -1610,6 +1660,14 @@ class HtmlTableWidget extends WidgetType {
     table.addEventListener('keydown', onKeyDown, true);
     table.addEventListener('focusout', onFocusOut);
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
+    const onCommitTableEdits = (event) => {
+      const hadPendingEdits = this.hasPendingCellEdits;
+      this.commit(getWrap());
+      if (event instanceof CustomEvent && event.detail && typeof event.detail === 'object') {
+        event.detail.committed = Boolean(event.detail.committed || hadPendingEdits);
+      }
+    };
+    document.addEventListener('meo-commit-table-edits', onCommitTableEdits);
     this.cleanupFns.push(() => {
       table.removeEventListener('pointerdown', onPointerDown);
       getContainer().removeEventListener('pointerdown', onWrapPointerDown, true);
@@ -1620,6 +1678,7 @@ class HtmlTableWidget extends WidgetType {
       table.removeEventListener('keydown', onKeyDown, true);
       table.removeEventListener('focusout', onFocusOut);
       document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+      document.removeEventListener('meo-commit-table-edits', onCommitTableEdits);
     });
   }
 
@@ -1628,23 +1687,49 @@ class HtmlTableWidget extends WidgetType {
     this.commitMatrix(this.readCellMatrix(), dom);
   }
 
-  commitMatrix(matrix, dom) {
-    const view = EditorView.findFromDOM(dom);
+  scheduleFocusCellAfterCommit(view: EditorView, tableStartLine: number, focusTarget: PendingCellFocus) {
+    const focusCell = () => {
+      const input = view.dom.querySelector(
+        `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${tableStartLine}"] textarea[data-table-row="${focusTarget.row}"][data-table-col="${focusTarget.col}"]`
+      );
+      if (!(input instanceof HTMLTextAreaElement)) return false;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(0, 0);
+      input.closest(tableCellSelector)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      return true;
+    };
+
+    requestAnimationFrame(() => {
+      if (!focusCell()) {
+        setTimeout(focusCell, 0);
+      }
+    });
+  }
+
+  commitMatrix(matrix, dom, focusTarget: PendingCellFocus | null = null) {
+    const view = this.getEditorView(dom);
     if (!view) return;
 
     const { headerCells, rows, alignments = this.tableData.alignments } = matrix;
     if (!headerCells.length) return;
     const range = this.resolveCurrentTableRange(view, dom);
     if (!range) return;
+    const tableStartLine = view.state.doc.lineAt(range.from).number;
     const markdown = serializeTableMarkdown(this.tableData.indent, headerCells, alignments, rows);
     const current = view.state.doc.sliceString(range.from, range.to);
     if (current === markdown) {
       this.hasPendingCellEdits = false;
+      if (focusTarget) {
+        this.focusCellInputAt(focusTarget.row, focusTarget.col, 0);
+      }
       return;
     }
 
     view.dispatch({ changes: { from: range.from, to: range.to, insert: markdown } });
     this.hasPendingCellEdits = false;
+    if (focusTarget) {
+      this.scheduleFocusCellAfterCommit(view, tableStartLine, focusTarget);
+    }
   }
 
   addRowAfter(dom, rowIndex) {
@@ -1653,7 +1738,7 @@ class HtmlTableWidget extends WidgetType {
     if (!matrix.headerCells.length) return;
     const insertAt = Math.min(Math.max(rowIndex + 1, 0), matrix.rows.length);
     matrix.rows.splice(insertAt, 0, new Array(matrix.headerCells.length).fill(''));
-    this.commitMatrix(matrix, dom);
+    this.commitMatrix(matrix, dom, { row: insertAt + 1, col: this.activeColumnIndex() ?? 0 });
   }
 
   addRowBefore(dom, rowIndex) {
@@ -1662,7 +1747,7 @@ class HtmlTableWidget extends WidgetType {
     if (!matrix.headerCells.length) return;
     const insertAt = Math.min(Math.max(rowIndex, 0), matrix.rows.length);
     matrix.rows.splice(insertAt, 0, new Array(matrix.headerCells.length).fill(''));
-    this.commitMatrix(matrix, dom);
+    this.commitMatrix(matrix, dom, { row: insertAt + 1, col: this.activeColumnIndex() ?? 0 });
   }
 
   removeRowAt(dom, rowIndex) {
@@ -1671,7 +1756,8 @@ class HtmlTableWidget extends WidgetType {
     if (matrix.rows.length <= 1) return;
     if (rowIndex < 0 || rowIndex >= matrix.rows.length) return;
     matrix.rows.splice(rowIndex, 1);
-    this.commitMatrix(matrix, dom);
+    const focusRow = Math.min(rowIndex, matrix.rows.length - 1) + 1;
+    this.commitMatrix(matrix, dom, { row: focusRow, col: this.activeColumnIndex() ?? 0 });
   }
 
   addColumnAfter(dom, colIndex) {
@@ -1688,7 +1774,7 @@ class HtmlTableWidget extends WidgetType {
     const alignments = normalizeRow(this.tableData.alignments, matrix.headerCells.length - 1).map((value) => value ?? null);
     alignments.splice(insertAt, 0, null);
     matrix.alignments = alignments;
-    this.commitMatrix(matrix, dom);
+    this.commitMatrix(matrix, dom, { row: this.activeTarget.row, col: insertAt });
   }
 
   addColumnBefore(dom, colIndex) {
@@ -1705,7 +1791,7 @@ class HtmlTableWidget extends WidgetType {
     const alignments = normalizeRow(this.tableData.alignments, matrix.headerCells.length - 1).map((value) => value ?? null);
     alignments.splice(insertAt, 0, null);
     matrix.alignments = alignments;
-    this.commitMatrix(matrix, dom);
+    this.commitMatrix(matrix, dom, { row: this.activeTarget.row, col: insertAt });
   }
 
   removeColumnAt(dom, colIndex) {
@@ -1722,7 +1808,8 @@ class HtmlTableWidget extends WidgetType {
     const alignments = normalizeRow(this.tableData.alignments, matrix.headerCells.length + 1).map((value) => value ?? null);
     alignments.splice(colIndex, 1);
     matrix.alignments = alignments;
-    this.commitMatrix(matrix, dom);
+    const focusCol = Math.min(colIndex, matrix.headerCells.length - 1);
+    this.commitMatrix(matrix, dom, { row: this.activeTarget.row, col: focusCol });
   }
 
   wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview) {
@@ -1844,24 +1931,21 @@ class HtmlTableWidget extends WidgetType {
 
   fitColumnWidths() {
     if (!this.domRefs) return false;
-    const { wrap, table, colEls, headerInputs, rowInputs } = this.domRefs;
+    const { shell, wrap, table, colEls, headerInputs, rowInputs } = this.domRefs;
     const chPx = this.measureChPx(wrap);
     const cellChromePx = (cellHorizontalPaddingCh * chPx) + cellBorderPx;
     const minPx = (minColumnWidthCh * chPx) + cellChromePx;
     const maxPx = (maxColumnWidthCh * chPx) + cellChromePx;
     const livePreferredCh = computePreferredColumnCharWidthsFromInputs(headerInputs, rowInputs, this.tableData.colCount);
     const preferredPx = livePreferredCh.map((ch) => Math.max(minPx, Math.min(maxPx, (ch * chPx) + cellChromePx)));
-    const preferredTotal = preferredPx.reduce((sum, value) => sum + value, 0);
-    const availableWidth = Math.max(0, Math.floor(wrap.clientWidth) - cellBorderPx);
-    const targetTotal = Math.max(Math.round(preferredTotal), availableWidth);
-    const extraWidth = Math.max(0, targetTotal - preferredTotal);
-    const extraPerColumn = colEls.length > 0 ? extraWidth / colEls.length : 0;
 
     const nextAppliedWidths = new Array(colEls.length);
     let changed = colEls.length !== this.lastAppliedWidths.length;
+    let targetTotal = 0;
     for (let i = 0; i < colEls.length; i++) {
-      const widthPx = Math.max(1, Math.round((preferredPx[i] ?? minPx) + extraPerColumn));
+      const widthPx = Math.max(1, Math.round(preferredPx[i] ?? minPx));
       nextAppliedWidths[i] = widthPx;
+      targetTotal += widthPx;
       if (!changed && this.lastAppliedWidths[i] !== widthPx) changed = true;
       colEls[i].style.width = `${widthPx}px`;
       colEls[i].style.minWidth = `${widthPx}px`;
@@ -1871,7 +1955,15 @@ class HtmlTableWidget extends WidgetType {
     table.style.width = `${targetTotal}px`;
     table.style.minWidth = `${targetTotal}px`;
     table.style.maxWidth = 'none';
+    this.updateApplySortAnchor(shell, wrap, targetTotal);
     return changed;
+  }
+
+  updateApplySortAnchor(shell: HTMLElement, wrap: HTMLElement, tableWidth: number) {
+    const visibleWidth = Math.max(0, Math.floor(wrap.clientWidth));
+    const visibleTableRightEdge = Math.max(0, tableWidth - wrap.scrollLeft);
+    const anchor = Math.min(visibleWidth, visibleTableRightEdge);
+    shell.style.setProperty('--meo-html-table-right-edge', `${anchor}px`);
   }
 
   recalcLayout() {
@@ -1965,10 +2057,15 @@ class HtmlTableWidget extends WidgetType {
     button.title = label;
     button.setAttribute('aria-label', label);
     button.appendChild(this.createToolbarIcon(icon));
-    button.addEventListener('click', (event) => {
+    button.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       onClick();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
     });
     return button;
   }
@@ -2021,7 +2118,8 @@ class HtmlTableWidget extends WidgetType {
     };
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
+    this.view = view;
     const shell = document.createElement('div');
     shell.className = 'meo-md-html-table-shell';
     const wrap = document.createElement('div');
@@ -2042,10 +2140,15 @@ class HtmlTableWidget extends WidgetType {
     applySortButton.textContent = 'Apply Sort';
     applySortButton.title = 'Apply current sort to markdown';
     applySortButton.hidden = true;
-    applySortButton.addEventListener('click', (event) => {
+    applySortButton.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       this.applyCurrentSort(wrap);
+    });
+    applySortButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
     });
 
     const table = document.createElement('table');
@@ -2081,14 +2184,19 @@ class HtmlTableWidget extends WidgetType {
       sortBtn.type = 'button';
       sortBtn.tabIndex = -1;
       sortBtn.className = 'meo-md-html-sort-btn';
-      sortBtn.textContent = '↕';
+      this.setSortButtonIcon(sortBtn, null);
       sortBtn.title = 'Sort column descending';
       sortBtn.setAttribute('aria-label', 'Sort column descending');
       sortBtn.setAttribute('aria-pressed', 'false');
-      sortBtn.addEventListener('click', (event) => {
+      sortBtn.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
         this.sortByColumn(wrap, col);
+      });
+      sortBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
       });
       sortButtons.push(sortBtn);
       th.appendChild(sortBtn);
@@ -2162,13 +2270,20 @@ class HtmlTableWidget extends WidgetType {
         this.scheduleLayout({ resizeRows: true });
       });
       observer.observe(wrap);
-      const view = EditorView.findFromDOM(wrap);
       const resizeTargets = [view?.contentDOM, view?.scrollDOM, view?.dom, shell.parentElement];
       for (const target of resizeTargets) {
         if (target && target !== wrap) observer.observe(target);
       }
       wrap._meoTableResizeObserver = observer;
     }
+    const onTableScroll = () => {
+      const tableWidth = this.lastAppliedWidths.reduce((sum, width) => sum + width, 0);
+      this.updateApplySortAnchor(shell, wrap, tableWidth);
+    };
+    wrap.addEventListener('scroll', onTableScroll);
+    this.cleanupFns.push(() => {
+      wrap.removeEventListener('scroll', onTableScroll);
+    });
     return shell;
   }
 
@@ -2185,6 +2300,7 @@ class HtmlTableWidget extends WidgetType {
       this.layoutFrame = 0;
     }
     this.domRefs = null;
+    this.view = null;
     this.selectionAnchor = null;
     this.selectionRange = null;
     this.selectionPointerId = null;
