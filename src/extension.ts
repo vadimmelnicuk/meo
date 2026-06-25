@@ -454,12 +454,15 @@ export function activate(context: vscode.ExtensionContext): void {
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
+  private readonly spellDiagnosticCollection = vscode.languages.createDiagnosticCollection('meo-spell');
   private lastActivePanel: vscode.WebviewPanel | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly agentReviewHandoff: AgentReviewHandoffController
-  ) {}
+  ) {
+    this.context.subscriptions.push(this.spellDiagnosticCollection);
+  }
 
   async initializeGitWatcher(): Promise<void> {
     const watcher = await createGitApiWatcher((repoRootFsPath) => {
@@ -578,6 +581,15 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       this.broadcast({ type: 'themeChanged', theme: getThemeSettings(), codeTheme: getCodeBlockVscodeTheme() });
     }
 
+    if (
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.spellCheck.enabled`) ||
+      event.affectsConfiguration('cSpell')
+    ) {
+      for (const session of this.panelSessions.values()) {
+        session.refreshSpellDiagnostics();
+      }
+    }
+
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${CODE_BLOCKS_VSCODE_THEME_SETTING_KEY}`)) {
       this.broadcast({
         type: 'shikiCodeBlocksChanged',
@@ -637,6 +649,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       document,
       documentUri,
       context: this.context,
+      spellDiagnosticCollection: this.spellDiagnosticCollection,
       agentReviewHandoff: this.agentReviewHandoff,
       onExportDocument: (session, format) => this.exportSessionDocument(session, format),
       getFindOptions: () => this.getFindOptions(),

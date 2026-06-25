@@ -880,6 +880,29 @@ body {
   border-radius: 2px;
 }
 
+.cm-editor .meo-diagnostic {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.cm-editor .meo-diagnostic-error {
+  text-decoration-color: var(--vscode-editorError-foreground, var(--vscode-errorForeground, #f48771));
+}
+
+.cm-editor .meo-diagnostic-warning {
+  text-decoration-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.cm-editor .meo-diagnostic-info {
+  text-decoration-color: var(--vscode-editorInfo-foreground, #3794ff);
+}
+
+.cm-editor .meo-diagnostic-hint {
+  text-decoration-color: var(--vscode-editorHint-foreground, var(--vscode-editorInfo-foreground, #3794ff));
+}
+
 .cm-editor .cm-activeLine {
   background-color: var(--meo-active-line-bg);
 }

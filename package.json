@@ -203,6 +203,12 @@
           "order": 6,
           "description": "Show subtle line coloring for modified lines in Source mode."
         },
+        "markdownEditorOptimized.spellCheck.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 6,
+          "description": "Show built-in spelling diagnostics in Markdown Editor Optimized when no external spell checker diagnostics are available."
+        },
         "markdownEditorOptimized.vimMode.enabled": {
           "type": "boolean",
           "default": false,
@@ -771,6 +777,7 @@
     "@lezer/highlight": "^1.2.3",
     "@replit/codemirror-vim": "^6.3.0",
     "@types/vscode": "^1.109.0",
+    "cspell-lib": "^10.0.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.28",
     "lucide": "^0.564.0",

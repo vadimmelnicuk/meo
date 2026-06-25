@@ -35,11 +35,12 @@ type VimKeybinding = {
 };
 
 type ExtensionMessage =
-  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; contentMaxWidthEnabled: boolean; vimMode: boolean; vimKeybindings: VimKeybinding[]; vimLeader: string; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
+  | { type: 'init'; text: string; version: number; diagnostics: EditorDiagnostic[]; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; contentMaxWidthEnabled: boolean; vimMode: boolean; vimKeybindings: VimKeybinding[]; vimLeader: string; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
   | { type: 'docChanged'; text: string; version: number }
   | { type: 'applied'; version: number }
   | { type: 'focusEditor' }
   | { type: 'revealSelection'; anchor: number; head: number; focus?: boolean }
+  | { type: 'diagnosticsChanged'; diagnostics: EditorDiagnostic[] }
   | { type: 'themeChanged'; theme: ThemeSettings }
   | { type: 'outlinePositionChanged'; position: 'left' | 'right' }
   | { type: 'outlineVisibilityChanged'; visible: boolean }
@@ -83,6 +84,15 @@ interface ThemeSettings {
     liveLineHeight?: number;
     sourceLineHeight?: number;
   };
+}
+
+interface EditorDiagnostic {
+  from: number;
+  to: number;
+  severity: 0 | 1 | 2 | 3;
+  message: string;
+  source?: string;
+  code?: string;
 }
 
 interface WikiLinkStatus {

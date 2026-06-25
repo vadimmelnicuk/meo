@@ -29,6 +29,7 @@ import type { ExportStyleEnvironment } from '../export/runtime';
 import type { ThemeSettings } from '../shared/themeDefaults';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { OutlinePosition } from '../shared/extensionConfig';
+import { collectMeoSpellDiagnostics, hasExternalSpellDiagnostics } from '../spell/spellDiagnostics';
 
 export type EditorMode = 'live' | 'source';
 export type ExportFormat = 'html' | 'pdf';
@@ -42,6 +43,7 @@ type InitMessage = {
   type: 'init';
   text: string;
   version: number;
+  diagnostics: SerializedDiagnostic[];
   mode: EditorMode;
   lineNumbers: boolean;
   gitChangesGutter: boolean;
@@ -255,6 +257,20 @@ type GitBlameResultMessage = {
   result: GitBlameLineResult;
 };
 
+type SerializedDiagnostic = {
+  from: number;
+  to: number;
+  severity: 0 | 1 | 2 | 3;
+  message: string;
+  source?: string;
+  code?: string;
+};
+
+type DiagnosticsChangedMessage = {
+  type: 'diagnosticsChanged';
+  diagnostics: SerializedDiagnostic[];
+};
+
 type WebviewMessage =
   | ApplyChangesMessage
   | DraftChangedMessage
@@ -306,6 +322,7 @@ type PanelSessionControllerParams = {
   document: vscode.TextDocument;
   documentUri: vscode.Uri;
   context: vscode.ExtensionContext;
+  spellDiagnosticCollection: vscode.DiagnosticCollection;
   agentReviewHandoff: AgentReviewHandoffController;
   onExportDocument: (session: PanelSession, format: ExportFormat) => Promise<void>;
   getFindOptions: () => FindOptions;
@@ -326,6 +343,7 @@ export type PanelSession = {
   requestExportSnapshot: () => Promise<{ text: string; environment?: ExportStyleEnvironment }>;
   rejectPendingExportSnapshots: (reason: Error) => void;
   refreshGitBaseline: (options?: RefreshGitBaselineOptions) => void;
+  refreshSpellDiagnostics: () => void;
   getGitRepoRoot: () => string | null;
 };
 
@@ -341,6 +359,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     document,
     documentUri,
     context,
+    spellDiagnosticCollection,
     agentReviewHandoff,
     onExportDocument,
     getFindOptions,
@@ -369,6 +388,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   let lastSavedRememberedLine: number | null = null;
   let lastSavedRememberedLineOffset = 0;
   let disposed = false;
+  let spellCheckGeneration = 0;
+  let pendingSpellCheckTimer: ReturnType<typeof setTimeout> | null = null;
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
   const gitDocumentState = new GitDocumentState(documentUri.fsPath, workspaceRoot);
   const pendingExportSnapshots = new Map<string, PendingExportSnapshot>();
@@ -475,6 +496,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       type: 'init',
       text: document.getText(),
       version: document.version,
+      diagnostics: serializeDiagnostics(document),
       mode,
       lineNumbers: getLineNumbersEnabled(context),
       gitChangesGutter: getGitChangesGutterEnabled(context),
@@ -493,6 +515,42 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       restoreTopLineOffset: pendingRestoreTopLine === null ? undefined : pendingRestoreTopLineOffset
     };
     return postToWebview(message);
+  };
+
+  const sendDiagnosticsChanged = async (): Promise<boolean> => {
+    const message: DiagnosticsChangedMessage = {
+      type: 'diagnosticsChanged',
+      diagnostics: serializeDiagnostics(document)
+    };
+    return postToWebview(message);
+  };
+
+  const runSpellCheck = async (generation: number): Promise<void> => {
+    try {
+      const diagnostics = await collectMeoSpellDiagnostics(document);
+      if (disposed || generation !== spellCheckGeneration) {
+        return;
+      }
+      spellDiagnosticCollection.set(document.uri, diagnostics);
+    } catch (error) {
+      if (!disposed) {
+        console.error('[MEO panelSession] spellCheck', error);
+      }
+      spellDiagnosticCollection.delete(document.uri);
+    }
+  };
+
+  const scheduleSpellCheck = (delayMs = 350): void => {
+    spellCheckGeneration += 1;
+    const generation = spellCheckGeneration;
+    if (pendingSpellCheckTimer !== null) {
+      clearTimeout(pendingSpellCheckTimer);
+      pendingSpellCheckTimer = null;
+    }
+    pendingSpellCheckTimer = setTimeout(() => {
+      pendingSpellCheckTimer = null;
+      runBackground(runSpellCheck(generation), 'spellCheck');
+    }, delayMs);
   };
 
   const sendDocChanged = async (): Promise<boolean> => {
@@ -823,6 +881,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     requestExportSnapshot,
     rejectPendingExportSnapshots,
     refreshGitBaseline,
+    refreshSpellDiagnostics: () => scheduleSpellCheck(0),
     getGitRepoRoot: () => gitDocumentState.getRepoRoot()
   };
 
@@ -835,6 +894,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         webviewReady = true;
         await ensureInitDelivered();
         await flushPendingRevealSelection();
+        scheduleSpellCheck(0);
         gitRefreshPending = true;
         gitRefreshPendingForcePost = true;
         await runPendingGitRefreshes();
@@ -992,6 +1052,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
 
+    scheduleSpellCheck();
+
     if (isApplyingOwnChange) {
       return;
     }
@@ -1006,6 +1068,21 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     refreshGitBaseline({ forceReload: true });
+  });
+
+  const diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
+    if (!event.uris.some((uri) => uri.toString() === documentKey)) {
+      return;
+    }
+    if (hasExternalSpellDiagnostics(document)) {
+      spellCheckGeneration += 1;
+      if (pendingSpellCheckTimer !== null) {
+        clearTimeout(pendingSpellCheckTimer);
+        pendingSpellCheckTimer = null;
+      }
+      spellDiagnosticCollection.delete(document.uri);
+    }
+    runBackground(sendDiagnosticsChanged(), 'sendDiagnosticsChanged');
   });
 
   const textEditorSelectionSubscription = vscode.window.onDidChangeTextEditorSelection((event) => {
@@ -1049,6 +1126,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     disposed = true;
+    spellCheckGeneration += 1;
+    if (pendingSpellCheckTimer !== null) {
+      clearTimeout(pendingSpellCheckTimer);
+      pendingSpellCheckTimer = null;
+    }
+    spellDiagnosticCollection.delete(document.uri);
 
     runBackground(enqueue(async () => {
       try {
@@ -1063,6 +1146,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     messageSubscription.dispose();
     documentChangeSubscription.dispose();
     documentSaveSubscription.dispose();
+    diagnosticsSubscription.dispose();
     textEditorSelectionSubscription.dispose();
     activeTextEditorSubscription.dispose();
     visibleTextEditorsSubscription.dispose();
@@ -1223,6 +1307,93 @@ function mapNormalizedOffsetToDocumentOffset(documentText: string, normalizedOff
   }
 
   return documentIndex;
+}
+
+function mapDocumentOffsetToNormalizedOffset(documentText: string, documentOffset: number): number {
+  const target = Number.isFinite(documentOffset) ? Math.max(0, Math.min(documentOffset, documentText.length)) : 0;
+  if (target === 0) {
+    return 0;
+  }
+
+  let normalizedIndex = 0;
+  let documentIndex = 0;
+
+  while (documentIndex < target) {
+    if (documentText.charCodeAt(documentIndex) === 13) {
+      if (documentText.charCodeAt(documentIndex + 1) === 10 && documentIndex + 1 < target) {
+        documentIndex += 2;
+      } else {
+        documentIndex += 1;
+      }
+      normalizedIndex += 1;
+      continue;
+    }
+
+    documentIndex += 1;
+    normalizedIndex += 1;
+  }
+
+  return normalizedIndex;
+}
+
+function normalizeDiagnosticCode(code: vscode.Diagnostic['code']): string | undefined {
+  if (typeof code === 'string' || typeof code === 'number') {
+    return String(code);
+  }
+  if (code && typeof code === 'object' && 'value' in code) {
+    return String(code.value);
+  }
+  return undefined;
+}
+
+function clampDiagnosticRange(from: number, to: number, textLength: number): { from: number; to: number } | null {
+  const clampedFrom = Math.max(0, Math.min(Math.floor(from), textLength));
+  let clampedTo = Math.max(0, Math.min(Math.floor(to), textLength));
+  if (clampedTo < clampedFrom) {
+    clampedTo = clampedFrom;
+  }
+  if (clampedTo === clampedFrom && clampedFrom < textLength) {
+    clampedTo = clampedFrom + 1;
+  }
+  if (clampedTo === clampedFrom && clampedFrom > 0) {
+    return { from: clampedFrom - 1, to: clampedFrom };
+  }
+  if (clampedTo === clampedFrom) {
+    return null;
+  }
+  return { from: clampedFrom, to: clampedTo };
+}
+
+function serializeDiagnostics(document: vscode.TextDocument): SerializedDiagnostic[] {
+  const diagnostics = vscode.languages.getDiagnostics(document.uri);
+  if (!diagnostics.length) {
+    return [];
+  }
+
+  const documentText = document.getText();
+  const normalizedTextLength = documentText.replace(/\r\n?/g, '\n').length;
+  const serialized: SerializedDiagnostic[] = [];
+
+  for (const diagnostic of diagnostics) {
+    const from = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(diagnostic.range.start));
+    const to = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(diagnostic.range.end));
+    const range = clampDiagnosticRange(from, to, normalizedTextLength);
+    if (!range) {
+      continue;
+    }
+
+    const severity = diagnostic.severity;
+    serialized.push({
+      from: range.from,
+      to: range.to,
+      severity: severity === 0 || severity === 1 || severity === 2 || severity === 3 ? severity : 0,
+      message: diagnostic.message,
+      source: diagnostic.source,
+      code: normalizeDiagnosticCode(diagnostic.code)
+    });
+  }
+
+  return serialized;
 }
 
 async function handleSaveImageFromClipboard(

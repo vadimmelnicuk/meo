@@ -527,6 +527,7 @@ let initialMountRecoveryAttempted = false;
 let modeToggleShouldRestoreEditorFocus = false;
 let gitClient: any = null;
 let pendingEditorFocus = false;
+let pendingDiagnostics: any[] = [];
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
 let pendingRestoreTopLine: number | null = null;
 let pendingRestoreTopLineOffset = 0;
@@ -851,6 +852,12 @@ const focusEditorFromHost = () => {
   pendingEditorFocus = false;
 };
 
+const applyDiagnosticsFromHost = (diagnostics: unknown): void => {
+  const nextDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
+  pendingDiagnostics = nextDiagnostics;
+  editor?.setDiagnostics?.(nextDiagnostics);
+};
+
 gitClient = createGitClient({
   vscode,
   getCurrentEditorText: () => getCurrentEditorText(),
@@ -1128,6 +1135,7 @@ const mountInitialEditor = async () => {
       initialVimMode: vimModeEnabled,
       initialVimKeybindings: vimKeybindingsState,
       initialVimLeader: vimLeaderState,
+      initialDiagnostics: pendingDiagnostics,
       onApplyChanges: queueChanges,
       onOpenLink: (href: string) => {
         vscode.postMessage({ type: 'openLink', href });
@@ -1261,6 +1269,7 @@ const handleInit = (message: any) => {
   if (message.findOptions && typeof message.findOptions === 'object') {
     findPanelController.setSearchOptions(message.findOptions);
   }
+  applyDiagnosticsFromHost(message.diagnostics);
   outlineController.setPosition(message.outlinePosition);
   if (typeof message.outlineVisible === 'boolean') {
     setOutlineVisible(message.outlineVisible, { post: false });
@@ -1521,6 +1530,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'gitBlameResult') {
     gitClient?.handleMessage(message, { editor });
+    return;
+  }
+
+  if (message.type === 'diagnosticsChanged') {
+    applyDiagnosticsFromHost(message.diagnostics);
     return;
   }
 

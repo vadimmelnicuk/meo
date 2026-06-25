@@ -44,6 +44,7 @@ import {
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
 import { collectLatexMathRanges } from './helpers/math';
+import { diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 
 declare module '@codemirror/view' {
   interface EditorView {
@@ -158,7 +159,8 @@ export function createEditor({
   initialGitGutter = true,
   initialVimMode = false,
   initialVimKeybindings = [],
-  initialVimLeader = '\\'
+  initialVimLeader = '\\',
+  initialDiagnostics = []
 }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
@@ -1317,6 +1319,7 @@ export function createEditor({
       modeCompartment.of(startMode === 'live' ? liveModeExtensions() : sourceMode()),
       searchQueryField,
       searchMatchField,
+      diagnosticField,
       EditorView.updateListener.of((update) => {
         syncModeClasses();
         syncLineNumbersVisibility();
@@ -1418,6 +1421,7 @@ export function createEditor({
   syncLineNumbersVisibility();
   syncGitGutterVisibility();
   syncSelectionClass();
+  view.dispatch({ effects: setDiagnosticsEffect.of(initialDiagnostics) });
   emitSelectionChange();
 
   return {
@@ -1794,6 +1798,9 @@ export function createEditor({
     },
     refreshDecorations() {
       view.dispatch({ effects: refreshDecorationsEffect.of(null) });
+    },
+    setDiagnostics(diagnostics: EditorDiagnostic[]) {
+      view.dispatch({ effects: setDiagnosticsEffect.of(diagnostics) });
     },
     refreshLayout() {
       view.requestMeasure();
