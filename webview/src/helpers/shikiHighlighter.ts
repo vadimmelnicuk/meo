@@ -273,6 +273,16 @@ async function tokenizeAndCache(key: string, lang: string, code: string): Promis
 
 export function setShikiTheme(theme: RawVscodeTheme | null | undefined): void {
   if (!theme) {
+    if (!rawTheme && !highlighterPromise && tokenCache.size === 0 && pending.size === 0) {
+      return;
+    }
+    rawTheme = null;
+    themeVersion += 1;
+    highlighterPromise = null;
+    loadedLangs.clear();
+    tokenCache.clear();
+    pending.clear();
+    notifyRefresh();
     return;
   }
   rawTheme = theme;
