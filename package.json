@@ -1,751 +1,769 @@
 {
-	"name": "meo",
-	"displayName": "Markdown Editor Optimized",
-	"description": "An optimized markdown editor with live editing mode for VS Code.",
-	"version": "0.1.23",
-	"publisher": "vadimmelnicuk",
-	"private": true,
-	"icon": "logo.png",
-	"engines": {
-		"vscode": "^1.97.0"
-	},
-	"categories": [
-		"Programming Languages",
-		"Formatters",
-		"Other"
-	],
-	"keywords": [
-		"markdown",
-		"editor",
-		"live-edit",
-		"wysiwyg",
-		"markdown-editor",
-		"markdown-preview"
-	],
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/vadimmelnicuk/meo.git"
-	},
-	"main": "./dist/extension.js",
-	"activationEvents": [
-		"onStartupFinished"
-	],
-	"contributes": {
-		"languages": [
-			{
-				"id": "markdown",
-				"extensions": [
-					".mdx",
-					".mdc"
-				]
-			}
-		],
-		"commands": [
-			{
-				"command": "markdownEditorOptimized.open",
-				"title": "Open With Markdown Editor Optimized",
-				"icon": "$(book)"
-			},
-			{
-				"command": "markdownEditorOptimized.setDefaultEditor",
-				"title": "Markdown Editor Optimized: Set as Default",
-				"icon": "$(check)"
-			},
-			{
-				"command": "markdownEditorOptimized.resetThemeToDefault",
-				"title": "Markdown Editor Optimized: Reset Theme to Default",
-				"icon": "$(discard)"
-			},
-			{
-				"command": "markdownEditorOptimized.selectTheme",
-				"title": "Markdown Editor Optimized: Select Theme"
-			},
-			{
-				"command": "markdownEditorOptimized.importTheme",
-				"title": "Markdown Editor Optimized: Import Theme JSON"
-			},
-			{
-				"command": "markdownEditorOptimized.exportTheme",
-				"title": "Markdown Editor Optimized: Export Theme JSON"
-			},
-			{
-				"command": "markdownEditorOptimized.deleteImportedTheme",
-				"title": "Markdown Editor Optimized: Delete Imported Theme"
-			},
-			{
-				"command": "markdownEditorOptimized.toggleMode",
-				"title": "Markdown Editor Optimized: Toggle Live/Source Mode",
-				"icon": "$(sync)"
-			},
-			{
-				"command": "markdownEditorOptimized.exportHtml",
-				"title": "Markdown Editor Optimized: Export as HTML",
-				"icon": "$(export)"
-			},
-			{
-				"command": "markdownEditorOptimized.exportPdf",
-				"title": "Markdown Editor Optimized: Export as PDF",
-				"icon": "$(file-pdf)"
-			}
-		],
-		"keybindings": [
-			{
-				"command": "markdownEditorOptimized.toggleMode",
-				"key": "alt+shift+m",
-				"when": "markdownEditorOptimized.activeEditor"
-			}
-		],
-		"customEditors": [
-			{
-				"viewType": "markdownEditorOptimized.editor",
-				"displayName": "Markdown Editor Optimized",
-				"selector": [
-					{
-						"filenamePattern": "*.md"
-					},
-					{
-						"filenamePattern": "*.markdown"
-					},
-					{
-						"filenamePattern": "*.mdx"
-					},
-					{
-						"filenamePattern": "*.mdc"
-					}
-				],
-				"priority": "default"
-			}
-		],
-		"menus": {
-			"explorer/context": [
-				{
-					"command": "markdownEditorOptimized.open",
-					"when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
-					"group": "navigation"
-				}
-			],
-			"editor/title/context": [
-				{
-					"command": "markdownEditorOptimized.open",
-					"when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
-					"group": "navigation"
-				}
-			]
-		},
-		"configurationDefaults": {
-			"workbench.editorAssociations": {
-				"*.md": "markdownEditorOptimized.editor",
-				"*.markdown": "markdownEditorOptimized.editor",
-				"*.mdx": "markdownEditorOptimized.editor",
-				"*.mdc": "markdownEditorOptimized.editor",
-				"git:/**/*.md": "default",
-				"git:/**/*.markdown": "default",
-				"git:/**/*.mdx": "default",
-				"git:/**/*.mdc": "default",
-				"git:**/*.md": "default",
-				"git:**/*.markdown": "default",
-				"git:**/*.mdx": "default",
-				"git:**/*.mdc": "default",
-				"chat-editing-text-model:/**/*.md": "default",
-				"chat-editing-text-model:/**/*.markdown": "default",
-				"chat-editing-text-model:/**/*.mdx": "default",
-				"chat-editing-text-model:/**/*.mdc": "default",
-				"chat-editing-text-model:**/*.md": "default",
-				"chat-editing-text-model:**/*.markdown": "default",
-				"chat-editing-text-model:**/*.mdx": "default",
-				"chat-editing-text-model:**/*.mdc": "default"
-			}
-		},
-		"configuration": {
-			"title": "Markdown Editor Optimized",
-			"properties": {
-				"markdownEditorOptimized.useAsDefault": {
-					"type": "boolean",
-					"default": true,
-					"order": 1,
-					"description": "Use Markdown Editor Optimized as the default editor for Markdown files"
-				},
-				"markdownEditorOptimized.outline.position": {
-					"type": "string",
-					"enum": [
-						"left",
-						"right"
-					],
-					"enumDescriptions": [
-						"Show the document outline on the left side of the editor.",
-						"Show the document outline on the right side of the editor."
-					],
-					"default": "right",
-					"order": 2,
-					"description": "Position of the contents outline sidebar."
-				},
-				"markdownEditorOptimized.lineNumbers.visible": {
-					"type": "boolean",
-					"default": true,
-					"order": 3,
-					"description": "Show line numbers."
-				},
-				"markdownEditorOptimized.gitChanges.visible": {
-					"type": "boolean",
-					"default": true,
-					"order": 4,
-					"description": "Show Git change indicators in the editor."
-				},
-				"markdownEditorOptimized.gitChanges.lineHighlights": {
-					"type": "boolean",
-					"default": true,
-					"order": 5,
-					"description": "Show subtle line coloring for modified lines in Source mode."
-				},
-				"markdownEditorOptimized.vimMode.enabled": {
-					"type": "boolean",
-					"default": false,
-					"order": 6,
-					"description": "Enable Vim keybindings in Source mode. When not explicitly set, Vim mode is automatically enabled if the VSCodeVim extension (vscodevim.vim) is installed and active."
-				},
-				"markdownEditorOptimized.rememberPosition.lines": {
-					"type": "number",
-					"default": 100,
-					"minimum": 0,
-					"order": 7,
-					"description": "Markdown files with at least this many lines will remember the last viewed line and restore the scroll position when opened."
-				},
-				"markdownEditorOptimized.export.browserPath": {
-					"type": "string",
-					"default": "",
-					"order": 7,
-					"description": "Optional path to a Chrome/Edge executable used for browser-based export rendering (PDF and HTML finalize). Leave empty to auto-detect."
-				},
-				"markdownEditorOptimized.export.pdf.browserPath": {
-					"type": "string",
-					"default": "",
-					"order": 7,
-					"description": "Deprecated: use markdownEditorOptimized.export.browserPath.",
-					"deprecationMessage": "Use markdownEditorOptimized.export.browserPath instead.",
-					"markdownDeprecationMessage": "Use `markdownEditorOptimized.export.browserPath` instead."
-				},
-				"markdownEditorOptimized.export.html.imageMode": {
-					"type": "string",
-					"enum": [
-						"embedded",
-						"linked"
-					],
-					"enumDescriptions": [
-						"Embed local image files in exported HTML.",
-						"Keep local image links as relative paths in exported HTML."
-					],
-					"default": "embedded",
-					"order": 8,
-					"description": "How local images are handled during HTML export."
-				},
-				"markdownEditorOptimized.imageFolder": {
-					"type": "string",
-					"default": "assets",
-					"order": 9,
-					"description": "Folder name to save pasted images (relative to workspace root)."
-				},
-				"markdownEditorOptimized.theme": {
-					"type": "object",
-					"default": {
-						"id": "one-monokai",
-						"name": "One Monokai",
-						"colors": {
-							"base01": "var(--vscode-editor-foreground)",
-							"base02": "#676f7d",
-							"base03": "#3e444d",
-							"base04": "#e06c75",
-							"base05": "#61afef",
-							"base06": "#66d9ef",
-							"base07": "#e5c07b",
-							"base08": "#c678dd",
-							"base09": "#98c379"
-						},
-						"syntaxTokens": {},
-						"fonts": {
-							"liveFont": "",
-							"sourceFont": "",
-							"liveFontWeight": "",
-							"sourceFontWeight": "",
-							"liveFontSize": null,
-							"sourceFontSize": null,
-							"h1FontSize": 1.6,
-							"h2FontSize": 1.5,
-							"h3FontSize": 1.3,
-							"h4FontSize": 1.2,
-							"h5FontSize": 1.1,
-							"h6FontSize": 1,
-							"h1FontWeight": "600",
-							"h2FontWeight": "600",
-							"h3FontWeight": "600",
-							"h4FontWeight": "600",
-							"h5FontWeight": "600",
-							"h6FontWeight": "600",
-							"liveLineHeight": 1.5,
-							"sourceLineHeight": 1.5
-						}
-					},
-					"defaultSnippets": [
-						{
-							"label": "One Monokai theme payload",
-							"description": "Insert the full theme object with sensible defaults.",
-							"body": "{\n\t\"id\": \"one-monokai\",\n\t\"name\": \"One Monokai\",\n\t\"colors\": {\n\t\t\"base01\": \"var(--vscode-editor-foreground)\",\n\t\t\"base02\": \"#676f7d\",\n\t\t\"base03\": \"#3e444d\",\n\t\t\"base04\": \"#e06c75\",\n\t\t\"base05\": \"#61afef\",\n\t\t\"base06\": \"#66d9ef\",\n\t\t\"base07\": \"#e5c07b\",\n\t\t\"base08\": \"#c678dd\",\n\t\t\"base09\": \"#98c379\"\n\t},\n\t\"syntaxTokens\": {},\n\t\"fonts\": {\n\t\t\"liveFont\": \"\",\n\t\t\"sourceFont\": \"\",\n\t\t\"liveFontWeight\": \"\",\n\t\t\"sourceFontWeight\": \"\",\n\t\t\"liveFontSize\": null,\n\t\t\"sourceFontSize\": null,\n\t\t\"h1FontSize\": 1.6,\n\t\t\"h2FontSize\": 1.5,\n\t\t\"h3FontSize\": 1.3,\n\t\t\"h4FontSize\": 1.2,\n\t\t\"h5FontSize\": 1.1,\n\t\t\"h6FontSize\": 1,\n\t\t\"h1FontWeight\": \"600\",\n\t\t\"h2FontWeight\": \"600\",\n\t\t\"h3FontWeight\": \"600\",\n\t\t\"h4FontWeight\": \"600\",\n\t\t\"h5FontWeight\": \"600\",\n\t\t\"h6FontWeight\": \"600\",\n\t\t\"liveLineHeight\": 1.5,\n\t\t\"sourceLineHeight\": 1.5\n\t}\n}"
-						}
-					],
-					"description": "Theme payload containing base palette colors, optional token overrides, and font settings.",
-					"markdownDescription": "[Select Theme](command:markdownEditorOptimized.selectTheme) | [Import Theme](command:markdownEditorOptimized.importTheme) | [Export Theme](command:markdownEditorOptimized.exportTheme) | [Delete Imported Theme](command:markdownEditorOptimized.deleteImportedTheme) | [Reset Theme to Default](command:markdownEditorOptimized.resetThemeToDefault)",
-					"properties": {
-						"id": {
-							"type": "string",
-							"default": "one-monokai",
-							"description": "Unique theme identifier."
-						},
-						"name": {
-							"type": "string",
-							"default": "One Monokai (default)",
-							"description": "Display name for the theme."
-						},
-						"colors": {
-							"type": "object",
-							"default": {},
-							"properties": {
-								"base01": {
-									"type": "string",
-									"description": "Primary foreground color (hex/rgb/hsl/var).",
-									"default": "var(--vscode-editor-foreground)"
-								},
-								"base02": {
-									"type": "string",
-									"format": "color"
-								},
-								"base03": {
-									"type": "string",
-									"format": "color"
-								},
-								"base04": {
-									"type": "string",
-									"format": "color"
-								},
-								"base05": {
-									"type": "string",
-									"format": "color"
-								},
-								"base06": {
-									"type": "string",
-									"format": "color"
-								},
-								"base07": {
-									"type": "string",
-									"format": "color"
-								},
-								"base08": {
-									"type": "string",
-									"format": "color"
-								},
-								"base09": {
-									"type": "string",
-									"format": "color"
-								}
-							},
-							"required": [
-								"base02",
-								"base03",
-								"base04",
-								"base05",
-								"base06",
-								"base07",
-								"base08",
-								"base09"
-							],
-							"additionalProperties": false
-						},
-						"syntaxTokens": {
-							"type": "object",
-							"default": {},
-							"properties": {
-								"keyword": {
-									"type": "string",
-									"format": "color"
-								},
-								"identifier": {
-									"type": "string",
-									"format": "color"
-								},
-								"macroName": {
-									"type": "string",
-									"format": "color"
-								},
-								"variableName": {
-									"type": "string",
-									"format": "color"
-								},
-								"propertyName": {
-									"type": "string",
-									"format": "color"
-								},
-								"typeName": {
-									"type": "string",
-									"format": "color"
-								},
-								"className": {
-									"type": "string",
-									"format": "color"
-								},
-								"namespace": {
-									"type": "string",
-									"format": "color"
-								},
-								"operator": {
-									"type": "string",
-									"format": "color"
-								},
-								"operatorKeyword": {
-									"type": "string",
-									"format": "color"
-								},
-								"punctuation": {
-									"type": "string",
-									"format": "color"
-								},
-								"functionName": {
-									"type": "string",
-									"format": "color"
-								},
-								"labelName": {
-									"type": "string",
-									"format": "color"
-								},
-								"definitionFunction": {
-									"type": "string",
-									"format": "color"
-								},
-								"definedVariable": {
-									"type": "string",
-									"format": "color"
-								},
-								"number": {
-									"type": "string",
-									"format": "color"
-								},
-								"changed": {
-									"type": "string",
-									"format": "color"
-								},
-								"annotation": {
-									"type": "string",
-									"format": "color"
-								},
-								"modifier": {
-									"type": "string",
-									"format": "color"
-								},
-								"self": {
-									"type": "string",
-									"format": "color"
-								},
-								"color": {
-									"type": "string",
-									"format": "color"
-								},
-								"constant": {
-									"type": "string",
-									"format": "color"
-								},
-								"atom": {
-									"type": "string",
-									"format": "color"
-								},
-								"bool": {
-									"type": "string",
-									"format": "color"
-								},
-								"specialVariable": {
-									"type": "string",
-									"format": "color"
-								},
-								"specialString": {
-									"type": "string",
-									"format": "color"
-								},
-								"regexp": {
-									"type": "string",
-									"format": "color"
-								},
-								"string": {
-									"type": "string",
-									"format": "color"
-								},
-								"typeDefinition": {
-									"type": "string",
-									"format": "color"
-								},
-								"meta": {
-									"type": "string",
-									"format": "color"
-								},
-								"comment": {
-									"type": "string",
-									"format": "color"
-								},
-								"tagName": {
-									"type": "string",
-									"format": "color"
-								},
-								"attributeName": {
-									"type": "string",
-									"format": "color"
-								},
-								"invalid": {
-									"type": "string",
-									"format": "color"
-								},
-								"deleted": {
-									"type": "string",
-									"format": "color"
-								},
-								"monospace": {
-									"type": "string",
-									"format": "color"
-								},
-								"heading": {
-									"type": "string",
-									"format": "color"
-								},
-								"emphasis": {
-									"type": "string",
-									"format": "color"
-								},
-								"strong": {
-									"type": "string",
-									"format": "color"
-								},
-								"strikethrough": {
-									"type": "string",
-									"format": "color"
-								},
-								"quote": {
-									"type": "string",
-									"format": "color"
-								},
-								"contentSeparator": {
-									"type": "string",
-									"format": "color"
-								},
-								"link": {
-									"type": "string",
-									"format": "color"
-								},
-								"url": {
-									"type": "string",
-									"format": "color"
-								},
-								"processingInstruction": {
-									"type": "string",
-									"format": "color"
-								}
-							},
-							"additionalProperties": false
-						},
-						"fonts": {
-							"type": "object",
-							"default": {},
-							"properties": {
-								"liveFont": {
-									"type": "string",
-									"default": ""
-								},
-								"sourceFont": {
-									"type": "string",
-									"default": ""
-								},
-								"liveFontWeight": {
-									"type": "string",
-									"default": "",
-									"description": "Live mode font weight override. Leave empty to use VS Code editor font weight."
-								},
-								"sourceFontWeight": {
-									"type": "string",
-									"default": "",
-									"description": "Source mode font weight override. Leave empty to use VS Code editor font weight."
-								},
-								"liveFontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"default": null
-								},
-								"sourceFontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"default": null
-								},
-								"h1FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1.6
-								},
-								"h2FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1.5
-								},
-								"h3FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1.3
-								},
-								"h4FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1.2
-								},
-								"h5FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1.1
-								},
-								"h6FontSize": {
-									"type": [
-										"number",
-										"null"
-									],
-									"minimum": 1,
-									"maximum": 3,
-									"default": 1
-								},
-								"h1FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 1 font weight override."
-								},
-								"h2FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 2 font weight override."
-								},
-								"h3FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 3 font weight override."
-								},
-								"h4FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 4 font weight override."
-								},
-								"h5FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 5 font weight override."
-								},
-								"h6FontWeight": {
-									"type": "string",
-									"default": "600",
-									"description": "Heading 6 font weight override."
-								},
-								"liveLineHeight": {
-									"type": "number",
-									"default": 1.5,
-									"minimum": 1,
-									"maximum": 3
-								},
-								"sourceLineHeight": {
-									"type": "number",
-									"default": 1.5,
-									"minimum": 1,
-									"maximum": 3
-								}
-							},
-							"required": [
-								"liveFont",
-								"sourceFont",
-								"liveFontSize",
-								"sourceFontSize",
-								"liveLineHeight",
-								"sourceLineHeight"
-							],
-							"additionalProperties": false
-						}
-					},
-					"required": [
-						"id",
-						"name",
-						"colors",
-						"syntaxTokens",
-						"fonts"
-					],
-					"additionalProperties": false
-				}
-			}
-		}
-	},
-	"scripts": {
-		"install:all": "bun install && (cd webview && bun install)",
-		"typecheck:webview": "tsc -p webview/tsconfig.json --noEmit",
-		"build": "bun run build:webview && bun run build:extension",
-		"build:webview": "rm -rf webview/dist && mkdir -p webview/dist webview/dist/katex && bun build webview/src/index.ts --target=browser --format=esm --splitting --minify --outdir=webview/dist && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js && cp node_modules/katex/dist/katex.min.css webview/dist/katex/katex.min.css && cp -R node_modules/katex/dist/fonts webview/dist/katex/fonts",
-		"build:extension": "bun run build:extension:main && bun run build:extension:export-runtime && bun run build:extension:puppeteer-runtime",
-		"build:extension:main": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode",
-		"build:extension:main:debug": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
-		"build:extension:export-runtime": "bun build src/export/runtime.ts --target=node --format=cjs --minify --outfile=dist/export-runtime.js",
-		"build:extension:puppeteer-runtime": "bun build src/export/puppeteerRuntime.ts --target=node --format=cjs --minify --outfile=dist/puppeteer-runtime.js",
-		"release:prep": "bun scripts/release-prep.mjs",
-		"release:finalize": "bun scripts/release-prep.mjs finalize",
-		"vscode:publish": "vsce package"
-	},
-	"dependencies": {
-		"@codemirror/commands": "6.8.1",
-		"@codemirror/lang-cpp": "^6.0.3",
-		"@codemirror/lang-css": "^6.3.1",
-		"@codemirror/lang-go": "^6.0.1",
-		"@codemirror/lang-html": "^6.4.11",
-		"@codemirror/lang-java": "^6.0.2",
-		"@codemirror/lang-javascript": "^6.2.4",
-		"@codemirror/lang-json": "^6.0.2",
-		"@codemirror/lang-markdown": "6.3.4",
-		"@codemirror/lang-python": "^6.2.1",
-		"@codemirror/lang-rust": "^6.0.2",
-		"@codemirror/lang-sql": "^6.10.0",
-		"@codemirror/language": "6.11.3",
-		"@codemirror/state": "6.5.2",
-		"@codemirror/view": "6.36.4",
-		"@lezer/highlight": "^1.2.3",
-		"@replit/codemirror-vim": "^6.3.0",
-		"@types/vscode": "^1.109.0",
-		"highlight.js": "^11.11.1",
-		"katex": "^0.16.28",
-		"lucide": "^0.564.0",
-		"markdown-it": "^14.1.0",
-		"markdown-it-emoji": "^3.0.0",
-		"mermaid": "^11.4.1",
-		"puppeteer-core": "^24.1.1",
-		"sanitize-html": "^2.17.0"
-	},
-	"devDependencies": {
-		"@types/markdown-it": "^14.1.2",
-		"@types/sanitize-html": "^2.16.0",
-		"typescript": "^5.9.3"
-	}
+  "name": "meo",
+  "displayName": "Markdown Editor Optimized",
+  "description": "An optimized markdown editor with live editing mode for VS Code.",
+  "version": "0.1.23",
+  "publisher": "vadimmelnicuk",
+  "private": true,
+  "icon": "logo.png",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "editor",
+    "live-edit",
+    "wysiwyg",
+    "markdown-editor",
+    "markdown-preview"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vadimmelnicuk/meo.git"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "extensions": [
+          ".mdx",
+          ".mdc"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "markdownEditorOptimized.open",
+        "title": "Open With Markdown Editor Optimized",
+        "icon": "$(book)"
+      },
+      {
+        "command": "markdownEditorOptimized.setDefaultEditor",
+        "title": "Markdown Editor Optimized: Set as Default",
+        "icon": "$(check)"
+      },
+      {
+        "command": "markdownEditorOptimized.resetThemeToDefault",
+        "title": "Markdown Editor Optimized: Reset Theme to Default",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "markdownEditorOptimized.selectTheme",
+        "title": "Markdown Editor Optimized: Select Theme"
+      },
+      {
+        "command": "markdownEditorOptimized.importTheme",
+        "title": "Markdown Editor Optimized: Import Theme JSON"
+      },
+      {
+        "command": "markdownEditorOptimized.exportTheme",
+        "title": "Markdown Editor Optimized: Export Theme JSON"
+      },
+      {
+        "command": "markdownEditorOptimized.deleteImportedTheme",
+        "title": "Markdown Editor Optimized: Delete Imported Theme"
+      },
+      {
+        "command": "markdownEditorOptimized.toggleMode",
+        "title": "Markdown Editor Optimized: Toggle Live/Source Mode",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "markdownEditorOptimized.exportHtml",
+        "title": "Markdown Editor Optimized: Export as HTML",
+        "icon": "$(export)"
+      },
+      {
+        "command": "markdownEditorOptimized.exportPdf",
+        "title": "Markdown Editor Optimized: Export as PDF",
+        "icon": "$(file-pdf)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markdownEditorOptimized.toggleMode",
+        "key": "alt+shift+m",
+        "when": "markdownEditorOptimized.activeEditor"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "markdownEditorOptimized.editor",
+        "displayName": "Markdown Editor Optimized",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          },
+          {
+            "filenamePattern": "*.mdx"
+          },
+          {
+            "filenamePattern": "*.mdc"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "markdownEditorOptimized.open",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "markdownEditorOptimized.open",
+          "when": "resourceFilename =~ /\\.(md|markdown|mdx|mdc)$/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.md": "markdownEditorOptimized.editor",
+        "*.markdown": "markdownEditorOptimized.editor",
+        "*.mdx": "markdownEditorOptimized.editor",
+        "*.mdc": "markdownEditorOptimized.editor",
+        "git:/**/*.md": "default",
+        "git:/**/*.markdown": "default",
+        "git:/**/*.mdx": "default",
+        "git:/**/*.mdc": "default",
+        "git:**/*.md": "default",
+        "git:**/*.markdown": "default",
+        "git:**/*.mdx": "default",
+        "git:**/*.mdc": "default",
+        "chat-editing-text-model:/**/*.md": "default",
+        "chat-editing-text-model:/**/*.markdown": "default",
+        "chat-editing-text-model:/**/*.mdx": "default",
+        "chat-editing-text-model:/**/*.mdc": "default",
+        "chat-editing-text-model:**/*.md": "default",
+        "chat-editing-text-model:**/*.markdown": "default",
+        "chat-editing-text-model:**/*.mdx": "default",
+        "chat-editing-text-model:**/*.mdc": "default"
+      }
+    },
+    "configuration": {
+      "title": "Markdown Editor Optimized",
+      "properties": {
+        "markdownEditorOptimized.useAsDefault": {
+          "type": "boolean",
+          "default": true,
+          "order": 1,
+          "description": "Use Markdown Editor Optimized as the default editor for Markdown files"
+        },
+        "markdownEditorOptimized.outline.position": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "enumDescriptions": [
+            "Show the document outline on the left side of the editor.",
+            "Show the document outline on the right side of the editor."
+          ],
+          "default": "right",
+          "order": 2,
+          "description": "Position of the contents outline sidebar."
+        },
+        "markdownEditorOptimized.lineNumbers.visible": {
+          "type": "boolean",
+          "default": true,
+          "order": 3,
+          "description": "Show line numbers."
+        },
+        "markdownEditorOptimized.gitChanges.visible": {
+          "type": "boolean",
+          "default": true,
+          "order": 4,
+          "description": "Show Git change indicators in the editor."
+        },
+        "markdownEditorOptimized.gitChanges.lineHighlights": {
+          "type": "boolean",
+          "default": true,
+          "order": 5,
+          "description": "Show subtle line coloring for modified lines in Source mode."
+        },
+        "markdownEditorOptimized.vimMode.enabled": {
+          "type": "boolean",
+          "default": false,
+          "order": 6,
+          "description": "Legacy Vim keybinding override.",
+          "deprecationMessage": "Use markdownEditorOptimized.vimMode.behavior instead.",
+          "markdownDeprecationMessage": "Use `markdownEditorOptimized.vimMode.behavior` instead."
+        },
+        "markdownEditorOptimized.vimMode.behavior": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "enabled",
+            "disabled"
+          ],
+          "enumDescriptions": [
+            "Enable Vim emulation automatically when VSCodeVim (vscodevim.vim) is installed and enabled, or when VSCode Neovim (asvetliakov.vscode-neovim) is installed.",
+            "Always enable Vim emulation in Markdown Editor Optimized.",
+            "Always disable Vim keybindings in Markdown Editor Optimized."
+          ],
+          "default": "auto",
+          "order": 6,
+          "description": "Controls Vim emulation in Source and Live mode."
+        },
+        "markdownEditorOptimized.rememberPosition.lines": {
+          "type": "number",
+          "default": 100,
+          "minimum": 0,
+          "order": 7,
+          "description": "Markdown files with at least this many lines will remember the last viewed line and restore the scroll position when opened."
+        },
+        "markdownEditorOptimized.export.browserPath": {
+          "type": "string",
+          "default": "",
+          "order": 7,
+          "description": "Optional path to a Chrome/Edge executable used for browser-based export rendering (PDF and HTML finalize). Leave empty to auto-detect."
+        },
+        "markdownEditorOptimized.export.pdf.browserPath": {
+          "type": "string",
+          "default": "",
+          "order": 7,
+          "description": "Deprecated: use markdownEditorOptimized.export.browserPath.",
+          "deprecationMessage": "Use markdownEditorOptimized.export.browserPath instead.",
+          "markdownDeprecationMessage": "Use `markdownEditorOptimized.export.browserPath` instead."
+        },
+        "markdownEditorOptimized.export.html.imageMode": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "linked"
+          ],
+          "enumDescriptions": [
+            "Embed local image files in exported HTML.",
+            "Keep local image links as relative paths in exported HTML."
+          ],
+          "default": "embedded",
+          "order": 8,
+          "description": "How local images are handled during HTML export."
+        },
+        "markdownEditorOptimized.imageFolder": {
+          "type": "string",
+          "default": "assets",
+          "order": 9,
+          "description": "Folder name to save pasted images (relative to workspace root)."
+        },
+        "markdownEditorOptimized.theme": {
+          "type": "object",
+          "default": {
+            "id": "one-monokai",
+            "name": "One Monokai",
+            "colors": {
+              "base01": "var(--vscode-editor-foreground)",
+              "base02": "#676f7d",
+              "base03": "#3e444d",
+              "base04": "#e06c75",
+              "base05": "#61afef",
+              "base06": "#66d9ef",
+              "base07": "#e5c07b",
+              "base08": "#c678dd",
+              "base09": "#98c379"
+            },
+            "syntaxTokens": {},
+            "fonts": {
+              "liveFont": "",
+              "sourceFont": "",
+              "liveFontWeight": "",
+              "sourceFontWeight": "",
+              "liveFontSize": null,
+              "sourceFontSize": null,
+              "h1FontSize": 1.6,
+              "h2FontSize": 1.5,
+              "h3FontSize": 1.3,
+              "h4FontSize": 1.2,
+              "h5FontSize": 1.1,
+              "h6FontSize": 1,
+              "h1FontWeight": "600",
+              "h2FontWeight": "600",
+              "h3FontWeight": "600",
+              "h4FontWeight": "600",
+              "h5FontWeight": "600",
+              "h6FontWeight": "600",
+              "liveLineHeight": 1.5,
+              "sourceLineHeight": 1.5
+            }
+          },
+          "defaultSnippets": [
+            {
+              "label": "One Monokai theme payload",
+              "description": "Insert the full theme object with sensible defaults.",
+              "body": "{\n\t\"id\": \"one-monokai\",\n\t\"name\": \"One Monokai\",\n\t\"colors\": {\n\t\t\"base01\": \"var(--vscode-editor-foreground)\",\n\t\t\"base02\": \"#676f7d\",\n\t\t\"base03\": \"#3e444d\",\n\t\t\"base04\": \"#e06c75\",\n\t\t\"base05\": \"#61afef\",\n\t\t\"base06\": \"#66d9ef\",\n\t\t\"base07\": \"#e5c07b\",\n\t\t\"base08\": \"#c678dd\",\n\t\t\"base09\": \"#98c379\"\n\t},\n\t\"syntaxTokens\": {},\n\t\"fonts\": {\n\t\t\"liveFont\": \"\",\n\t\t\"sourceFont\": \"\",\n\t\t\"liveFontWeight\": \"\",\n\t\t\"sourceFontWeight\": \"\",\n\t\t\"liveFontSize\": null,\n\t\t\"sourceFontSize\": null,\n\t\t\"h1FontSize\": 1.6,\n\t\t\"h2FontSize\": 1.5,\n\t\t\"h3FontSize\": 1.3,\n\t\t\"h4FontSize\": 1.2,\n\t\t\"h5FontSize\": 1.1,\n\t\t\"h6FontSize\": 1,\n\t\t\"h1FontWeight\": \"600\",\n\t\t\"h2FontWeight\": \"600\",\n\t\t\"h3FontWeight\": \"600\",\n\t\t\"h4FontWeight\": \"600\",\n\t\t\"h5FontWeight\": \"600\",\n\t\t\"h6FontWeight\": \"600\",\n\t\t\"liveLineHeight\": 1.5,\n\t\t\"sourceLineHeight\": 1.5\n\t}\n}"
+            }
+          ],
+          "description": "Theme payload containing base palette colors, optional token overrides, and font settings.",
+          "markdownDescription": "[Select Theme](command:markdownEditorOptimized.selectTheme) | [Import Theme](command:markdownEditorOptimized.importTheme) | [Export Theme](command:markdownEditorOptimized.exportTheme) | [Delete Imported Theme](command:markdownEditorOptimized.deleteImportedTheme) | [Reset Theme to Default](command:markdownEditorOptimized.resetThemeToDefault)",
+          "properties": {
+            "id": {
+              "type": "string",
+              "default": "one-monokai",
+              "description": "Unique theme identifier."
+            },
+            "name": {
+              "type": "string",
+              "default": "One Monokai (default)",
+              "description": "Display name for the theme."
+            },
+            "colors": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "base01": {
+                  "type": "string",
+                  "description": "Primary foreground color (hex/rgb/hsl/var).",
+                  "default": "var(--vscode-editor-foreground)"
+                },
+                "base02": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base03": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base04": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base05": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base06": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base07": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base08": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "base09": {
+                  "type": "string",
+                  "format": "color"
+                }
+              },
+              "required": [
+                "base02",
+                "base03",
+                "base04",
+                "base05",
+                "base06",
+                "base07",
+                "base08",
+                "base09"
+              ],
+              "additionalProperties": false
+            },
+            "syntaxTokens": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "keyword": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "identifier": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "macroName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "variableName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "propertyName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "typeName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "className": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "namespace": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "operator": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "operatorKeyword": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "punctuation": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "functionName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "labelName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "definitionFunction": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "definedVariable": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "number": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "changed": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "annotation": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "modifier": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "self": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "color": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "constant": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "atom": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "bool": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "specialVariable": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "specialString": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "regexp": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "string": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "typeDefinition": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "meta": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "comment": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "tagName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "attributeName": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "invalid": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "deleted": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "monospace": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "heading": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "emphasis": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "strong": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "strikethrough": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "quote": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "contentSeparator": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "link": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "color"
+                },
+                "processingInstruction": {
+                  "type": "string",
+                  "format": "color"
+                }
+              },
+              "additionalProperties": false
+            },
+            "fonts": {
+              "type": "object",
+              "default": {},
+              "properties": {
+                "liveFont": {
+                  "type": "string",
+                  "default": ""
+                },
+                "sourceFont": {
+                  "type": "string",
+                  "default": ""
+                },
+                "liveFontWeight": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Live mode font weight override. Leave empty to use VS Code editor font weight."
+                },
+                "sourceFontWeight": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Source mode font weight override. Leave empty to use VS Code editor font weight."
+                },
+                "liveFontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "default": null
+                },
+                "sourceFontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "default": null
+                },
+                "h1FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.6
+                },
+                "h2FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.5
+                },
+                "h3FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.3
+                },
+                "h4FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.2
+                },
+                "h5FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1.1
+                },
+                "h6FontSize": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 3,
+                  "default": 1
+                },
+                "h1FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 1 font weight override."
+                },
+                "h2FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 2 font weight override."
+                },
+                "h3FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 3 font weight override."
+                },
+                "h4FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 4 font weight override."
+                },
+                "h5FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 5 font weight override."
+                },
+                "h6FontWeight": {
+                  "type": "string",
+                  "default": "600",
+                  "description": "Heading 6 font weight override."
+                },
+                "liveLineHeight": {
+                  "type": "number",
+                  "default": 1.5,
+                  "minimum": 1,
+                  "maximum": 3
+                },
+                "sourceLineHeight": {
+                  "type": "number",
+                  "default": 1.5,
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "liveFont",
+                "sourceFont",
+                "liveFontSize",
+                "sourceFontSize",
+                "liveLineHeight",
+                "sourceLineHeight"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "colors",
+            "syntaxTokens",
+            "fonts"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "scripts": {
+    "install:all": "bun install && (cd webview && bun install)",
+    "typecheck:webview": "tsc -p webview/tsconfig.json --noEmit",
+    "build": "bun run build:webview && bun run build:extension",
+    "build:webview": "rm -rf webview/dist && mkdir -p webview/dist webview/dist/katex && bun build webview/src/index.ts --target=browser --format=esm --splitting --minify --outdir=webview/dist && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js && cp node_modules/katex/dist/katex.min.css webview/dist/katex/katex.min.css && cp -R node_modules/katex/dist/fonts webview/dist/katex/fonts",
+    "build:extension": "bun run build:extension:main && bun run build:extension:export-runtime && bun run build:extension:puppeteer-runtime",
+    "build:extension:main": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode",
+    "build:extension:main:debug": "bun build src/extension.ts --target=node --format=cjs --minify --outfile=dist/extension.js -e vscode --sourcemap=inline",
+    "build:extension:export-runtime": "bun build src/export/runtime.ts --target=node --format=cjs --minify --outfile=dist/export-runtime.js",
+    "build:extension:puppeteer-runtime": "bun build src/export/puppeteerRuntime.ts --target=node --format=cjs --minify --outfile=dist/puppeteer-runtime.js",
+    "release:prep": "bun scripts/release-prep.mjs",
+    "release:finalize": "bun scripts/release-prep.mjs finalize",
+    "vscode:publish": "vsce package"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-go": "^6.0.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-java": "^6.0.2",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "6.3.4",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.36.4",
+    "@lezer/highlight": "^1.2.3",
+    "@replit/codemirror-vim": "^6.3.0",
+    "@types/vscode": "^1.109.0",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.28",
+    "lucide": "^0.564.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-emoji": "^3.0.0",
+    "mermaid": "^11.4.1",
+    "puppeteer-core": "^24.1.1",
+    "sanitize-html": "^2.17.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/sanitize-html": "^2.16.0",
+    "typescript": "^5.9.3"
+  }
 }

@@ -34,8 +34,8 @@ export const handleEditorShortcut = (
   
   const hasPrimaryModifier = isPrimaryModifier(event);
   const editorFocused = editor.hasFocus();
-  const vimSourceFocused = vimModeEnabled && currentMode === 'source' && editorFocused;
-  const vimWinsCtrlConflicts = vimSourceFocused && !isMac;
+  const vimEditorFocused = vimModeEnabled && editorFocused;
+  const vimWinsCtrlConflicts = vimEditorFocused && !isMac;
   const isPlainAltShiftChord =
     event.altKey &&
     event.shiftKey &&
@@ -51,7 +51,7 @@ export const handleEditorShortcut = (
   }
 
   if (
-    vimSourceFocused &&
+    vimEditorFocused &&
     (
       isPlainAltShiftChord ||
       (isMac && event.metaKey && !event.ctrlKey)
