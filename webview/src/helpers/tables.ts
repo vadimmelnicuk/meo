@@ -50,6 +50,14 @@ interface DomRefs {
   sourceBodyCellGrid: HTMLTableCellElement[][];
   sortButtons: HTMLButtonElement[];
   applySortButton: HTMLButtonElement;
+  toolbarButtons: {
+    insertRowAbove: HTMLButtonElement;
+    insertRowBelow: HTMLButtonElement;
+    deleteRow: HTMLButtonElement;
+    insertColumnLeft: HTMLButtonElement;
+    insertColumnRight: HTMLButtonElement;
+    deleteColumn: HTMLButtonElement;
+  };
 }
 
 interface CellCoords {
@@ -75,6 +83,16 @@ interface TableRange {
   to: number;
 }
 
+interface TableToolbarIcon {
+  className: string;
+  paths: string[];
+}
+
+interface TableActionTarget {
+  row: number;
+  col: number;
+}
+
 type TableSortDirection = 'asc' | 'desc';
 
 interface TableSortState {
@@ -87,10 +105,62 @@ const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
 const tableDelimiterRegex = /^\|?\s*[:]?\-+[:]?\s*(\|\s*[:]?\-+[:]?\s*)*\|?$/;
 const tableCellSelector = 'th[data-table-row][data-table-col], td[data-table-row][data-table-col]';
-const tableControlSelector = '.meo-md-html-col-controls, .meo-md-html-row-controls, .meo-md-html-col-btn, .meo-md-html-row-btn, .meo-md-html-sort-btn, .meo-md-html-apply-sort-btn';
+const tableControlSelector = '.meo-md-html-table-toolbar, .meo-md-html-table-toolbar-btn, .meo-md-html-sort-btn, .meo-md-html-apply-sort-btn';
 const minColumnWidthCh = 10;
 const maxColumnWidthCh = 40;
 const tableSortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+// Icons are inline SVG path data from Tabler Icons (MIT), vendored to avoid a
+// broad icon dependency for this table-only toolbar.
+const tableToolbarIcons: Record<string, TableToolbarIcon> = {
+  rowInsertTop: {
+    className: 'icon-tabler-row-insert-top',
+    paths: [
+      'M4 18v-4a1 1 0 0 1 1 -1h14a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-14a1 1 0 0 1 -1 -1',
+      'M12 9v-4',
+      'M10 7l4 0'
+    ]
+  },
+  rowInsertBottom: {
+    className: 'icon-tabler-row-insert-bottom',
+    paths: [
+      'M20 6v4a1 1 0 0 1 -1 1h-14a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h14a1 1 0 0 1 1 1',
+      'M12 15l0 4',
+      'M14 17l-4 0'
+    ]
+  },
+  columnInsertLeft: {
+    className: 'icon-tabler-column-insert-left',
+    paths: [
+      'M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1',
+      'M5 12l4 0',
+      'M7 10l0 4'
+    ]
+  },
+  columnInsertRight: {
+    className: 'icon-tabler-column-insert-right',
+    paths: [
+      'M6 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1',
+      'M15 12l4 0',
+      'M17 10l0 4'
+    ]
+  },
+  rowRemove: {
+    className: 'icon-tabler-row-remove',
+    paths: [
+      'M20 6v4a1 1 0 0 1 -1 1h-14a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h14a1 1 0 0 1 1 1',
+      'M10 16l4 4',
+      'M10 20l4 -4'
+    ]
+  },
+  columnRemove: {
+    className: 'icon-tabler-column-remove',
+    paths: [
+      'M6 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1',
+      'M16 10l4 4',
+      'M16 14l4 -4'
+    ]
+  }
+};
 
 function isTableControlTarget(target) {
   return target instanceof Element && target.closest(tableControlSelector);
@@ -909,6 +979,7 @@ class HtmlTableWidget extends WidgetType {
   isDraggingSelection: boolean;
   hasPendingCellEdits: boolean;
   sortState: TableSortState | null;
+  activeTarget: TableActionTarget;
 
   constructor(tableData: TableData) {
     super();
@@ -925,6 +996,7 @@ class HtmlTableWidget extends WidgetType {
     this.isDraggingSelection = false;
     this.hasPendingCellEdits = false;
     this.sortState = null;
+    this.activeTarget = { row: this.tableData.rows.length > 0 ? 1 : 0, col: 0 };
   }
 
   eq(other: WidgetType): boolean {
@@ -1032,6 +1104,7 @@ class HtmlTableWidget extends WidgetType {
       ...nextRows.map((row, index) => ({ row, inputs: nextRowInputs[index] }))
     ];
     this.clearSelection();
+    this.updateActionTargetStyles();
     this.scheduleLayout({ resizeRows: true });
   }
 
@@ -1058,6 +1131,88 @@ class HtmlTableWidget extends WidgetType {
     this.sortState = null;
     this.setVisualRowOrder(this.sourceRowOrder());
     this.updateSortControls();
+  }
+
+  activeBodyRowIndex() {
+    if (this.tableData.rows.length === 0) return null;
+    if (this.activeTarget.row <= 0) return null;
+    const visualIndex = this.activeTarget.row - 1;
+    if (this.sortState?.order) {
+      const sourceIndex = this.sortState.order[visualIndex];
+      return Number.isInteger(sourceIndex) ? sourceIndex : null;
+    }
+    return visualIndex >= 0 && visualIndex < this.tableData.rows.length ? visualIndex : null;
+  }
+
+  activeColumnIndex() {
+    const colCount = this.tableData.colCount;
+    if (colCount <= 0) return null;
+    return Math.min(Math.max(this.activeTarget.col, 0), colCount - 1);
+  }
+
+  updateToolbarState() {
+    if (!this.domRefs) return;
+    const { toolbarButtons } = this.domRefs;
+    const activeBodyRow = this.activeBodyRowIndex();
+    const activeColumn = this.activeColumnIndex();
+    const hasRowTarget = activeBodyRow !== null;
+    const hasColumnTarget = activeColumn !== null;
+
+    toolbarButtons.insertRowAbove.disabled = this.tableData.colCount === 0;
+    toolbarButtons.insertRowBelow.disabled = this.tableData.colCount === 0;
+    toolbarButtons.deleteRow.disabled = !hasRowTarget || this.tableData.rows.length <= 1;
+    toolbarButtons.insertColumnLeft.disabled = !hasColumnTarget;
+    toolbarButtons.insertColumnRight.disabled = !hasColumnTarget;
+    toolbarButtons.deleteColumn.disabled = !hasColumnTarget || this.tableData.colCount <= 1;
+  }
+
+  updateActionTargetStyles() {
+    this.updateToolbarState();
+  }
+
+  setActionTarget(target) {
+    const row = Math.min(Math.max(target.row ?? 0, 0), this.tableData.rows.length);
+    const col = Math.min(Math.max(target.col ?? 0, 0), Math.max(0, this.tableData.colCount - 1));
+    this.activeTarget = { row, col };
+    this.updateActionTargetStyles();
+  }
+
+  insertRowAboveTarget(container) {
+    const rowIndex = this.activeBodyRowIndex();
+    if (rowIndex === null) {
+      this.addRowAfter(container, -1);
+      return;
+    }
+    this.addRowBefore(container, rowIndex);
+  }
+
+  insertRowBelowTarget(container) {
+    const rowIndex = this.activeBodyRowIndex();
+    this.addRowAfter(container, rowIndex ?? -1);
+  }
+
+  deleteTargetRow(container) {
+    const rowIndex = this.activeBodyRowIndex();
+    if (rowIndex === null) return;
+    this.removeRowAt(container, rowIndex);
+  }
+
+  insertColumnLeftTarget(container) {
+    const colIndex = this.activeColumnIndex();
+    if (colIndex === null) return;
+    this.addColumnBefore(container, colIndex);
+  }
+
+  insertColumnRightTarget(container) {
+    const colIndex = this.activeColumnIndex();
+    if (colIndex === null) return;
+    this.addColumnAfter(container, colIndex);
+  }
+
+  deleteTargetColumn(container) {
+    const colIndex = this.activeColumnIndex();
+    if (colIndex === null) return;
+    this.removeColumnAt(container, colIndex);
   }
 
   sortByColumn(container, column) {
@@ -1201,6 +1356,7 @@ class HtmlTableWidget extends WidgetType {
 
   setSingleCellSelection(coords) {
     this.selectionAnchor = coords;
+    this.setActionTarget(coords);
     this.applySelection(this.normalizeSelectionRange(coords, coords));
   }
 
@@ -1305,6 +1461,7 @@ class HtmlTableWidget extends WidgetType {
       if (!current) return;
       if (event.target instanceof HTMLTextAreaElement) {
         this.selectionAnchor = current;
+        this.setActionTarget(current);
         this.applySelection(this.normalizeSelectionRange(current, current));
         return;
       }
@@ -1372,8 +1529,8 @@ class HtmlTableWidget extends WidgetType {
 
     const onFocusOut = (event) => {
       const nextTarget = event.relatedTarget;
-      if (nextTarget instanceof Node && table.contains(nextTarget)) return;
       const wrap = this.domRefs?.wrap ?? table;
+      if (nextTarget instanceof Node && wrap.contains(nextTarget)) return;
       this.commit(wrap);
       this.exitTableInteraction(wrap);
     };
@@ -1754,6 +1911,92 @@ class HtmlTableWidget extends WidgetType {
     return { content, input };
   }
 
+  createToolbarIcon(icon: TableToolbarIcon) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', `meo-md-html-table-toolbar-icon ${icon.className}`);
+
+    for (const d of icon.paths) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    }
+
+    return svg;
+  }
+
+  createToolbarButton(label, icon: TableToolbarIcon, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.tabIndex = -1;
+    button.className = 'meo-md-html-table-toolbar-btn';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.appendChild(this.createToolbarIcon(icon));
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+
+  createTableToolbar(container) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'meo-md-html-table-toolbar';
+    toolbar.setAttribute('aria-label', 'Table actions');
+
+    const insertRowAbove = this.createToolbarButton('Insert row above', tableToolbarIcons.rowInsertTop, () => {
+      this.insertRowAboveTarget(container);
+    });
+    const insertRowBelow = this.createToolbarButton('Insert row below', tableToolbarIcons.rowInsertBottom, () => {
+      this.insertRowBelowTarget(container);
+    });
+    const deleteRow = this.createToolbarButton('Delete row', tableToolbarIcons.rowRemove, () => {
+      this.deleteTargetRow(container);
+    });
+    const insertColumnLeft = this.createToolbarButton('Insert column left', tableToolbarIcons.columnInsertLeft, () => {
+      this.insertColumnLeftTarget(container);
+    });
+    const insertColumnRight = this.createToolbarButton('Insert column right', tableToolbarIcons.columnInsertRight, () => {
+      this.insertColumnRightTarget(container);
+    });
+    const deleteColumn = this.createToolbarButton('Delete column', tableToolbarIcons.columnRemove, () => {
+      this.deleteTargetColumn(container);
+    });
+    deleteRow.classList.add('meo-md-html-table-toolbar-delete-btn');
+    deleteColumn.classList.add('meo-md-html-table-toolbar-delete-btn');
+
+    toolbar.append(
+      insertRowAbove,
+      insertRowBelow,
+      insertColumnLeft,
+      insertColumnRight,
+      deleteRow,
+      deleteColumn
+    );
+
+    return {
+      toolbar,
+      buttons: {
+        insertRowAbove,
+        insertRowBelow,
+        deleteRow,
+        insertColumnLeft,
+        insertColumnRight,
+        deleteColumn
+      }
+    };
+  }
+
   toDOM() {
     const wrap = document.createElement('div');
     wrap.className = 'meo-md-html-table-wrap';
@@ -1764,6 +2007,7 @@ class HtmlTableWidget extends WidgetType {
       wrap.dataset.meoRenderedBlockEndLine = String(this.tableData.endLine);
     }
     wrap.dataset.meoRenderedBlockKind = 'table';
+    const { toolbar, buttons: toolbarButtons } = this.createTableToolbar(wrap);
 
     const applySortButton = document.createElement('button');
     applySortButton.type = 'button';
@@ -1822,51 +2066,6 @@ class HtmlTableWidget extends WidgetType {
       });
       sortButtons.push(sortBtn);
       th.appendChild(sortBtn);
-
-      if (col === 0) {
-        const leftInsertControls = document.createElement('div');
-        leftInsertControls.className = 'meo-md-html-col-controls meo-md-html-col-controls-left-insert';
-        const leftInsertBtn = document.createElement('button');
-        leftInsertBtn.type = 'button';
-        leftInsertBtn.tabIndex = -1;
-        leftInsertBtn.className = 'meo-md-html-col-btn';
-        leftInsertBtn.textContent = '+';
-        leftInsertBtn.title = 'Add column before';
-        leftInsertBtn.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.addColumnBefore(wrap, 0);
-        });
-        leftInsertControls.append(leftInsertBtn);
-        th.appendChild(leftInsertControls);
-      }
-
-      const colControls = document.createElement('div');
-      colControls.className = 'meo-md-html-col-controls';
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.tabIndex = -1;
-      removeBtn.className = 'meo-md-html-col-btn';
-      removeBtn.textContent = '−';
-      removeBtn.title = 'Delete left column';
-      removeBtn.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.removeColumnAt(wrap, col);
-      });
-      const insertBtn = document.createElement('button');
-      insertBtn.type = 'button';
-      insertBtn.tabIndex = -1;
-      insertBtn.className = 'meo-md-html-col-btn';
-      insertBtn.textContent = '+';
-      insertBtn.title = 'Add column to the right';
-      insertBtn.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.addColumnAfter(wrap, col);
-      });
-      colControls.append(removeBtn, insertBtn);
-      th.appendChild(colControls);
       headerRow.appendChild(th);
     }
     cellGrid.push(headerCells);
@@ -1893,52 +2092,6 @@ class HtmlTableWidget extends WidgetType {
         bodyCells.push(td);
         td.appendChild(content);
 
-        if (col === 0) {
-          if (rowIdx === 0) {
-            const topInsertControls = document.createElement('div');
-            topInsertControls.className = 'meo-md-html-row-controls meo-md-html-row-controls-top-insert';
-            const topInsertBtn = document.createElement('button');
-            topInsertBtn.type = 'button';
-            topInsertBtn.tabIndex = -1;
-            topInsertBtn.className = 'meo-md-html-row-btn';
-            topInsertBtn.textContent = '+';
-            topInsertBtn.title = 'Add row above';
-            topInsertBtn.addEventListener('click', (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              this.addRowBefore(wrap, 0);
-            });
-            topInsertControls.append(topInsertBtn);
-            td.appendChild(topInsertControls);
-          }
-
-          const rowControls = document.createElement('div');
-          rowControls.className = 'meo-md-html-row-controls';
-          const removeBtn = document.createElement('button');
-          removeBtn.type = 'button';
-          removeBtn.tabIndex = -1;
-          removeBtn.className = 'meo-md-html-row-btn';
-          removeBtn.textContent = '−';
-          removeBtn.title = 'Delete row above';
-          removeBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.removeRowAt(wrap, rowIdx);
-          });
-          const insertBtn = document.createElement('button');
-          insertBtn.type = 'button';
-          insertBtn.tabIndex = -1;
-          insertBtn.className = 'meo-md-html-row-btn';
-          insertBtn.textContent = '+';
-          insertBtn.title = 'Add row below';
-          insertBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.addRowAfter(wrap, rowIdx);
-          });
-          rowControls.append(removeBtn, insertBtn);
-          td.appendChild(rowControls);
-        }
         tr.appendChild(td);
       }
       cellGrid.push(bodyCells);
@@ -1950,7 +2103,7 @@ class HtmlTableWidget extends WidgetType {
     }
     table.appendChild(tbody);
 
-    wrap.append(table, applySortButton);
+    wrap.append(toolbar, table, applySortButton);
     this.domRefs = {
       wrap,
       table,
@@ -1966,8 +2119,10 @@ class HtmlTableWidget extends WidgetType {
       sourceBodyRowInputs: bodyRowInputs,
       sourceBodyCellGrid,
       sortButtons,
-      applySortButton
+      applySortButton,
+      toolbarButtons
     };
+    this.updateActionTargetStyles();
     this.wireTableSelection(table);
     this.pendingResizeRows = true;
     this.scheduleLayout({ resizeRows: true });
