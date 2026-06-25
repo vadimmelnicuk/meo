@@ -3,7 +3,7 @@ import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLi
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
-import { vim } from '@replit/codemirror-vim';
+import { vim, Vim } from '@replit/codemirror-vim';
 import { highlightStyle } from './theme';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import { liveModeExtensions } from './liveMode';
@@ -156,7 +156,9 @@ export function createEditor({
   initialTopLineOffset = 0,
   initialLineNumbers = true,
   initialGitGutter = true,
-  initialVimMode = false
+  initialVimMode = false,
+  initialVimKeybindings = [],
+  initialVimLeader = '\\'
 }) {
   // VS Code webviews can hit cross-origin window access issues in the EditContext path.
   // Disable it explicitly for stability in embedded Chromium.
@@ -169,6 +171,50 @@ export function createEditor({
   let lineNumbersVisible = initialLineNumbers !== false;
   let gitGutterVisible = initialGitGutter !== false;
   let vimModeEnabled = initialVimMode === true;
+  let vimKeybindings = initialVimKeybindings;
+  let vimLeader = initialVimLeader;
+  let appliedVimKeybindings: Array<{ before: string; mode: string }> = [];
+
+  const expandVimLeader = (keys: string, leaderKey: string) => keys.replace(/<leader>/gi, leaderKey || '\\');
+  const clearVimKeybindings = () => {
+    for (const { before, mode } of appliedVimKeybindings) {
+      try {
+        Vim.unmap(before, mode);
+      } catch {
+        // Ignore stale or unsupported mappings.
+      }
+    }
+    appliedVimKeybindings = [];
+  };
+  const applyVimKeybindings = (
+    bindings: Array<{ before: string; after: string; mode: string; recursive: boolean }>,
+    leaderKey: string
+  ) => {
+    clearVimKeybindings();
+    try {
+      Vim.setOption('leader', leaderKey);
+    } catch {
+      // Keep Vim usable if the embedded Vim implementation rejects the option.
+    }
+    for (const { before, after, mode, recursive } of bindings) {
+      const mappedBefore = expandVimLeader(before, leaderKey);
+      const mappedAfter = expandVimLeader(after, leaderKey);
+      try {
+        if (recursive) {
+          Vim.map(mappedBefore, mappedAfter, mode);
+        } else {
+          Vim.noremap(mappedBefore, mappedAfter, mode);
+        }
+        appliedVimKeybindings.push({ before: mappedBefore, mode });
+      } catch {
+        // Ignore individual mappings that CodeMirror Vim cannot represent.
+      }
+    }
+  };
+
+  if (initialVimMode === true) {
+    applyVimKeybindings(vimKeybindings, vimLeader);
+  }
   let applyingExternal = false;
   let capturedPointerId = null;
   let inlineCodeClick = null;
@@ -194,7 +240,7 @@ export function createEditor({
     }
     return Math.max(0, Number(value));
   };
-  const vimExtensionsForState = () => (vimModeEnabled && currentMode === 'source' ? vim() : []);
+  const vimExtensionsForState = () => (vimModeEnabled ? vim() : []);
   const getLineStartOffset = (docText, targetLineNumber) => {
     const targetLine = Math.max(1, Math.floor(targetLineNumber));
     if (targetLine === 1) {
@@ -1580,9 +1626,21 @@ export function createEditor({
         return;
       }
       vimModeEnabled = nextEnabled;
+      if (vimModeEnabled) {
+        applyVimKeybindings(vimKeybindings, vimLeader);
+      } else {
+        clearVimKeybindings();
+      }
       view.dispatch({
         effects: vimCompartment.reconfigure(vimExtensionsForState())
       });
+    },
+    setVimKeybindings(bindings: Array<{ before: string; after: string; mode: string; recursive: boolean }>, leaderKey: string) {
+      vimKeybindings = bindings;
+      vimLeader = leaderKey;
+      if (vimModeEnabled) {
+        applyVimKeybindings(vimKeybindings, vimLeader);
+      }
     },
     insertFormat(action, level) {
       const activeTableInput = getActiveTableInput();

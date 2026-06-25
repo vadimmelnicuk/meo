@@ -201,7 +201,25 @@
           "type": "boolean",
           "default": false,
           "order": 6,
-          "description": "Enable Vim keybindings in Source mode."
+          "description": "Legacy Vim keybinding override.",
+          "deprecationMessage": "Use markdownEditorOptimized.vimMode.behavior instead.",
+          "markdownDeprecationMessage": "Use `markdownEditorOptimized.vimMode.behavior` instead."
+        },
+        "markdownEditorOptimized.vimMode.behavior": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "enabled",
+            "disabled"
+          ],
+          "enumDescriptions": [
+            "Enable Vim emulation automatically when VSCodeVim (vscodevim.vim) is installed and enabled, or when VSCode Neovim (asvetliakov.vscode-neovim) is installed.",
+            "Always enable Vim emulation in Markdown Editor Optimized.",
+            "Always disable Vim keybindings in Markdown Editor Optimized."
+          ],
+          "default": "auto",
+          "order": 6,
+          "description": "Controls Vim emulation in Source and Live mode."
         },
         "markdownEditorOptimized.codeBlocks.useVscodeTheme": {
           "type": "boolean",

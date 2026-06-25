@@ -26,8 +26,15 @@ type WebviewMessage =
   | { type: 'exportSnapshotError'; requestId: string; error: string; message?: string }
   | { type: 'saveImageFromClipboard'; requestId: string; imageData: string; fileName: string };
 
+type VimKeybinding = {
+  before: string;
+  after: string;
+  mode: 'normal' | 'insert' | 'visual';
+  recursive: boolean;
+};
+
 type ExtensionMessage =
-  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
+  | { type: 'init'; text: string; version: number; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; vimMode: boolean; vimKeybindings: VimKeybinding[]; vimLeader: string; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
   | { type: 'docChanged'; text: string; version: number }
   | { type: 'applied'; version: number }
   | { type: 'focusEditor' }
@@ -39,6 +46,7 @@ type ExtensionMessage =
   | { type: 'gitChangesGutterChanged'; enabled: boolean }
   | { type: 'gitDiffLineHighlightsChanged'; enabled: boolean }
   | { type: 'vimModeChanged'; enabled: boolean }
+  | { type: 'vimKeybindingsChanged'; keybindings: VimKeybinding[]; leaderKey: string }
   | { type: 'findOptionsChanged'; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
   | { type: 'resolvedImageSrc'; requestId: string; resolvedUrl: string }
   | { type: 'resolvedWikiLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }

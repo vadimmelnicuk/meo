@@ -12,6 +12,7 @@ export const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
 export const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
+export const VIM_MODE_BEHAVIOR_SETTING_KEY = 'vimMode.behavior';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
 export const CODE_BLOCKS_VSCODE_THEME_SETTING_KEY = 'codeBlocks.useVscodeTheme';
 export const REMEMBER_POSITION_LINES_SETTING_KEY = 'rememberPosition.lines';
@@ -25,9 +26,12 @@ export const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 export const VIM_MODE_KEY = 'vimModeEnabled';
 export const OUTLINE_VISIBLE_KEY = 'outlineVisible';
 export const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
+const VSCODEVIM_EXTENSION_ID = 'vscodevim.vim';
+const VSCODE_NEOVIM_EXTENSION_ID = 'asvetliakov.vscode-neovim';
 
 export type OutlinePosition = 'left' | 'right';
 export type ExportHtmlImageMode = 'embedded' | 'linked';
+export type VimModeBehavior = 'auto' | 'enabled' | 'disabled';
 
 export function getThemeSettings(): ThemeSettings {
   const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
@@ -65,7 +69,81 @@ export function getGitDiffLineHighlightsEnabled(): boolean {
 }
 
 export function getVimModeEnabled(context: vscode.ExtensionContext): boolean {
-  return getToggleSettingValue(context, VIM_MODE_SETTING_KEY, VIM_MODE_KEY, [], false);
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  const behavior = getVimModeBehavior(config);
+  if (behavior === 'enabled') {
+    return true;
+  }
+  if (behavior === 'disabled') {
+    return false;
+  }
+
+  // Backward compatibility for users who already set the old boolean setting.
+  if (hasExplicitConfigurationValue<boolean>(config, VIM_MODE_SETTING_KEY)) {
+    return config.get<boolean>(VIM_MODE_SETTING_KEY, false);
+  }
+
+  // Auto-detect: mirror VSCodeVim when present, or enable CodeMirror Vim emulation
+  // for VSCode Neovim users. Neovim mappings are not synced into the webview.
+  const vscodevim = vscode.extensions.getExtension(VSCODEVIM_EXTENSION_ID);
+  const vscodevimEnabled = vscodevim ? vscode.workspace.getConfiguration('vim').get<boolean>('enable', true) : false;
+  if (vscodevimEnabled || vscode.extensions.getExtension(VSCODE_NEOVIM_EXTENSION_ID)) {
+    return true;
+  }
+  return context.globalState.get<boolean>(VIM_MODE_KEY, false);
+}
+
+export type VimKeybinding = {
+  before: string;
+  after: string;
+  mode: 'normal' | 'insert' | 'visual';
+  recursive: boolean;
+};
+
+export function getVimLeaderKey(): string {
+  return vscode.workspace.getConfiguration('vim').get<string>('leader', '\\') || '\\';
+}
+
+export function getVimKeybindings(): VimKeybinding[] {
+  const config = vscode.workspace.getConfiguration('vim');
+  const modeMappings: Array<{ key: string; mode: 'normal' | 'insert' | 'visual'; recursive: boolean }> = [
+    { key: 'normalModeKeyBindings', mode: 'normal', recursive: true },
+    { key: 'normalModeKeyBindingsNonRecursive', mode: 'normal', recursive: false },
+    { key: 'insertModeKeyBindings', mode: 'insert', recursive: true },
+    { key: 'insertModeKeyBindingsNonRecursive', mode: 'insert', recursive: false },
+    { key: 'visualModeKeyBindings', mode: 'visual', recursive: true },
+    { key: 'visualModeKeyBindingsNonRecursive', mode: 'visual', recursive: false }
+  ];
+  const result: VimKeybinding[] = [];
+  for (const { key, mode, recursive } of modeMappings) {
+    const bindings = config.get<Array<{ before?: unknown; after?: unknown }>>(key, []);
+    if (!Array.isArray(bindings)) {
+      continue;
+    }
+    for (const binding of bindings) {
+      if (!Array.isArray(binding.before) || !Array.isArray(binding.after)) {
+        continue;
+      }
+      const before = (binding.before as string[]).join('');
+      const after = (binding.after as string[]).join('');
+      if (!before || !after) {
+        continue;
+      }
+      result.push({ before, after, mode, recursive });
+    }
+  }
+  return result;
+}
+
+function getVimModeBehavior(config: vscode.WorkspaceConfiguration): VimModeBehavior {
+  if (!hasExplicitConfigurationValue<VimModeBehavior>(config, VIM_MODE_BEHAVIOR_SETTING_KEY)) {
+    return 'auto';
+  }
+  const behavior = config.get<string>(VIM_MODE_BEHAVIOR_SETTING_KEY, 'auto');
+  if (behavior === 'enabled' || behavior === 'disabled') {
+    return behavior;
+  }
+  return 'auto';
 }
 
 export function getUseVscodeThemeForCodeBlocks(): boolean {

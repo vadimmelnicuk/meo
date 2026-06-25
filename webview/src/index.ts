@@ -145,6 +145,8 @@ taskBtn.title = 'Task';
 taskBtn.appendChild(createElement(ListTodo, { width: 18, height: 18 }));
 
 let vimModeEnabled = false;
+let vimKeybindingsState: VimKeybinding[] = [];
+let vimLeaderState = '\\';
 
 let lineNumbersVisible = true;
 let gitChangesGutterVisible = true;
@@ -1090,6 +1092,8 @@ const mountInitialEditor = async () => {
       initialLineNumbers: lineNumbersVisible,
       initialGitGutter: gitChangesGutterVisible,
       initialVimMode: vimModeEnabled,
+      initialVimKeybindings: vimKeybindingsState,
+      initialVimLeader: vimLeaderState,
       onApplyChanges: queueChanges,
       onOpenLink: (href: string) => {
         vscode.postMessage({ type: 'openLink', href });
@@ -1124,7 +1128,7 @@ const mountInitialEditor = async () => {
       outlineController.refresh();
     }
     failureNotice.updateEditorNotice();
-    
+
     setWikiLinkRefreshContext({
       refreshDecorations: () => editor?.refreshDecorations?.()
     });
@@ -1211,6 +1215,11 @@ const handleInit = (message: any) => {
   }
   if (typeof message.vimMode === 'boolean') {
     setVimModeEnabled(message.vimMode);
+  }
+  if (Array.isArray(message.vimKeybindings)) {
+    vimKeybindingsState = message.vimKeybindings;
+    vimLeaderState = typeof message.vimLeader === 'string' ? message.vimLeader : '\\';
+    editor?.setVimKeybindings(vimKeybindingsState, vimLeaderState);
   }
   if (message.findOptions && typeof message.findOptions === 'object') {
     findPanelController.setSearchOptions(message.findOptions);
@@ -1435,6 +1444,13 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'vimModeChanged') {
     setVimModeEnabled(message.enabled);
+    return;
+  }
+
+  if (message.type === 'vimKeybindingsChanged') {
+    vimKeybindingsState = message.keybindings;
+    vimLeaderState = message.leaderKey;
+    editor?.setVimKeybindings(vimKeybindingsState, vimLeaderState);
     return;
   }
 

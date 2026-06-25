@@ -12,9 +12,12 @@ import {
   getOutlineVisible,
   getRememberPositionLines,
   getThemeSettings,
+  getVimKeybindings,
+  getVimLeaderKey,
   getVimModeEnabled,
   getUseVscodeThemeForCodeBlocks,
-  getCodeBlockVscodeTheme
+  getCodeBlockVscodeTheme,
+  type VimKeybinding
 } from '../shared/extensionConfig';
 import { openLink, resolveLocalLinkTargets, resolveWebviewImageSrc, resolveWikiLinkTargets } from '../shared/documentLinks';
 import { GitDocumentState, hashGitBaselinePayload } from '../git/documentState';
@@ -42,6 +45,8 @@ type InitMessage = {
   gitChangesGutter: boolean;
   gitDiffLineHighlights: boolean;
   vimMode: boolean;
+  vimKeybindings: VimKeybinding[];
+  vimLeader: string;
   findOptions: FindOptions;
   outlinePosition: OutlinePosition;
   outlineVisible: boolean;
@@ -466,6 +471,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
       vimMode: getVimModeEnabled(context),
+      vimKeybindings: getVimKeybindings(),
+      vimLeader: getVimLeaderKey(),
       findOptions: getFindOptions(),
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),

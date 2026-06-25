@@ -35,6 +35,7 @@ import {
   LINE_NUMBERS_LEGACY_VISIBLE_SETTING_KEY,
   LINE_NUMBERS_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
+  VIM_MODE_BEHAVIOR_SETTING_KEY,
   VIM_MODE_SETTING_KEY,
   CODE_BLOCKS_VSCODE_THEME_SETTING_KEY,
   getUseVscodeThemeForCodeBlocks,
@@ -50,6 +51,8 @@ import {
   getOutlinePosition,
   getOutlineVisible,
   getThemeSettings,
+  getVimKeybindings,
+  getVimLeaderKey,
   getVimModeEnabled,
   isMarkdownDocumentPath,
   migrateLegacyToggleSettings,
@@ -539,8 +542,24 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       this.broadcast({ type: 'gitDiffLineHighlightsChanged', enabled: getGitDiffLineHighlightsEnabled() });
     }
 
-    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${VIM_MODE_SETTING_KEY}`)) {
+    if (
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${VIM_MODE_BEHAVIOR_SETTING_KEY}`) ||
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${VIM_MODE_SETTING_KEY}`) ||
+      event.affectsConfiguration('vim.enable')
+    ) {
       this.broadcast({ type: 'vimModeChanged', enabled: getVimModeEnabled(this.context) });
+    }
+
+    if (
+      event.affectsConfiguration('vim.normalModeKeyBindings') ||
+      event.affectsConfiguration('vim.normalModeKeyBindingsNonRecursive') ||
+      event.affectsConfiguration('vim.insertModeKeyBindings') ||
+      event.affectsConfiguration('vim.insertModeKeyBindingsNonRecursive') ||
+      event.affectsConfiguration('vim.visualModeKeyBindings') ||
+      event.affectsConfiguration('vim.visualModeKeyBindingsNonRecursive') ||
+      event.affectsConfiguration('vim.leader')
+    ) {
+      this.broadcast({ type: 'vimKeybindingsChanged', keybindings: getVimKeybindings(), leaderKey: getVimLeaderKey() });
     }
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.outline.position`)) {
