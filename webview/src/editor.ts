@@ -5,6 +5,7 @@ import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-mar
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
 import { vim, Vim } from '@replit/codemirror-vim';
 import { highlightStyle } from './theme';
+import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import { liveModeExtensions } from './liveMode';
 import { headingCollapseSharedExtensions, headingCollapseSourceSpacerExtensions } from './helpers/headingCollapse';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
@@ -1166,6 +1167,7 @@ export function createEditor({
       gitGutterCompartment.of(startMode === 'live' ? gitDiffGutterLiveRenderExtensions() : gitDiffGutterRenderExtensions()),
       highlightActiveLineGutter(),
       highlightActiveLine(),
+      shikiCodeHighlight,
       EditorView.lineWrapping,
       scrollPastEnd(),
       EditorView.domEventHandlers({

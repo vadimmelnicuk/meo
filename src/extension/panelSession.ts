@@ -15,6 +15,8 @@ import {
   getVimKeybindings,
   getVimLeaderKey,
   getVimModeEnabled,
+  getUseVscodeThemeForCodeBlocks,
+  getCodeBlockVscodeTheme,
   type VimKeybinding
 } from '../shared/extensionConfig';
 import { openLink, resolveLocalLinkTargets, resolveWebviewImageSrc, resolveWikiLinkTargets } from '../shared/documentLinks';
@@ -23,6 +25,7 @@ import { openGitRevisionForLine, openGitWorktreeForLine, resolveGitBlameForReque
 import type { GitBaselinePayload, GitBlameLineResult } from '../git/types';
 import type { ExportStyleEnvironment } from '../export/runtime';
 import type { ThemeSettings } from '../shared/themeDefaults';
+import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { OutlinePosition } from '../shared/extensionConfig';
 
 export type EditorMode = 'live' | 'source';
@@ -48,6 +51,8 @@ type InitMessage = {
   outlinePosition: OutlinePosition;
   outlineVisible: boolean;
   theme: ThemeSettings;
+  shikiCodeBlocks: boolean;
+  codeTheme: RawVscodeTheme | null;
   restoreTopLine?: number;
   restoreTopLineOffset?: number;
 };
@@ -472,6 +477,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),
       theme: getThemeSettings(),
+      shikiCodeBlocks: getUseVscodeThemeForCodeBlocks(),
+      codeTheme: getCodeBlockVscodeTheme(),
       restoreTopLine: pendingRestoreTopLine ?? undefined,
       restoreTopLineOffset: pendingRestoreTopLine === null ? undefined : pendingRestoreTopLineOffset
     };

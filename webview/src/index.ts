@@ -6,6 +6,7 @@ import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandlin
 import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
 import { applyThemeSettings } from './helpers/theme';
+import { setShikiTheme, setShikiEnabled } from './helpers/shikiHighlighter';
 import { createFailureNoticeManager, getErrorMessage, isTransientMermaidRuntimeError, shouldAutoFallbackToSourceForLiveError, logWebviewRenderError, type EditorNotice, type FailureNoticeManager } from './helpers/errors';
 import { isPrimaryModifier, isShortcutKey, normalizeEol, handleEditorShortcut, type ShortcutHandlerContext } from './helpers/shortcuts';
 import { createFindPanel, createFindPanelController, type FindPanelController } from './helpers/findPanel';
@@ -1270,6 +1271,8 @@ window.addEventListener('message', (event) => {
     acknowledgeReadyHandshake();
     withMessageErrorBoundary('init handler', () => {
       applyThemeSettings(message.theme);
+      setShikiEnabled(message.shikiCodeBlocks === true);
+      setShikiTheme(message.codeTheme);
       initialMountRecoveryAttempted = false;
       failureNotice.clearFailureNotice();
       gitClient?.resetForInit({ hideTooltip: false });
@@ -1304,9 +1307,19 @@ window.addEventListener('message', (event) => {
   if (message.type === 'themeChanged') {
     withMessageErrorBoundary('themeChanged handler', () => {
       applyThemeSettings(message.theme);
+      setShikiTheme(message.codeTheme);
     });
     return;
   }
+
+  if (message.type === 'shikiCodeBlocksChanged') {
+    withMessageErrorBoundary('shikiCodeBlocksChanged handler', () => {
+      setShikiTheme(message.codeTheme);
+      setShikiEnabled(message.enabled === true);
+    });
+    return;
+  }
+
 
   if (message.type === 'revealSelection') {
     applyRevealSelectionFromHost(message);
