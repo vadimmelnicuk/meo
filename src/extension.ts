@@ -540,7 +540,11 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY}`) ||
       event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY}`)
     ) {
-      this.broadcast({ type: 'gitChangesGutterChanged', enabled: getGitChangesGutterEnabled(this.context) });
+      const enabled = getGitChangesGutterEnabled(this.context);
+      this.broadcast({ type: 'gitChangesGutterChanged', enabled });
+      for (const session of this.panelSessions.values()) {
+        session.refreshGitBaseline({ forcePost: true, forceReload: true, delayMs: enabled ? 150 : 0 });
+      }
     }
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY}`)) {

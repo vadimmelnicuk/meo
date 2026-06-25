@@ -298,6 +298,7 @@ type WebviewMessage =
 type RefreshGitBaselineOptions = {
   forcePost?: boolean;
   forceReload?: boolean;
+  delayMs?: number;
 };
 
 type PendingExportSnapshot = {
@@ -316,6 +317,13 @@ const REMEMBERED_VIEW_POSITIONS_STATE_KEY = 'rememberedViewPositionsByDocument';
 const MAX_REMEMBERED_VIEW_POSITIONS = 300;
 const REMEMBERED_EOF_NEAR_THRESHOLD_LINES = 10;
 const REMEMBERED_EOF_BACKOFF_LINES = 10;
+const GIT_BASELINE_STARTUP_DELAY_MS = 350;
+const GIT_BASELINE_REFRESH_DELAY_MS = 150;
+const EMPTY_GIT_BASELINE_PAYLOAD: GitBaselinePayload = Object.freeze({
+  available: false,
+  tracked: false,
+  baseText: null
+});
 
 type PanelSessionControllerParams = {
   panel: vscode.WebviewPanel;
@@ -380,6 +388,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   let gitRefreshPending = false;
   let gitRefreshPendingForcePost = false;
   let gitRefreshPendingForceReload = false;
+  let pendingGitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentRevealSelectionKey: string | null = null;
   let pendingRevealSelection: RevealSelectionPayload | null = null;
   let pendingRestoreTopLine: number | null = null;
@@ -575,10 +584,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return false;
     }
 
-    const payload = await gitDocumentState.resolveBaseline({
-      includeText: true,
-      force: options.forceReload === true
-    });
+    const payload = getGitChangesGutterEnabled(context)
+      ? await gitDocumentState.resolveBaseline({
+          includeText: true,
+          force: options.forceReload === true
+        })
+      : EMPTY_GIT_BASELINE_PAYLOAD;
     gitDocumentState.noteBaselinePayload(payload);
     const payloadHash = hashGitBaselinePayload(payload);
     if (!options.forcePost && payloadHash === gitDocumentState.getLastSentBaselineHash()) {
@@ -689,6 +700,10 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const runPendingGitRefreshes = async (): Promise<void> => {
+    if (pendingGitRefreshTimer !== null) {
+      clearTimeout(pendingGitRefreshTimer);
+      pendingGitRefreshTimer = null;
+    }
     if (gitRefreshRunning || !webviewReady) {
       return;
     }
@@ -730,6 +745,17 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     gitRefreshPending = true;
     gitRefreshPendingForcePost = gitRefreshPendingForcePost || options.forcePost === true;
     gitRefreshPendingForceReload = gitRefreshPendingForceReload || options.forceReload === true;
+    const delayMs = Math.max(0, options.delayMs ?? 0);
+    if (delayMs > 0 && !gitRefreshRunning) {
+      if (pendingGitRefreshTimer !== null) {
+        clearTimeout(pendingGitRefreshTimer);
+      }
+      pendingGitRefreshTimer = setTimeout(() => {
+        pendingGitRefreshTimer = null;
+        runBackground(runPendingGitRefreshes(), 'runPendingGitRefreshes.delayed');
+      }, delayMs);
+      return;
+    }
     runBackground(runPendingGitRefreshes(), 'runPendingGitRefreshes');
   };
 
@@ -895,9 +921,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await ensureInitDelivered();
         await flushPendingRevealSelection();
         scheduleSpellCheck(0);
-        gitRefreshPending = true;
-        gitRefreshPendingForcePost = true;
-        await runPendingGitRefreshes();
+        refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_STARTUP_DELAY_MS });
         return;
       case 'setMode':
         mode = raw.mode;
@@ -1067,7 +1091,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     if (savedDocument.uri.toString() !== documentKey) {
       return;
     }
-    refreshGitBaseline({ forceReload: true });
+    refreshGitBaseline({ forceReload: true, delayMs: GIT_BASELINE_REFRESH_DELAY_MS });
   });
 
   const diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
@@ -1106,7 +1130,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   const viewStateSubscription = panel.onDidChangeViewState((event) => {
     if (event.webviewPanel.active) {
       onPanelActivated(event.webviewPanel);
-      refreshGitBaseline({ forcePost: true });
+      refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_REFRESH_DELAY_MS });
       runBackground(flushPendingRevealSelection(), 'flushPendingRevealSelection');
       runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.viewState');
       runBackground(postFocusEditor(), 'postFocusEditor');
@@ -1118,7 +1142,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     dispose();
   });
 
-  refreshGitBaseline({ forcePost: true });
+  refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_STARTUP_DELAY_MS });
   runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.startup');
 
   const dispose = (): void => {
@@ -1130,6 +1154,10 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     if (pendingSpellCheckTimer !== null) {
       clearTimeout(pendingSpellCheckTimer);
       pendingSpellCheckTimer = null;
+    }
+    if (pendingGitRefreshTimer !== null) {
+      clearTimeout(pendingGitRefreshTimer);
+      pendingGitRefreshTimer = null;
     }
     spellDiagnosticCollection.delete(document.uri);
 
