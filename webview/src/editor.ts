@@ -86,6 +86,7 @@ const setSearchQueryEffect = StateEffect.define<SearchQueryState>();
 const refreshDecorationsEffect = StateEffect.define();
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match' });
 const activeSearchMatchMark = Decoration.mark({ class: 'meo-search-match meo-search-match-active' });
+const tableSearchStateEventName = 'meo-search-state-change';
 const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX~\-]\]|[-+*]|\d+[.)])\s+/;
 const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
 const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX~\-]\]/;
@@ -245,6 +246,7 @@ export function createEditor({
   let view = null;
   let currentMode = startMode;
   let applyingRenumber = false;
+  let lastSearchStateSignature = '';
   // External syncs may carry stale selections in their history entries.
   // Preserve the user's current cursor once on the next undo of such a change.
   let pendingExternalUndoSelectionPreserve = false;
@@ -533,6 +535,29 @@ export function createEditor({
     );
     view.dom.classList.toggle('has-selection', hasSelection);
     view.dom.classList.toggle('has-search-selection', hasSearchSelection);
+  };
+
+  const emitSearchStateChange = () => {
+    if (!view) {
+      return;
+    }
+
+    const searchQuery = view.state.field(searchQueryField);
+    const selection = view.state.selection.main;
+    const detail = {
+      text: searchQuery.text,
+      wholeWord: searchQuery.wholeWord,
+      caseSensitive: searchQuery.caseSensitive,
+      selectionFrom: Math.min(selection.from, selection.to),
+      selectionTo: Math.max(selection.from, selection.to)
+    };
+    (view.dom as any).__meoSearchState = detail;
+    const signature = JSON.stringify(detail);
+    if (signature === lastSearchStateSignature) {
+      return;
+    }
+    lastSearchStateSignature = signature;
+    view.dom.dispatchEvent(new CustomEvent(tableSearchStateEventName, { detail }));
   };
 
   const getActiveTableInput = () => {
@@ -1572,6 +1597,7 @@ export function createEditor({
         syncModeClasses();
         syncLineNumbersVisibility();
         syncGitGutterVisibility();
+        emitSearchStateChange();
 
         if (update.selectionSet) {
           syncSelectionClass();

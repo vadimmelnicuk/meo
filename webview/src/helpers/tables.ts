@@ -125,6 +125,19 @@ interface TableCellRange {
   to: number;
 }
 
+interface TableSearchState {
+  text: string;
+  wholeWord: boolean;
+  caseSensitive: boolean;
+  selectionFrom: number;
+  selectionTo: number;
+}
+
+interface TableSearchMatchRange {
+  start: number;
+  end: number;
+}
+
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
 const tableDelimiterRegex = /^\|?\s*[:]?\-+[:]?\s*(\|\s*[:]?\-+[:]?\s*)*\|?$/;
@@ -257,6 +270,7 @@ const tableInlineSchemeRe = /^[a-z][a-z0-9+.-]*:/i;
 const tableInlineRawUrlRe = /^(?:[a-z][a-z0-9+.-]*:\/\/|mailto:|file:|www\.)[^\s<]+/i;
 const tableInlineEmojiShortcodeRe = /^:([a-zA-Z0-9_+-]+):/;
 const tableInlineEscapableChars = new Set(['\\', '*', '_', '~', '`', '[', ']', '(', ')', '!', '|', '<', '>']);
+const tableSearchStateEventName = 'meo-search-state-change';
 const tableDiagnosticSeverityClasses = [
   'meo-diagnostic-error',
   'meo-diagnostic-warning',
@@ -299,10 +313,103 @@ function tableDiagnosticTitle(diagnostic: TableCellDiagnostics): string {
   return `${prefix}${diagnostic.message}`;
 }
 
-function appendDiagnosticText(parent: HTMLElement, text: string, offset: number, diagnostics: TableCellDiagnostics[]) {
+function isTableSearchWordCharacter(value: string): boolean {
+  return /[0-9A-Za-z_]/.test(value);
+}
+
+function isWholeWordTableSearchRange(text: string, start: number, end: number): boolean {
+  const previous = start > 0 ? text.slice(start - 1, start) : '';
+  const next = end < text.length ? text.slice(end, end + 1) : '';
+  return !isTableSearchWordCharacter(previous) && !isTableSearchWordCharacter(next);
+}
+
+function findTableSearchMatchRanges(text: string, searchState: TableSearchState | null): TableSearchMatchRange[] {
+  const query = searchState?.text ?? '';
+  if (!query) {
+    return [];
+  }
+
+  const haystack = searchState?.caseSensitive ? text : text.toLocaleLowerCase();
+  const needle = searchState?.caseSensitive ? query : query.toLocaleLowerCase();
+  const matches: TableSearchMatchRange[] = [];
+  let offset = 0;
+  while (offset <= text.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index < 0) {
+      break;
+    }
+
+    const end = index + query.length;
+    if (!searchState?.wholeWord || isWholeWordTableSearchRange(text, index, end)) {
+      matches.push({ start: index, end });
+    }
+    offset = end;
+  }
+  return matches;
+}
+
+function appendSearchHighlightedText(
+  parent: HTMLElement,
+  text: string,
+  offset: number,
+  searchState: TableSearchState | null,
+  sourceRange: TableCellRange | null
+) {
+  const matches = findTableSearchMatchRanges(text, searchState);
+  if (matches.length === 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.start > cursor) {
+      parent.appendChild(document.createTextNode(text.slice(cursor, match.start)));
+    }
+
+    const span = document.createElement('span');
+    const absoluteFrom = (sourceRange?.from ?? 0) + offset + match.start;
+    const absoluteTo = (sourceRange?.from ?? 0) + offset + match.end;
+    const isActive = Boolean(searchState && absoluteFrom === searchState.selectionFrom && absoluteTo === searchState.selectionTo);
+    span.className = isActive ? 'meo-search-match meo-search-match-active' : 'meo-search-match';
+    span.textContent = text.slice(match.start, match.end);
+    parent.appendChild(span);
+    cursor = match.end;
+  }
+
+  if (cursor < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+}
+
+function appendTablePlainText(
+  parent: HTMLElement,
+  text: string,
+  offset: number,
+  diagnostics: TableCellDiagnostics[],
+  searchState: TableSearchState | null,
+  sourceRange: TableCellRange | null
+) {
   if (!text) return;
   if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
-    parent.appendChild(document.createTextNode(text));
+    appendSearchHighlightedText(parent, text, offset, searchState, sourceRange);
+    return;
+  }
+
+  appendDiagnosticText(parent, text, offset, diagnostics, searchState, sourceRange);
+}
+
+function appendDiagnosticText(
+  parent: HTMLElement,
+  text: string,
+  offset: number,
+  diagnostics: TableCellDiagnostics[],
+  searchState: TableSearchState | null,
+  sourceRange: TableCellRange | null
+) {
+  if (!text) return;
+  if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
+    appendSearchHighlightedText(parent, text, offset, searchState, sourceRange);
     return;
   }
 
@@ -312,7 +419,7 @@ function appendDiagnosticText(parent: HTMLElement, text: string, offset: number,
     .filter((diagnostic) => diagnostic.from < to && diagnostic.to > from)
     .sort((left, right) => left.from === right.from ? left.to - right.to : left.from - right.from);
   if (relevant.length === 0) {
-    parent.appendChild(document.createTextNode(text));
+    appendSearchHighlightedText(parent, text, offset, searchState, sourceRange);
     return;
   }
 
@@ -324,18 +431,30 @@ function appendDiagnosticText(parent: HTMLElement, text: string, offset: number,
       continue;
     }
     if (diagnosticFrom > cursor) {
-      parent.appendChild(document.createTextNode(text.slice(cursor - from, diagnosticFrom - from)));
+      appendSearchHighlightedText(
+        parent,
+        text.slice(cursor - from, diagnosticFrom - from),
+        cursor,
+        searchState,
+        sourceRange
+      );
     }
     const span = document.createElement('span');
     const severityClass = tableDiagnosticSeverityClasses[diagnostic.severity] ?? tableDiagnosticSeverityClasses[0];
     span.className = `meo-diagnostic ${severityClass}`;
     span.title = tableDiagnosticTitle(diagnostic);
-    span.textContent = text.slice(diagnosticFrom - from, diagnosticTo - from);
+    appendSearchHighlightedText(
+      span,
+      text.slice(diagnosticFrom - from, diagnosticTo - from),
+      diagnosticFrom,
+      searchState,
+      sourceRange
+    );
     parent.appendChild(span);
     cursor = diagnosticTo;
   }
   if (cursor < to) {
-    parent.appendChild(document.createTextNode(text.slice(cursor - from)));
+    appendSearchHighlightedText(parent, text.slice(cursor - from), cursor, searchState, sourceRange);
   }
 }
 
@@ -660,13 +779,15 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   baseOffset?: number;
   diagnostics?: TableCellDiagnostics[];
   disableLinkParsers?: boolean;
+  searchState?: TableSearchState | null;
+  sourceRange?: TableCellRange | null;
 } = {}) {
-  const { baseOffset = 0, diagnostics = [], disableLinkParsers = false } = options;
+  const { baseOffset = 0, diagnostics = [], disableLinkParsers = false, searchState = null, sourceRange = null } = options;
   let buffer = '';
   let bufferStart = 0;
   const flushBuffer = () => {
     if (!buffer) return;
-    appendDiagnosticText(parent, buffer, baseOffset + bufferStart, diagnostics);
+    appendTablePlainText(parent, buffer, baseOffset + bufferStart, diagnostics, searchState, sourceRange);
     buffer = '';
   };
   const appendToBuffer = (value: string, index: number) => {
@@ -823,10 +944,16 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   flushBuffer();
 }
 
-function renderTableCellInlinePreview(previewEl, value, diagnostics: TableCellDiagnostics[] = []) {
+function renderTableCellInlinePreview(
+  previewEl,
+  value,
+  diagnostics: TableCellDiagnostics[] = [],
+  searchState: TableSearchState | null = null,
+  sourceRange: TableCellRange | null = null
+) {
   if (!(previewEl instanceof HTMLElement)) return;
   previewEl.replaceChildren();
-  appendTableInlinePreviewNodes(previewEl, value ?? '', { diagnostics });
+  appendTableInlinePreviewNodes(previewEl, value ?? '', { diagnostics, searchState, sourceRange });
 }
 
 function consumeTableInlineProtectedSpan(text, index, endIndex) {
@@ -1123,6 +1250,7 @@ class HtmlTableWidget extends WidgetType {
   hasPendingCellEdits: boolean;
   sortState: TableSortState | null;
   activeTarget: TableActionTarget;
+  searchState: TableSearchState | null;
 
   constructor(tableData: TableData) {
     super();
@@ -1141,6 +1269,7 @@ class HtmlTableWidget extends WidgetType {
     this.hasPendingCellEdits = false;
     this.sortState = null;
     this.activeTarget = { row: this.tableData.rows.length > 0 ? 1 : 0, col: 0 };
+    this.searchState = null;
   }
 
   eq(other: WidgetType): boolean {
@@ -1912,7 +2041,12 @@ class HtmlTableWidget extends WidgetType {
 
   wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview) {
     const refreshPreview = () => {
-      this.renderCellPreview(preview, input.value, this.cellDiagnostics(rowIndex, colIndex));
+      this.renderCellPreview(
+        preview,
+        input.value,
+        this.cellDiagnostics(rowIndex, colIndex),
+        this.cellSourceRange(rowIndex, colIndex)
+      );
     };
     const notifySelectionChange = () => {
       this.emitTableSelectionChange(container);
@@ -2081,16 +2215,26 @@ class HtmlTableWidget extends WidgetType {
     });
   }
 
-  renderCellPreview(preview, value, diagnostics: TableCellDiagnostics[] = []) {
+  renderCellPreview(
+    preview,
+    value,
+    diagnostics: TableCellDiagnostics[] = [],
+    sourceRange: TableCellRange | null = null
+  ) {
     if (!(preview instanceof HTMLElement)) return;
-    renderTableCellInlinePreview(preview, value ?? '', diagnostics);
+    renderTableCellInlinePreview(preview, value ?? '', diagnostics, this.searchState, sourceRange);
   }
 
   refreshCellPreviewFromInput(input) {
     if (!(input instanceof HTMLTextAreaElement)) return;
     const preview = input.parentElement?.querySelector('.meo-md-html-table-cell-preview');
     const coords = this.parseCellCoords(input.dataset.tableRow, input.dataset.tableCol);
-    this.renderCellPreview(preview, input.value, coords ? this.cellDiagnostics(coords.row, coords.col) : []);
+    this.renderCellPreview(
+      preview,
+      input.value,
+      coords ? this.cellDiagnostics(coords.row, coords.col) : [],
+      coords ? this.cellSourceRange(coords.row, coords.col) : null
+    );
   }
 
   setCellEditingState(input, isEditing) {
@@ -2099,11 +2243,31 @@ class HtmlTableWidget extends WidgetType {
     content.classList.toggle('is-editing', isEditing);
   }
 
-  createCellPreview(value, diagnostics: TableCellDiagnostics[] = []) {
+  refreshAllCellPreviews() {
+    if (!this.domRefs) return;
+    for (let row = 0; row < this.domRefs.allRowInputs.length; row += 1) {
+      const inputs = this.domRefs.allRowInputs[row];
+      for (let col = 0; col < inputs.length; col += 1) {
+        this.refreshCellPreviewFromInput(inputs[col]);
+      }
+    }
+    this.scheduleLayout({ resizeRows: true });
+  }
+
+  setSearchState(searchState: TableSearchState | null) {
+    this.searchState = searchState?.text ? searchState : null;
+    this.refreshAllCellPreviews();
+  }
+
+  createCellPreview(
+    value,
+    diagnostics: TableCellDiagnostics[] = [],
+    sourceRange: TableCellRange | null = null
+  ) {
     const preview = document.createElement('div');
     preview.className = 'meo-md-html-table-cell-preview';
     preview.setAttribute('aria-hidden', 'true');
-    this.renderCellPreview(preview, value, diagnostics);
+    this.renderCellPreview(preview, value, diagnostics, sourceRange);
     return preview;
   }
 
@@ -2129,7 +2293,7 @@ class HtmlTableWidget extends WidgetType {
   createCellEditor(value, rowEl, rowInputs, container, rowIndex, colIndex) {
     const content = document.createElement('div');
     content.className = 'meo-md-html-table-cell-content';
-    const preview = this.createCellPreview(value, this.cellDiagnostics(rowIndex, colIndex));
+    const preview = this.createCellPreview(value, this.cellDiagnostics(rowIndex, colIndex), this.cellSourceRange(rowIndex, colIndex));
     const input = this.createCellInput(value, rowIndex, colIndex);
     this.wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview);
     content.append(preview, input);
@@ -2229,6 +2393,10 @@ class HtmlTableWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     this.view = view;
+    const existingSearchState = (view.dom as any).__meoSearchState;
+    if (existingSearchState && typeof existingSearchState === 'object') {
+      this.searchState = existingSearchState.text ? existingSearchState : null;
+    }
     const shell = document.createElement('div');
     shell.className = 'meo-md-html-table-shell';
     const wrap = document.createElement('div');
@@ -2389,9 +2557,15 @@ class HtmlTableWidget extends WidgetType {
       const tableWidth = this.lastAppliedWidths.reduce((sum, width) => sum + width, 0);
       this.updateApplySortAnchor(shell, wrap, tableWidth);
     };
+    const onSearchStateChange = (event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      this.setSearchState(detail && typeof detail === 'object' ? detail : null);
+    };
     wrap.addEventListener('scroll', onTableScroll);
+    view.dom.addEventListener(tableSearchStateEventName, onSearchStateChange);
     this.cleanupFns.push(() => {
       wrap.removeEventListener('scroll', onTableScroll);
+      view.dom.removeEventListener(tableSearchStateEventName, onSearchStateChange);
     });
     return shell;
   }
