@@ -219,6 +219,7 @@ const setLineNumbersVisible = (visible, { post = true } = {}) => {
   if (changed) {
     lineNumbersVisible = nextVisible;
     editor?.setLineNumbers(lineNumbersVisible);
+    scheduleToolbarTextAlignment();
   }
   updateLineNumbersUI();
   if (post && changed) {
@@ -246,10 +247,12 @@ const setContentMaxWidthEnabled = (enabled, { post = true } = {}) => {
   if (changed) {
     contentMaxWidthEnabled = nextEnabled;
   }
+  document.documentElement.classList.toggle('meo-content-max-width-enabled', contentMaxWidthEnabled);
   document.documentElement.style.setProperty(
     '--meo-content-max-width',
     contentMaxWidthEnabled ? CONTENT_MAX_WIDTH_ENABLED_VALUE : CONTENT_MAX_WIDTH_DISABLED_VALUE
   );
+  scheduleToolbarTextAlignment();
   updateContentMaxWidthUI();
   if (post && changed) {
     vscode.postMessage({ type: 'setContentMaxWidth', enabled: contentMaxWidthEnabled });
@@ -260,6 +263,7 @@ const setOutlineVisible = (visible, { post = true } = {}) => {
   const nextVisible = visible === true;
   const changed = nextVisible !== outlineController.isVisible();
   outlineController.setVisible(nextVisible);
+  scheduleToolbarTextAlignment();
   if (post && changed) {
     vscode.postMessage({ type: 'setOutlineVisible', visible: nextVisible });
   }
@@ -540,8 +544,45 @@ let initialEditorMountInFlight = false;
 let initialEditorMountFallbackTimer: number | null = null;
 let pendingEditorSurfaceRecoveryRaf: number | null = null;
 let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
+let pendingToolbarAlignmentRaf: number | null = null;
 const VIEW_POSITION_DEBOUNCE_MS = 250;
 const INITIAL_EDITOR_MOUNT_FALLBACK_MS = 120;
+
+function updateToolbarTextAlignment(): void {
+  pendingToolbarAlignmentRaf = null;
+  if (!contentMaxWidthEnabled) {
+    document.documentElement.style.setProperty('--meo-toolbar-format-offset', '0px');
+    return;
+  }
+
+  const view = editor?.view;
+  if (!view?.contentDOM) {
+    document.documentElement.style.setProperty('--meo-toolbar-format-offset', '0px');
+    return;
+  }
+
+  const toolbarRect = toolbar.getBoundingClientRect();
+  const contentRect = view.contentDOM.getBoundingClientRect();
+  const rootStyles = window.getComputedStyle(document.documentElement);
+  const paddingLeft = Number.parseFloat(window.getComputedStyle(toolbar).paddingLeft) || 0;
+  const opticalOffset = Number.parseFloat(rootStyles.getPropertyValue('--meo-toolbar-format-optical-offset')) || 0;
+  const offset = Math.max(0, contentRect.left - toolbarRect.left - paddingLeft - opticalOffset);
+  document.documentElement.style.setProperty('--meo-toolbar-format-offset', `${offset}px`);
+}
+
+function scheduleToolbarTextAlignment(): void {
+  if (pendingToolbarAlignmentRaf !== null) {
+    return;
+  }
+  pendingToolbarAlignmentRaf = window.requestAnimationFrame(updateToolbarTextAlignment);
+}
+
+const toolbarAlignmentResizeObserver = new ResizeObserver(scheduleToolbarTextAlignment);
+toolbarAlignmentResizeObserver.observe(root);
+toolbarAlignmentResizeObserver.observe(toolbar);
+toolbarAlignmentResizeObserver.observe(editorWrapper);
+toolbarAlignmentResizeObserver.observe(editorHost);
+window.addEventListener('resize', scheduleToolbarTextAlignment);
 
 const setEditorNotice = (message: string, kind = 'info') => {
   const normalizedMessage = `${message ?? ''}`.trim();
@@ -1183,6 +1224,7 @@ const mountInitialEditor = async () => {
     setLocalLinkRefreshContext({
       refreshDecorations: () => editor?.refreshDecorations?.()
     });
+    scheduleToolbarTextAlignment();
     scheduleEditorSurfaceRecovery();
   } catch (error) {
     logWebviewRenderError('mountInitialEditor', error);
@@ -1277,6 +1319,7 @@ const handleInit = (message: any) => {
   }
   applyDiagnosticsFromHost(message.diagnostics);
   outlineController.setPosition(message.outlinePosition);
+  scheduleToolbarTextAlignment();
   if (typeof message.outlineVisible === 'boolean') {
     setOutlineVisible(message.outlineVisible, { post: false });
   }
@@ -1568,6 +1611,7 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'outlinePositionChanged') {
     outlineController.setPosition(message.position);
+    scheduleToolbarTextAlignment();
     return;
   }
 

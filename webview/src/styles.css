@@ -1,6 +1,11 @@
 :root {
   color-scheme: light dark;
   --meo-background: var(--vscode-editor-background);
+  --meo-inset-background: color-mix(
+    in srgb,
+    var(--meo-background, var(--vscode-editor-background)) 88%,
+    black 12%
+  );
   --meo-code-background: color-mix(
     in srgb,
     var(--meo-background, var(--vscode-editor-background)) 80%,
@@ -44,6 +49,8 @@
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
   --meo-content-max-width: 100%;
+  --meo-toolbar-format-optical-offset: 5px;
+  --meo-toolbar-format-offset: 0px;
   --meo-task-checkbox-size: 17px;
   --git-added: #4a9e82;
   --git-changed: #317ae7;
@@ -145,6 +152,10 @@ body {
 
 .editor-root:has(.cm-editor.meo-line-numbers-hidden) .mode-toolbar {
   padding-left: 17px;
+}
+
+.mode-toolbar .format-group {
+  margin-left: var(--meo-toolbar-format-offset);
 }
 
 .editor-notice {
@@ -599,6 +610,7 @@ body {
   background: var(--meo-background);
   min-width: 0;
   position: relative;
+  --meo-gutters-width: 89px;
 }
 
 .cm-editor.meo-mode-live {
@@ -687,6 +699,10 @@ body {
   background: var(--meo-background);
   border-right: 0;
   overflow: visible;
+}
+
+.meo-content-max-width-enabled .cm-editor .cm-gutters {
+  left: max(0px, calc((100% - var(--meo-content-max-width) - var(--meo-gutters-width)) / 2));
 }
 
 .cm-editor .cm-gutter.meo-md-fold-gutter {
@@ -822,6 +838,10 @@ body {
   color: transparent !important;
 }
 
+.cm-editor.meo-line-numbers-hidden {
+  --meo-gutters-width: 23px;
+}
+
 .cm-editor.meo-line-numbers-hidden .cm-gutter.cm-lineNumbers,
 .cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement {
   width: 2px !important;
@@ -939,7 +959,7 @@ body {
 }
 
 .cm-editor .cm-activeLine.meo-md-code-block {
-  background-color: var(--meo-code-block-active-line-bg);
+  background-color: var(--meo-active-line-bg);
 }
 
 .cm-editor.meo-mode-source .meo-md-colon-fence-marker,
@@ -953,7 +973,7 @@ body {
 }
 
 .cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
-  background-color: var(--meo-code-block-active-line-bg);
+  background-color: var(--meo-active-line-bg);
 }
 
 .cm-editor.meo-mode-live .cm-content {
@@ -1318,7 +1338,7 @@ body {
   min-width: 1.3em;
   border: 1px solid var(--meo-color-base03);
   border-radius: 0.35em;
-  background: var(--meo-surface-background);
+  background: var(--meo-inset-background);
   /* Keep fill out of the border area so the bottom edge stays crisp. */
   background-clip: padding-box;
   color: var(--meo-foreground);
@@ -2182,7 +2202,7 @@ body {
 
 .cm-editor .meo-md-html-table-shell {
   position: relative;
-  padding: 30px 0 0;
+  padding: 30px 0;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -2298,7 +2318,7 @@ body {
 
 .cm-editor .meo-md-html-table th {
   position: relative;
-  background-color: var(--meo-surface-background);
+  background-color: var(--meo-inset-background);
   font-weight: inherit;
   text-align: inherit;
 }
@@ -2391,7 +2411,7 @@ body {
   border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 4px;
   background-color: var(--meo-color-base03, var(--vscode-button-secondaryBackground, var(--vscode-button-background))) !important;
-  color: var(--vscode-editor-foreground);
+  color: var(--meo-foreground);
   font-size: 11px;
   line-height: 1.35;
   cursor: pointer;
@@ -2435,6 +2455,7 @@ body {
   color: var(--meo-foreground);
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
 }
 
 .cm-editor .meo-md-html-sort-icon {
@@ -2446,6 +2467,7 @@ body {
 .cm-editor .meo-md-html-sort-btn:focus,
 .cm-editor .meo-md-html-sort-btn.is-active {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .cm-editor .meo-md-html-table-toolbar {
@@ -2460,12 +2482,13 @@ body {
   border: 0;
   background: transparent;
   opacity: 0;
-  pointer-events: auto;
+  pointer-events: none;
   transition: opacity 0.12s ease;
 }
 
 .cm-editor .meo-md-html-table-shell:focus-within .meo-md-html-table-toolbar {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .cm-editor .meo-md-html-table-toolbar-btn {
@@ -2532,7 +2555,7 @@ body {
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-header-line .meo-md-table-cell {
   border-top: 1px solid var(--vscode-panel-border);
-  background-color: var(--meo-surface-background);
+  background-color: var(--meo-inset-background);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-table-line:not(.meo-md-table-delim-line) {

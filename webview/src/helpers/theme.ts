@@ -43,6 +43,44 @@ const normalizeThemeFontWeight = (value: string | undefined, fallback: string): 
   return normalized;
 };
 
+const parseCssRgbColor = (value: string): { r: number; g: number; b: number } | null => {
+  const match = value.trim().match(/^rgba?\(\s*(.+?)\s*\)$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  const channels = match[1].split('/')[0]?.trim().split(/[\s,]+/).filter(Boolean) ?? [];
+  const [r, g, b] = channels.slice(0, 3).map((channel) => Number.parseFloat(channel));
+  if (![r, g, b].every(Number.isFinite)) {
+    return null;
+  }
+  return { r, g, b };
+};
+
+const resolveCssColor = (value: string): { r: number; g: number; b: number } | null => {
+  const probe = document.createElement('span');
+  probe.style.color = value;
+  document.documentElement.appendChild(probe);
+  const resolved = window.getComputedStyle(probe).color;
+  probe.remove();
+  return parseCssRgbColor(resolved);
+};
+
+const getRelativeLuminance = ({ r, g, b }: { r: number; g: number; b: number }): number => {
+  const normalize = (channel: number): number => {
+    const value = Math.min(255, Math.max(0, channel)) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * normalize(r) + 0.7152 * normalize(g) + 0.0722 * normalize(b);
+};
+
+const getInsetBackground = (backgroundColor: string, base03: string): string => {
+  const resolvedBackground = resolveCssColor(backgroundColor);
+  if (!resolvedBackground || getRelativeLuminance(resolvedBackground) < 0.36) {
+    return `color-mix(in srgb, ${backgroundColor} 88%, black 12%)`;
+  }
+  return `color-mix(in srgb, ${backgroundColor} 80%, ${base03} 20%)`;
+};
+
 const normalizeThemeHeadingSize = (value: number | undefined, fallback: string, unit: 'px' | 'em' = 'px'): string => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return fallback;
@@ -65,10 +103,12 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
   }
 
   const rootStyle = document.documentElement.style;
+  const insetBackground = getInsetBackground(resolvedTheme.backgroundColor, resolvedTheme.colors.base03);
   rootStyle.setProperty('--meo-background', resolvedTheme.backgroundColor);
+  rootStyle.setProperty('--meo-inset-background', insetBackground);
   rootStyle.setProperty(
     '--meo-code-background',
-    `color-mix(in srgb, ${resolvedTheme.backgroundColor} 80%, ${resolvedTheme.colors.base03} 20%)`
+    insetBackground
   );
   rootStyle.setProperty(
     '--meo-code-block-active-line-bg-live',
