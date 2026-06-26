@@ -945,6 +945,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'mermaid.min.js'))
       .toString();
     const nonce = getNonce();
+    const initialHtmlClass = getContentMaxWidthEnabled(this.context)
+      ? ' class="meo-content-max-width-enabled meo-toolbar-aligning"'
+      : '';
     const csp = [
       "default-src 'none'",
       `img-src ${webview.cspSource} https:`,
@@ -954,7 +957,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     ].join('; ');
 
     return `<!DOCTYPE html>
-    <html lang="en">
+    <html lang="en"${initialHtmlClass}>
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />

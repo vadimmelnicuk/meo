@@ -11,6 +11,12 @@
     var(--meo-background, var(--vscode-editor-background)) 80%,
     var(--meo-color-base03, var(--vscode-panel-border, var(--vscode-textCodeBlock-background))) 20%
   );
+  --meo-outline-background: var(--meo-code-background);
+  --meo-outline-hover-background: color-mix(in srgb, var(--meo-foreground) 8%, transparent);
+  --meo-outline-active-background: color-mix(in srgb, var(--meo-foreground) 14%, transparent);
+  --meo-scrollbar-thumb: color-mix(in srgb, var(--meo-foreground) 22%, transparent);
+  --meo-scrollbar-thumb-hover: color-mix(in srgb, var(--meo-foreground) 32%, transparent);
+  --meo-scrollbar-thumb-active: color-mix(in srgb, var(--meo-foreground) 42%, transparent);
   --meo-surface-background: var(--vscode-sideBar-background);
   --meo-active-line-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 20%, transparent 80%);
   --meo-selection-bg: color-mix(in srgb, var(--vscode-editor-selectionBackground) 55%, transparent 45%);
@@ -54,6 +60,10 @@
   --meo-task-checkbox-size: 17px;
   --git-added: #4a9e82;
   --git-changed: #317ae7;
+}
+
+body.vscode-dark {
+  --meo-outline-background: color-mix(in srgb, var(--meo-code-background) 82%, black 18%);
 }
 
 html,
@@ -156,6 +166,10 @@ body {
 
 .mode-toolbar .format-group {
   margin-left: var(--meo-toolbar-format-offset);
+}
+
+.meo-content-max-width-enabled.meo-toolbar-aligning .mode-toolbar {
+  visibility: hidden;
 }
 
 .editor-notice {
@@ -639,6 +653,8 @@ body {
 
 .cm-editor .cm-scroller {
   scrollbar-gutter: stable;
+  scrollbar-color: var(--meo-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
   padding-right: 10px;
   box-sizing: border-box;
 }
@@ -658,10 +674,7 @@ body {
 
 .cm-editor .cm-scroller::-webkit-scrollbar-thumb {
   -webkit-appearance: none;
-  background: var(
-    --vscode-scrollbarSlider-background,
-    color-mix(in srgb, var(--meo-color-base03) 70%, transparent)
-  ) !important;
+  background: var(--meo-scrollbar-thumb) !important;
   background-clip: border-box !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -670,20 +683,14 @@ body {
 
 .cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
   -webkit-appearance: none;
-  background: var(
-    --vscode-scrollbarSlider-hoverBackground,
-    var(--vscode-scrollbarSlider-background, var(--meo-color-base03))
-  ) !important;
+  background: var(--meo-scrollbar-thumb-hover) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
 .cm-editor .cm-scroller::-webkit-scrollbar-thumb:active {
   -webkit-appearance: none;
-  background: var(
-    --vscode-scrollbarSlider-activeBackground,
-    var(--vscode-scrollbarSlider-hoverBackground, var(--meo-color-base03))
-  ) !important;
+  background: var(--meo-scrollbar-thumb-active) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
@@ -1786,7 +1793,7 @@ body {
   flex-shrink: 0;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--vscode-sideBar-background);
+  background-color: var(--meo-outline-background);
 }
 
 .editor-root.outline-visible .outline-sidebar {
@@ -1797,6 +1804,51 @@ body {
   flex: 1;
   overflow-y: auto;
   padding-bottom: 30px;
+  scrollbar-color: var(
+    --meo-scrollbar-thumb,
+    color-mix(in srgb, var(--meo-foreground) 22%, transparent)
+  ) transparent;
+  scrollbar-width: thin;
+}
+
+.outline-content::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.outline-content::-webkit-scrollbar-track {
+  -webkit-appearance: none;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.outline-content::-webkit-scrollbar-thumb {
+  -webkit-appearance: none;
+  background: var(--meo-scrollbar-thumb) !important;
+  background-clip: border-box !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.outline-content::-webkit-scrollbar-thumb:hover {
+  -webkit-appearance: none;
+  background: var(--meo-scrollbar-thumb-hover) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.outline-content::-webkit-scrollbar-thumb:active {
+  -webkit-appearance: none;
+  background: var(--meo-scrollbar-thumb-active) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.outline-content::-webkit-scrollbar-corner {
+  background: transparent !important;
 }
 
 .outline-empty {
@@ -1818,7 +1870,7 @@ body {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  color: var(--vscode-sideBar-foreground);
+  color: var(--meo-foreground);
   background: transparent;
   cursor: pointer;
 }
@@ -1834,7 +1886,7 @@ body {
 
 .outline-item.outline-drop-before,
 .outline-item.outline-drop-after {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--meo-outline-hover-background);
 }
 
 .outline-item.outline-drop-before::before,
@@ -1857,7 +1909,7 @@ body {
 }
 
 .outline-item:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--meo-outline-hover-background);
 }
 
 .cm-editor .cm-gutter.meo-git-gutter {
@@ -2161,8 +2213,8 @@ body {
 }
 
 .outline-item:active {
-  color: var(--vscode-list-activeSelectionForeground);
-  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--meo-foreground);
+  background-color: var(--meo-outline-active-background);
 }
 
 .outline-item.outline-level-1 {

@@ -156,6 +156,7 @@ let contentMaxWidthEnabled = false;
 
 const CONTENT_MAX_WIDTH_ENABLED_VALUE = '800px';
 const CONTENT_MAX_WIDTH_DISABLED_VALUE = '100%';
+const TOOLBAR_ALIGNING_CLASS = 'meo-toolbar-aligning';
 
 const outlineBtn = document.createElement('button');
 outlineBtn.type = 'button';
@@ -246,6 +247,9 @@ const setContentMaxWidthEnabled = (enabled, { post = true } = {}) => {
   const changed = nextEnabled !== contentMaxWidthEnabled;
   if (changed) {
     contentMaxWidthEnabled = nextEnabled;
+  }
+  if (contentMaxWidthEnabled && !editor?.view?.contentDOM) {
+    document.documentElement.classList.add(TOOLBAR_ALIGNING_CLASS);
   }
   document.documentElement.classList.toggle('meo-content-max-width-enabled', contentMaxWidthEnabled);
   document.documentElement.style.setProperty(
@@ -551,13 +555,14 @@ const INITIAL_EDITOR_MOUNT_FALLBACK_MS = 120;
 function updateToolbarTextAlignment(): void {
   pendingToolbarAlignmentRaf = null;
   if (!contentMaxWidthEnabled) {
+    document.documentElement.classList.remove(TOOLBAR_ALIGNING_CLASS);
     document.documentElement.style.setProperty('--meo-toolbar-format-offset', '0px');
     return;
   }
 
   const view = editor?.view;
   if (!view?.contentDOM) {
-    document.documentElement.style.setProperty('--meo-toolbar-format-offset', '0px');
+    document.documentElement.classList.add(TOOLBAR_ALIGNING_CLASS);
     return;
   }
 
@@ -568,6 +573,7 @@ function updateToolbarTextAlignment(): void {
   const opticalOffset = Number.parseFloat(rootStyles.getPropertyValue('--meo-toolbar-format-optical-offset')) || 0;
   const offset = Math.max(0, contentRect.left - toolbarRect.left - paddingLeft - opticalOffset);
   document.documentElement.style.setProperty('--meo-toolbar-format-offset', `${offset}px`);
+  document.documentElement.classList.remove(TOOLBAR_ALIGNING_CLASS);
 }
 
 function scheduleToolbarTextAlignment(): void {
@@ -577,12 +583,14 @@ function scheduleToolbarTextAlignment(): void {
   pendingToolbarAlignmentRaf = window.requestAnimationFrame(updateToolbarTextAlignment);
 }
 
-const toolbarAlignmentResizeObserver = new ResizeObserver(scheduleToolbarTextAlignment);
+const scheduleSingleToolbarTextAlignment = (): void => scheduleToolbarTextAlignment();
+
+const toolbarAlignmentResizeObserver = new ResizeObserver(scheduleSingleToolbarTextAlignment);
 toolbarAlignmentResizeObserver.observe(root);
 toolbarAlignmentResizeObserver.observe(toolbar);
 toolbarAlignmentResizeObserver.observe(editorWrapper);
 toolbarAlignmentResizeObserver.observe(editorHost);
-window.addEventListener('resize', scheduleToolbarTextAlignment);
+window.addEventListener('resize', scheduleSingleToolbarTextAlignment);
 
 const setEditorNotice = (message: string, kind = 'info') => {
   const normalizedMessage = `${message ?? ''}`.trim();
@@ -1287,6 +1295,9 @@ const handleInit = (message: any) => {
   pendingRestoreTopLineOffset = normalizeLineOffset(message.restoreTopLineOffset);
   lastSentTopLine = null;
   lastSentTopLineOffset = null;
+  if (typeof message.contentMaxWidthEnabled === 'boolean') {
+    setContentMaxWidthEnabled(message.contentMaxWidthEnabled, { post: false });
+  }
   if (!editor) {
     pendingInitialText = message.text;
     scheduleInitialEditorMount();
@@ -1302,9 +1313,6 @@ const handleInit = (message: any) => {
   if (typeof message.gitDiffLineHighlights === 'boolean') {
     gitDiffLineHighlightsEnabled = message.gitDiffLineHighlights;
     syncGitDiffLineHighlights();
-  }
-  if (typeof message.contentMaxWidthEnabled === 'boolean') {
-    setContentMaxWidthEnabled(message.contentMaxWidthEnabled, { post: false });
   }
   if (typeof message.vimMode === 'boolean') {
     setVimModeEnabled(message.vimMode);
@@ -1708,6 +1716,10 @@ window.addEventListener('beforeunload', () => {
   if (pendingEditorSurfaceRecoveryRaf !== null) {
     window.cancelAnimationFrame(pendingEditorSurfaceRecoveryRaf);
     pendingEditorSurfaceRecoveryRaf = null;
+  }
+  if (pendingToolbarAlignmentRaf !== null) {
+    window.cancelAnimationFrame(pendingToolbarAlignmentRaf);
+    pendingToolbarAlignmentRaf = null;
   }
 
   if (pendingDebounce !== null) {
