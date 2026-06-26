@@ -1,5 +1,10 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.25
+- Added spellcheck suggestions and toolbar toggle
+- Fixed mermaid diagram rendering and controls
+- Fixed content width toggle state
+
 ## 0.1.24
 - Added light theme and background customisation
 - Added sync with VSCodeVim custom keybindings
