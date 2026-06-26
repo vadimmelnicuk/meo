@@ -1,4 +1,4 @@
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare, PanelLeftRightDashed } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare, PanelLeftRightDashed, SpellCheck2 } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -152,6 +152,7 @@ let vimLeaderState = '\\';
 let lineNumbersVisible = true;
 let gitChangesGutterVisible = true;
 let gitDiffLineHighlightsEnabled = true;
+let spellCheckEnabled = true;
 let contentMaxWidthEnabled = false;
 
 const CONTENT_MAX_WIDTH_ENABLED_VALUE = '800px';
@@ -186,6 +187,13 @@ gitChangesGutterBtn.dataset.action = 'gitChangesGutter';
 gitChangesGutterBtn.title = 'Hide Git Changes Gutter';
 gitChangesGutterBtn.appendChild(createElement(GitCompare, { width: 18, height: 18 }));
 
+const spellCheckBtn = document.createElement('button');
+spellCheckBtn.type = 'button';
+spellCheckBtn.className = 'format-button toggle-button is-active';
+spellCheckBtn.dataset.action = 'spellCheck';
+spellCheckBtn.title = 'Disable Spellcheck';
+spellCheckBtn.appendChild(createElement(SpellCheck2, { width: 18, height: 18 }));
+
 const updateLineNumbersUI = () => {
   lineNumbersBtn.classList.toggle('is-active', lineNumbersVisible);
   lineNumbersBtn.setAttribute('aria-pressed', lineNumbersVisible ? 'true' : 'false');
@@ -196,6 +204,12 @@ const updateGitChangesGutterUI = () => {
   gitChangesGutterBtn.classList.toggle('is-active', gitChangesGutterVisible);
   gitChangesGutterBtn.setAttribute('aria-pressed', gitChangesGutterVisible ? 'true' : 'false');
   gitChangesGutterBtn.title = gitChangesGutterVisible ? 'Hide Git Changes' : 'Show Git Changes';
+};
+
+const updateSpellCheckUI = () => {
+  spellCheckBtn.classList.toggle('is-active', spellCheckEnabled);
+  spellCheckBtn.setAttribute('aria-pressed', spellCheckEnabled ? 'true' : 'false');
+  spellCheckBtn.title = spellCheckEnabled ? 'Disable Spellcheck' : 'Enable Spellcheck';
 };
 
 const updateContentMaxWidthUI = () => {
@@ -239,6 +253,18 @@ const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
   updateGitChangesGutterUI();
   if (post && changed) {
     vscode.postMessage({ type: 'setGitChangesGutter', visible: gitChangesGutterVisible });
+  }
+};
+
+const setSpellCheckEnabled = (enabled, { post = true } = {}) => {
+  const nextEnabled = enabled !== false;
+  const changed = nextEnabled !== spellCheckEnabled;
+  if (changed) {
+    spellCheckEnabled = nextEnabled;
+  }
+  updateSpellCheckUI();
+  if (post && changed) {
+    vscode.postMessage({ type: 'setSpellCheck', enabled: spellCheckEnabled });
   }
 };
 
@@ -291,6 +317,10 @@ const toggleLineNumbers = () => {
 
 const toggleGitChangesGutter = () => {
   setGitChangesGutterVisible(!gitChangesGutterVisible);
+};
+
+const toggleSpellCheck = () => {
+  setSpellCheckEnabled(!spellCheckEnabled);
 };
 
 const separator = document.createElement('div');
@@ -463,7 +493,7 @@ const exportWrapper = document.createElement('div');
 exportWrapper.className = 'export-wrapper';
 exportWrapper.append(exportBtn, exportDropdownWrapper);
 
-rightGroup.append(contentMaxWidthBtn, outlineBtn, findToggleBtn, lineNumbersBtn, gitChangesGutterBtn, exportWrapper);
+rightGroup.append(findToggleBtn, contentMaxWidthBtn, outlineBtn, lineNumbersBtn, gitChangesGutterBtn, spellCheckBtn, exportWrapper);
 
 const modeGroup = document.createElement('div');
 modeGroup.className = 'mode-group';
@@ -539,6 +569,8 @@ let modeToggleShouldRestoreEditorFocus = false;
 let gitClient: any = null;
 let pendingEditorFocus = false;
 let pendingDiagnostics: any[] = [];
+let diagnosticSuggestionRequestCounter = 0;
+const pendingDiagnosticSuggestionRequests = new Map<string, { from: number; to: number }>();
 let pendingRevealSelection: { anchor: number; head: number; focus?: boolean } | null = null;
 let pendingRestoreTopLine: number | null = null;
 let pendingRestoreTopLineOffset = 0;
@@ -913,7 +945,30 @@ const focusEditorFromHost = () => {
 const applyDiagnosticsFromHost = (diagnostics: unknown): void => {
   const nextDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
   pendingDiagnostics = nextDiagnostics;
+  pendingDiagnosticSuggestionRequests.clear();
+  selectionMenuController.hide();
   editor?.setDiagnostics?.(nextDiagnostics);
+};
+
+const requestDiagnosticSuggestions = (diagnostic: {
+  from: number;
+  to: number;
+  message: string;
+  source?: string;
+  code?: string;
+}): string => {
+  const requestId = `diagnostic-suggestions-${Date.now()}-${diagnosticSuggestionRequestCounter += 1}`;
+  pendingDiagnosticSuggestionRequests.set(requestId, { from: diagnostic.from, to: diagnostic.to });
+  vscode.postMessage({
+    type: 'requestDiagnosticSuggestions',
+    requestId,
+    from: diagnostic.from,
+    to: diagnostic.to,
+    message: diagnostic.message,
+    source: diagnostic.source,
+    code: diagnostic.code
+  });
+  return requestId;
 };
 
 gitClient = createGitClient({
@@ -1201,6 +1256,7 @@ const mountInitialEditor = async () => {
         vscode.postMessage({ type: 'openLink', href });
       },
       onSelectionChange: (state: any) => selectionMenuController.update(state),
+      onRequestDiagnosticSuggestions: requestDiagnosticSuggestions,
       onViewportChange: () => scheduleViewPositionCapture(),
       onRequestGitBlame: requestGitBlameForLine,
       onOpenGitRevisionForLine: openGitRevisionForLine,
@@ -1314,6 +1370,9 @@ const handleInit = (message: any) => {
   }
   if (typeof message.gitChangesGutter === 'boolean') {
     setGitChangesGutterVisible(message.gitChangesGutter, { post: false });
+  }
+  if (typeof message.spellCheckEnabled === 'boolean') {
+    setSpellCheckEnabled(message.spellCheckEnabled, { post: false });
   }
   if (typeof message.gitDiffLineHighlights === 'boolean') {
     gitDiffLineHighlightsEnabled = message.gitDiffLineHighlights;
@@ -1574,6 +1633,11 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'spellCheckChanged') {
+    setSpellCheckEnabled(message.enabled, { post: false });
+    return;
+  }
+
   if (message.type === 'contentMaxWidthChanged') {
     setContentMaxWidthEnabled(message.enabled, { post: false });
     return;
@@ -1619,6 +1683,20 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'diagnosticsChanged') {
     applyDiagnosticsFromHost(message.diagnostics);
+    return;
+  }
+
+  if (message.type === 'diagnosticSuggestionsResult') {
+    const request = pendingDiagnosticSuggestionRequests.get(message.requestId);
+    pendingDiagnosticSuggestionRequests.delete(message.requestId);
+    if (!request || !Array.isArray(message.suggestions) || message.suggestions.length === 0) {
+      return;
+    }
+    editor?.showDiagnosticSuggestions?.(message.requestId, {
+      from: message.from,
+      to: message.to,
+      suggestions: message.suggestions
+    });
     return;
   }
 
@@ -1858,6 +1936,15 @@ selectionMenuElements.menu.addEventListener('pointerdown', (event) => {
 });
 
 selectionMenuElements.menu.addEventListener('click', (event) => {
+  const suggestionButton = (event.target as Element).closest('.selection-inline-suggestion') as HTMLElement | null;
+  if (suggestionButton) {
+    const index = parseInt(suggestionButton.dataset.suggestionIndex ?? '', 10);
+    if (Number.isFinite(index)) {
+      selectionMenuController.handleSuggestion(index);
+    }
+    return;
+  }
+
   const button = (event.target as Element).closest('.selection-inline-button') as HTMLElement | null;
   if (!button) return;
   const { action } = button.dataset;
@@ -1896,6 +1983,7 @@ contentMaxWidthBtn.addEventListener('click', () => {
 });
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
+spellCheckBtn.addEventListener('click', toggleSpellCheck);
 
 persistUiState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });

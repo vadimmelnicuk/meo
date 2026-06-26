@@ -13,6 +13,7 @@ type WebviewMessage =
   | { type: 'setMode'; mode: 'live' | 'source' }
   | { type: 'setLineNumbers'; visible: boolean }
   | { type: 'setGitChangesGutter'; visible: boolean }
+  | { type: 'setSpellCheck'; enabled: boolean }
   | { type: 'setContentMaxWidth'; enabled: boolean }
   | { type: 'setOutlineVisible'; visible: boolean }
   | { type: 'setFindOptions'; findOptions: { wholeWord: boolean; caseSensitive: boolean } }
@@ -21,6 +22,7 @@ type WebviewMessage =
   | { type: 'resolveImageSrc'; requestId: string; url: string }
   | { type: 'resolveWikiLinks'; requestId: string; targets: string[] }
   | { type: 'resolveLocalLinks'; requestId: string; targets: string[] }
+  | { type: 'requestDiagnosticSuggestions'; requestId: string; from: number; to: number; message: string; source?: string; code?: string }
   | { type: 'saveDocument' }
   | { type: 'exportDocument'; format: 'html' | 'pdf' }
   | { type: 'exportSnapshot'; requestId: string; text: string; environment?: Record<string, unknown> }
@@ -35,7 +37,7 @@ type VimKeybinding = {
 };
 
 type ExtensionMessage =
-  | { type: 'init'; text: string; version: number; diagnostics: EditorDiagnostic[]; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; contentMaxWidthEnabled: boolean; vimMode: boolean; vimKeybindings: VimKeybinding[]; vimLeader: string; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
+  | { type: 'init'; text: string; version: number; diagnostics: EditorDiagnostic[]; theme: ThemeSettings; mode: 'live' | 'source'; outlinePosition: 'left' | 'right'; outlineVisible: boolean; lineNumbers: boolean; gitChangesGutter: boolean; gitDiffLineHighlights: boolean; spellCheckEnabled: boolean; contentMaxWidthEnabled: boolean; vimMode: boolean; vimKeybindings: VimKeybinding[]; vimLeader: string; findOptions: { wholeWord: boolean; caseSensitive: boolean }; restoreTopLine?: number; restoreTopLineOffset?: number }
   | { type: 'docChanged'; text: string; version: number }
   | { type: 'applied'; version: number }
   | { type: 'focusEditor' }
@@ -47,6 +49,7 @@ type ExtensionMessage =
   | { type: 'lineNumbersChanged'; enabled: boolean }
   | { type: 'gitChangesGutterChanged'; enabled: boolean }
   | { type: 'gitDiffLineHighlightsChanged'; enabled: boolean }
+  | { type: 'spellCheckChanged'; enabled: boolean }
   | { type: 'contentMaxWidthChanged'; enabled: boolean }
   | { type: 'vimModeChanged'; enabled: boolean }
   | { type: 'vimKeybindingsChanged'; keybindings: VimKeybinding[]; leaderKey: string }
@@ -54,6 +57,7 @@ type ExtensionMessage =
   | { type: 'resolvedImageSrc'; requestId: string; resolvedUrl: string }
   | { type: 'resolvedWikiLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }
   | { type: 'resolvedLocalLinks'; requestId: string; results: Array<{ target: string; exists: boolean }> }
+  | { type: 'diagnosticSuggestionsResult'; requestId: string; from: number; to: number; suggestions: string[] }
   | { type: 'savedImagePath'; requestId: string; success: boolean; path?: string; error?: string };
 
 interface ThemeSettings {

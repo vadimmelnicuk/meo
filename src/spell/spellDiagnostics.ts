@@ -11,6 +11,7 @@ import {
 export const MEO_SPELL_DIAGNOSTIC_SOURCE = 'MEO Spell';
 
 const maxSpellCheckTextLength = 1_000_000;
+const maxSpellSuggestions = 1;
 
 export function shouldRunMeoSpellCheck(document: vscode.TextDocument): boolean {
   if (document.uri.scheme !== 'file') {
@@ -64,12 +65,67 @@ export async function collectMeoSpellDiagnostics(document: vscode.TextDocument):
   return result.issues.map((issue) => createDiagnostic(document, issue));
 }
 
+export async function collectMeoSpellSuggestions(
+  document: vscode.TextDocument,
+  normalizedFrom: number,
+  normalizedTo: number
+): Promise<string[]> {
+  if (!shouldRunMeoSpellCheck(document)) {
+    return [];
+  }
+
+  const text = document.getText().replace(/\r\n?/g, '\n');
+  const settings = await resolveCSpellSettings(document);
+  const result = await spellCheckDocument(
+    {
+      uri: document.uri.toString(),
+      text,
+      languageId: document.languageId || 'markdown'
+    },
+    { generateSuggestions: true },
+    {
+      ...settings,
+      numSuggestions: maxSpellSuggestions,
+      suggestionsTimeout: 750
+    }
+  );
+
+  if (!result.checked) {
+    return [];
+  }
+
+  const targetFrom = Math.max(0, Math.floor(normalizedFrom));
+  const targetTo = Math.max(targetFrom, Math.floor(normalizedTo));
+  const issue = result.issues.find((candidate) => {
+    const from = Math.max(0, Math.floor(candidate.offset));
+    const to = from + Math.max(1, Math.floor(candidate.length ?? candidate.text.length));
+    return from === targetFrom && to === targetTo;
+  });
+
+  return uniqueSuggestions(issue?.suggestions ?? [], issue?.text ?? '').slice(0, maxSpellSuggestions);
+}
+
 async function resolveCSpellSettings(document: vscode.TextDocument): Promise<CSpellUserSettings> {
   const localConfig = await searchForConfig(document.uri.fsPath);
   if (!localConfig) {
     return getDefaultSettings();
   }
   return mergeSettings(getDefaultSettings(), localConfig);
+}
+
+function uniqueSuggestions(suggestions: string[], original: string): string[] {
+  const seen = new Set<string>();
+  const normalizedOriginal = original.toLowerCase();
+  const result: string[] = [];
+  for (const suggestion of suggestions) {
+    const trimmed = `${suggestion}`.trim();
+    if (!trimmed || trimmed.toLowerCase() === normalizedOriginal || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
 }
 
 function createDiagnostic(document: vscode.TextDocument, issue: ValidationIssue): vscode.Diagnostic {
@@ -113,4 +169,3 @@ function mapNormalizedOffsetToDocumentOffset(documentText: string, normalizedOff
 
   return documentIndex;
 }
-

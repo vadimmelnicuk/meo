@@ -64,6 +64,7 @@ import {
   type LatexMathRange,
   type LatexMathMode
 } from './helpers/math';
+import { diagnosticDataField } from './helpers/diagnostics';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -1106,6 +1107,7 @@ function addListLineDecorations(builder, state, indentSelectedLines, frontmatter
 
 function buildDecorations(state) {
   const ranges = [];
+  const diagnostics = state.field(diagnosticDataField, false) ?? [];
   const activeLines = collectActiveLines(state);
   const indentSelectedLines = collectIndentSelectedLines(state);
   const tree = resolvedSyntaxTree(state);
@@ -1183,7 +1185,7 @@ function buildDecorations(state) {
       } else if (node.name === 'Table') {
         const tableInfo = parseTableInfo(state, node);
         parsedTableRanges.push({ from: tableInfo.from, to: tableInfo.to });
-        addTableDecorations(ranges, state, node);
+        addTableDecorations(ranges, state, node, diagnostics);
       } else if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.codeBlock);
         if (node.name === 'FencedCode') {
@@ -1404,7 +1406,7 @@ function buildDecorations(state) {
     },
   });
 
-  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks);
+  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics);
   addRawFileUrlDecorations(ranges, state, tree, frontmatter);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
@@ -2112,7 +2114,7 @@ function detectTableBlocks(state) {
   return blocks;
 }
 
-function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, mermaidColonBlocks) {
+function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics = []) {
   const tableBlocks = detectTableBlocks(state);
   for (const block of tableBlocks) {
     const from = state.doc.line(block.startLineNo).from;
@@ -2120,7 +2122,7 @@ function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, me
     if (overlapsParsedTableRange(from, to, parsedTableRanges)) continue;
     if (isInsideCodeBlock(tree, from)) continue;
     if (rangeOverlapsMermaidColonBlock(mermaidColonBlocks, from, to)) continue;
-    addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo);
+    addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo, diagnostics);
   }
 }
 

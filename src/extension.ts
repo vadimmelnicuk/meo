@@ -39,6 +39,7 @@ import {
   VIM_MODE_SETTING_KEY,
   CODE_BLOCKS_VSCODE_THEME_SETTING_KEY,
   CONTENT_MAX_WIDTH_SETTING_KEY,
+  SPELL_CHECK_SETTING_KEY,
   getUseVscodeThemeForCodeBlocks,
   getCodeBlockVscodeTheme,
   syncEditorAssociations,
@@ -52,6 +53,7 @@ import {
   getOutlinePosition,
   getOutlineVisible,
   getContentMaxWidthEnabled,
+  getSpellCheckEnabled,
   getThemeSettings,
   getVimKeybindings,
   getVimLeaderKey,
@@ -586,9 +588,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
 
     if (
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.spellCheck.enabled`) ||
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SPELL_CHECK_SETTING_KEY}`) ||
       event.affectsConfiguration('cSpell')
     ) {
+      if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SPELL_CHECK_SETTING_KEY}`)) {
+        this.broadcast({ type: 'spellCheckChanged', enabled: getSpellCheckEnabled() });
+      }
       for (const session of this.panelSessions.values()) {
         session.refreshSpellDiagnostics();
       }

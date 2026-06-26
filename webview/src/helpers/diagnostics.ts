@@ -63,6 +63,47 @@ function buildDiagnosticDecorations(docLength: number, diagnostics: EditorDiagno
   return builder.finish();
 }
 
+function normalizeDiagnostics(docLength: number, diagnostics: EditorDiagnostic[]): EditorDiagnostic[] {
+  if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
+    return [];
+  }
+
+  const result: EditorDiagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    const from = Math.max(0, Math.min(Math.floor(diagnostic.from), docLength));
+    const to = Math.max(from, Math.min(Math.floor(diagnostic.to), docLength));
+    if (to <= from) {
+      continue;
+    }
+    result.push({ ...diagnostic, from, to });
+  }
+  return result;
+}
+
+export const diagnosticDataField = StateField.define<EditorDiagnostic[]>({
+  create() {
+    return [];
+  },
+  update(diagnostics: EditorDiagnostic[], tr: Transaction): EditorDiagnostic[] {
+    for (const effect of tr.effects) {
+      if (effect.is(setDiagnosticsEffect)) {
+        return normalizeDiagnostics(tr.state.doc.length, effect.value);
+      }
+    }
+    if (!tr.docChanged || diagnostics.length === 0) {
+      return diagnostics;
+    }
+    return normalizeDiagnostics(
+      tr.state.doc.length,
+      diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        from: tr.changes.mapPos(diagnostic.from),
+        to: tr.changes.mapPos(diagnostic.to)
+      }))
+    );
+  }
+});
+
 export const diagnosticField = StateField.define<DecorationSet>({
   create() {
     return Decoration.none;

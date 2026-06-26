@@ -44,7 +44,7 @@ import {
 import { insertTable, sourceTableHeaderLineField } from './helpers/tables';
 import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
 import { collectLatexMathRanges } from './helpers/math';
-import { diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
+import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 
 declare module '@codemirror/view' {
   interface EditorView {
@@ -156,6 +156,7 @@ export function createEditor({
   onApplyChanges,
   onOpenLink,
   onSelectionChange,
+  onRequestDiagnosticSuggestions,
   onViewportChange,
   onRequestGitBlame,
   onOpenGitRevisionForLine,
@@ -184,6 +185,17 @@ export function createEditor({
   let vimKeybindings = initialVimKeybindings;
   let vimLeader = initialVimLeader;
   let appliedVimKeybindings: Array<{ before: string; mode: string }> = [];
+  let currentDiagnostics: EditorDiagnostic[] = Array.isArray(initialDiagnostics) ? initialDiagnostics : [];
+  let lastDiagnosticClick: { key: string; from: number; to: number } | null = null;
+  let pendingDiagnosticSuggestionRequest: {
+    requestId: string;
+    key: string;
+    from: number;
+    to: number;
+    anchorX: number;
+    anchorY: number;
+    anchorBottomY: number;
+  } | null = null;
 
   const expandVimLeader = (keys: string, leaderKey: string) => keys.replace(/<leader>/gi, leaderKey || '\\');
   const clearVimKeybindings = () => {
@@ -537,6 +549,40 @@ export function createEditor({
     return active.closest('.meo-md-html-table-wrap') ? active : null;
   };
 
+  const getTableInputSourceRange = (input: HTMLTextAreaElement): { from: number; to: number } | null => {
+    const from = Number.parseInt(input.dataset.tableCellFrom ?? '', 10);
+    const to = Number.parseInt(input.dataset.tableCellTo ?? '', 10);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from) {
+      return null;
+    }
+    return { from, to };
+  };
+
+  const getTableInputDocumentSelection = (
+    input: HTMLTextAreaElement
+  ): { from: number; to: number; anchorX: number; anchorY: number; anchorBottomY: number } | null => {
+    const sourceRange = getTableInputSourceRange(input);
+    if (!sourceRange) {
+      return null;
+    }
+    const rawStart = input.selectionStart ?? 0;
+    const rawEnd = input.selectionEnd ?? rawStart;
+    if (rawStart === rawEnd) {
+      return null;
+    }
+    const selectionStart = Math.min(rawStart, rawEnd);
+    const selectionEnd = Math.max(rawStart, rawEnd);
+    const coords = measureTextareaSelectionStart(input, selectionStart);
+    const lineHeight = parseFloat(getComputedStyle(input).lineHeight);
+    return {
+      from: sourceRange.from + selectionStart,
+      to: sourceRange.from + selectionEnd,
+      anchorX: coords.left,
+      anchorY: coords.top,
+      anchorBottomY: coords.top + (Number.isFinite(lineHeight) ? lineHeight : 20)
+    };
+  };
+
   const commitActiveTableInput = () => {
     if (!view) {
       return false;
@@ -596,17 +642,20 @@ export function createEditor({
   };
 
   const getActiveTableSelectionState = (input) => {
-    const rawStart = input.selectionStart ?? 0;
-    const rawEnd = input.selectionEnd ?? rawStart;
-    if (rawStart === rawEnd) {
-      return null;
+    const selection = getTableInputDocumentSelection(input);
+    if (!selection) return null;
+    const diagnostic = diagnosticForRange(selection.from, selection.to);
+    if (diagnostic) {
+      requestDiagnosticSuggestionsFor(diagnostic, selection);
     }
-    const selectionStart = Math.min(rawStart, rawEnd);
-    const coords = measureTextareaSelectionStart(input, selectionStart);
     return {
       visible: true,
-      anchorX: coords.left,
-      anchorY: coords.top
+      from: selection.from,
+      to: selection.to,
+      align: diagnostic ? 'start' : undefined,
+      anchorX: selection.anchorX,
+      anchorY: selection.anchorY,
+      anchorBottomY: selection.anchorBottomY
     };
   };
 
@@ -828,7 +877,7 @@ export function createEditor({
     return isMatchSelection;
   };
 
-  const resolveNativeSelectionAnchor = (): { anchorX: number; anchorY: number } | null => {
+  const resolveNativeSelectionAnchor = (): { anchorX: number; anchorY: number; anchorBottomY: number } | null => {
     if (!view) {
       return null;
     }
@@ -864,9 +913,14 @@ export function createEditor({
 
     return {
       anchorX: topRect.left,
-      anchorY: topRect.top
+      anchorY: topRect.top,
+      anchorBottomY: topRect.bottom
     };
   };
+
+  const isDiagnosticSelectionRange = (from: number, to: number): boolean => currentDiagnostics.some((diagnostic) => (
+    diagnostic.from === from && diagnostic.to === to
+  ));
 
   const emitSelectionChange = () => {
     if (!view || typeof onSelectionChange !== 'function') {
@@ -897,14 +951,17 @@ export function createEditor({
       return;
     }
 
+    const align = isDiagnosticSelectionRange(from, to) ? 'start' : undefined;
     const nativeAnchor = resolveNativeSelectionAnchor();
     if (nativeAnchor) {
       onSelectionChange({
         visible: true,
         from,
         to,
+        align,
         anchorX: nativeAnchor.anchorX,
-        anchorY: nativeAnchor.anchorY
+        anchorY: nativeAnchor.anchorY,
+        anchorBottomY: nativeAnchor.anchorBottomY
       });
       return;
     }
@@ -919,14 +976,173 @@ export function createEditor({
     const fromCharCoords = view.coordsForChar(from);
     const anchorX = fromCharCoords?.left ?? fromCoords.left;
     const anchorY = fromCharCoords ? Math.min(fromCoords.top, fromCharCoords.top) : fromCoords.top;
+    const anchorBottomY = fromCharCoords ? Math.max(fromCoords.bottom, fromCharCoords.bottom) : fromCoords.bottom;
 
     onSelectionChange({
       visible: true,
       from,
       to,
+      align,
       anchorX,
-      anchorY
+      anchorY,
+      anchorBottomY
     });
+  };
+
+  const diagnosticKey = (diagnostic: EditorDiagnostic): string => [
+    diagnostic.from,
+    diagnostic.to,
+    diagnostic.message,
+    diagnostic.source ?? '',
+    diagnostic.code ?? ''
+  ].join('\u001f');
+
+  const clearDiagnosticSuggestionState = (): void => {
+    lastDiagnosticClick = null;
+    pendingDiagnosticSuggestionRequest = null;
+  };
+
+  const diagnosticAtPosition = (pos: number): EditorDiagnostic | null => {
+    if (!Array.isArray(currentDiagnostics) || currentDiagnostics.length === 0) {
+      return null;
+    }
+
+    let best: EditorDiagnostic | null = null;
+    for (const diagnostic of currentDiagnostics) {
+      if (pos < diagnostic.from || pos > diagnostic.to) {
+        continue;
+      }
+      if (!best || diagnostic.to - diagnostic.from < best.to - best.from) {
+        best = diagnostic;
+      }
+    }
+    return best;
+  };
+
+  function diagnosticForRange(from: number, to: number): EditorDiagnostic | null {
+    return currentDiagnostics.find((diagnostic) => diagnostic.from === from && diagnostic.to === to) ?? null;
+  }
+
+  const selectedDiagnosticRange = (): EditorDiagnostic | null => {
+    if (!view || currentDiagnostics.length === 0) {
+      return null;
+    }
+
+    const selection = view.state.selection.main;
+    if (selection.empty) {
+      return null;
+    }
+
+    const from = Math.min(selection.from, selection.to);
+    const to = Math.max(selection.from, selection.to);
+    return diagnosticForRange(from, to);
+  };
+
+  const diagnosticFromPointer = (event: MouseEvent | PointerEvent, editorView: EditorView): EditorDiagnostic | null => {
+    const pos = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos === null) {
+      return null;
+    }
+
+    const selectedDiagnostic = selectedDiagnosticRange();
+    if (selectedDiagnostic && pos >= selectedDiagnostic.from && pos <= selectedDiagnostic.to) {
+      return selectedDiagnostic;
+    }
+
+    return diagnosticAtPosition(pos);
+  };
+
+  const diagnosticMenuAnchor = (
+    diagnostic: EditorDiagnostic
+  ): { anchorX: number; anchorY: number; anchorBottomY: number } | null => {
+    const fromCoords = view.coordsAtPos(diagnostic.from);
+    if (!fromCoords) {
+      return null;
+    }
+    const charCoords = view.coordsForChar(diagnostic.from);
+    return {
+      anchorX: charCoords?.left ?? fromCoords.left,
+      anchorY: charCoords ? Math.min(fromCoords.top, charCoords.top) : fromCoords.top,
+      anchorBottomY: charCoords ? Math.max(fromCoords.bottom, charCoords.bottom) : fromCoords.bottom
+    };
+  };
+
+  const requestDiagnosticSuggestionsFor = (
+    diagnostic: EditorDiagnostic,
+    anchor: { anchorX: number; anchorY: number; anchorBottomY?: number } | null = diagnosticMenuAnchor(diagnostic)
+  ): boolean => {
+    if (!anchor || typeof onRequestDiagnosticSuggestions !== 'function') {
+      pendingDiagnosticSuggestionRequest = null;
+      return false;
+    }
+
+    const key = diagnosticKey(diagnostic);
+    if (
+      pendingDiagnosticSuggestionRequest?.key === key &&
+      pendingDiagnosticSuggestionRequest.from === diagnostic.from &&
+      pendingDiagnosticSuggestionRequest.to === diagnostic.to
+    ) {
+      return true;
+    }
+
+    const requestId = onRequestDiagnosticSuggestions(diagnostic);
+    if (typeof requestId !== 'string' || !requestId) {
+      pendingDiagnosticSuggestionRequest = null;
+      return false;
+    }
+
+    pendingDiagnosticSuggestionRequest = {
+      requestId,
+      key,
+      from: diagnostic.from,
+      to: diagnostic.to,
+      anchorX: anchor.anchorX,
+      anchorY: anchor.anchorY,
+      anchorBottomY: anchor.anchorBottomY ?? anchor.anchorY
+    };
+    return true;
+  };
+
+  const trackDiagnosticClick = (event: PointerEvent, editorView: EditorView): void => {
+    const targetElement = targetElementFrom(event.target);
+    const diagnostic = diagnosticFromPointer(event, editorView);
+    if (!diagnostic || (!targetElement?.closest('.meo-diagnostic') && diagnostic !== selectedDiagnosticRange())) {
+      clearDiagnosticSuggestionState();
+      return;
+    }
+
+    const key = diagnosticKey(diagnostic);
+    const isSecondClick =
+      lastDiagnosticClick?.key === key &&
+      lastDiagnosticClick.from === diagnostic.from &&
+      lastDiagnosticClick.to === diagnostic.to;
+    const isNativeSecondClick = event.detail >= 2 && diagnostic === selectedDiagnosticRange();
+    lastDiagnosticClick = { key, from: diagnostic.from, to: diagnostic.to };
+
+    if ((!isSecondClick && !isNativeSecondClick) || typeof onRequestDiagnosticSuggestions !== 'function') {
+      pendingDiagnosticSuggestionRequest = null;
+      return;
+    }
+
+    requestDiagnosticSuggestionsFor(diagnostic);
+  };
+
+  const requestDiagnosticSuggestionsFromPointer = (
+    event: MouseEvent | PointerEvent,
+    editorView: EditorView
+  ): boolean => {
+    const targetElement = targetElementFrom(event.target);
+    const diagnostic = diagnosticFromPointer(event, editorView);
+    if (!diagnostic || (!targetElement?.closest('.meo-diagnostic') && diagnostic !== selectedDiagnosticRange())) {
+      return false;
+    }
+
+    const anchor = {
+      anchorX: event.clientX,
+      anchorY: event.clientY,
+      anchorBottomY: event.clientY
+    };
+    return requestDiagnosticSuggestionsFor(diagnostic, anchor);
   };
 
   const isHistoryReplayUpdate = (update: ViewUpdate): boolean => {
@@ -1209,9 +1425,11 @@ export function createEditor({
           const target = event.target;
           const targetElement = targetElementFrom(target);
           if (!(target instanceof Node) || !view.contentDOM.contains(target)) {
+            clearDiagnosticSuggestionState();
             return false;
           }
 
+          trackDiagnosticClick(event, view);
           trackFrontmatterBoundaryClick(event, view);
 
           if (targetElement && targetElement.closest('.meo-mermaid-zoom-controls')) {
@@ -1243,6 +1461,12 @@ export function createEditor({
           if (view.dom.setPointerCapture) {
             view.dom.setPointerCapture(event.pointerId);
             capturedPointerId = event.pointerId;
+          }
+          return false;
+        },
+        contextmenu(event, view) {
+          if (!requestDiagnosticSuggestionsFromPointer(event, view)) {
+            return false;
           }
           return false;
         },
@@ -1342,6 +1566,7 @@ export function createEditor({
       modeCompartment.of(startMode === 'live' ? liveModeExtensions() : sourceMode()),
       searchQueryField,
       searchMatchField,
+      diagnosticDataField,
       diagnosticField,
       EditorView.updateListener.of((update) => {
         syncModeClasses();
@@ -1354,6 +1579,10 @@ export function createEditor({
         } else if (update.viewportChanged) {
           emitSelectionChange();
           onViewportChange?.();
+        }
+
+        if (update.docChanged) {
+          clearDiagnosticSuggestionState();
         }
 
         if (!update.docChanged || applyingExternal || applyingRenumber) {
@@ -1444,7 +1673,7 @@ export function createEditor({
   syncLineNumbersVisibility();
   syncGitGutterVisibility();
   syncSelectionClass();
-  view.dispatch({ effects: setDiagnosticsEffect.of(initialDiagnostics) });
+  view.dispatch({ effects: setDiagnosticsEffect.of(currentDiagnostics) });
   emitSelectionChange();
 
   return {
@@ -1583,6 +1812,7 @@ export function createEditor({
     },
     setText(textValue) {
       gitBlameHover?.hide();
+      clearDiagnosticSuggestionState();
       const currentText = view.state.doc.toString();
       const syncChange = findSyncChange(currentText, textValue);
       if (!syncChange) {
@@ -1605,6 +1835,7 @@ export function createEditor({
     },
     setMode(mode) {
       gitBlameHover?.hide();
+      clearDiagnosticSuggestionState();
       commitActiveTableInput();
       const nextMode = mode === 'live' ? 'live' : 'source';
       if (nextMode === currentMode) {
@@ -1828,7 +2059,76 @@ export function createEditor({
       view.dispatch({ effects: refreshDecorationsEffect.of(null) });
     },
     setDiagnostics(diagnostics: EditorDiagnostic[]) {
-      view.dispatch({ effects: setDiagnosticsEffect.of(diagnostics) });
+      currentDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
+      clearDiagnosticSuggestionState();
+      view.dispatch({ effects: setDiagnosticsEffect.of(currentDiagnostics) });
+    },
+    showDiagnosticSuggestions(requestId, payload) {
+      if (
+        !pendingDiagnosticSuggestionRequest ||
+        pendingDiagnosticSuggestionRequest.requestId !== requestId ||
+        pendingDiagnosticSuggestionRequest.from !== payload?.from ||
+        pendingDiagnosticSuggestionRequest.to !== payload?.to ||
+        !Array.isArray(payload?.suggestions) ||
+        payload.suggestions.length === 0
+      ) {
+        return;
+      }
+
+      const diagnostic = currentDiagnostics.find((item) => (
+        item.from === payload.from &&
+        item.to === payload.to &&
+        diagnosticKey(item) === pendingDiagnosticSuggestionRequest?.key
+      ));
+      if (!diagnostic) {
+        pendingDiagnosticSuggestionRequest = null;
+        return;
+      }
+
+      onSelectionChange?.({
+        visible: true,
+        from: payload.from,
+        to: payload.to,
+        align: 'start',
+        anchorX: pendingDiagnosticSuggestionRequest.anchorX,
+        anchorY: pendingDiagnosticSuggestionRequest.anchorY,
+        anchorBottomY: pendingDiagnosticSuggestionRequest.anchorBottomY,
+        diagnosticSuggestions: payload.suggestions.map((text) => ({
+          from: payload.from,
+          to: payload.to,
+          text
+        }))
+      });
+    },
+    applyDiagnosticSuggestion(from: number, to: number, insert: string) {
+      const activeTableInput = getActiveTableInput();
+      const tableSourceRange = activeTableInput ? getTableInputSourceRange(activeTableInput) : null;
+      if (
+        activeTableInput &&
+        tableSourceRange &&
+        from >= tableSourceRange.from &&
+        to <= tableSourceRange.to
+      ) {
+        const localFrom = from - tableSourceRange.from;
+        const localTo = to - tableSourceRange.from;
+        clearDiagnosticSuggestionState();
+        updateActiveTableInput(
+          activeTableInput,
+          activeTableInput.value.slice(0, localFrom) + insert + activeTableInput.value.slice(localTo),
+          localFrom + insert.length
+        );
+        return;
+      }
+
+      const docLength = view.state.doc.length;
+      const safeFrom = Math.max(0, Math.min(Math.floor(from), docLength));
+      const safeTo = Math.max(safeFrom, Math.min(Math.floor(to), docLength));
+      clearDiagnosticSuggestionState();
+      view.dispatch({
+        changes: { from: safeFrom, to: safeTo, insert },
+        selection: { anchor: safeFrom + insert.length }
+      });
+      emitSelectionChange();
     },
     refreshLayout() {
       view.requestMeasure();

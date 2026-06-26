@@ -12,6 +12,7 @@ export const EXTENSION_CONFIG_SECTION = 'markdownEditorOptimized';
 export const LINE_NUMBERS_SETTING_KEY = 'lineNumbers.visible';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
+export const SPELL_CHECK_SETTING_KEY = 'spellCheck.enabled';
 export const VIM_MODE_BEHAVIOR_SETTING_KEY = 'vimMode.behavior';
 export const VIM_MODE_SETTING_KEY = 'vimMode.enabled';
 export const CODE_BLOCKS_VSCODE_THEME_SETTING_KEY = 'codeBlocks.useVscodeTheme';
@@ -68,6 +69,10 @@ export function getGitChangesGutterEnabled(context: vscode.ExtensionContext): bo
 
 export function getGitDiffLineHighlightsEnabled(): boolean {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY, true);
+}
+
+export function getSpellCheckEnabled(): boolean {
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(SPELL_CHECK_SETTING_KEY, true);
 }
 
 export function getVimModeEnabled(context: vscode.ExtensionContext): boolean {

@@ -9,6 +9,7 @@ import { createLatexMathElement, parseLatexMathAt } from './math';
 import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
 import { normalizeSourceHref } from './rawUrls';
+import type { EditorDiagnostic } from './diagnostics';
 
 declare global {
   interface HTMLDivElement {
@@ -27,6 +28,8 @@ interface TableData {
   from?: number;
   to?: number;
   headerCells?: string[];
+  diagnostics?: TableCellDiagnostics[][][];
+  sourceRanges?: TableCellRange[][];
 }
 
 interface RowEntry {
@@ -106,6 +109,20 @@ interface TableSortState {
   column: number;
   direction: TableSortDirection;
   order: number[];
+}
+
+interface TableCellDiagnostics {
+  from: number;
+  to: number;
+  severity: 0 | 1 | 2 | 3;
+  message: string;
+  source?: string;
+  code?: string;
+}
+
+interface TableCellRange {
+  from: number;
+  to: number;
 }
 
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
@@ -240,6 +257,12 @@ const tableInlineSchemeRe = /^[a-z][a-z0-9+.-]*:/i;
 const tableInlineRawUrlRe = /^(?:[a-z][a-z0-9+.-]*:\/\/|mailto:|file:|www\.)[^\s<]+/i;
 const tableInlineEmojiShortcodeRe = /^:([a-zA-Z0-9_+-]+):/;
 const tableInlineEscapableChars = new Set(['\\', '*', '_', '~', '`', '[', ']', '(', ')', '!', '|', '<', '>']);
+const tableDiagnosticSeverityClasses = [
+  'meo-diagnostic-error',
+  'meo-diagnostic-warning',
+  'meo-diagnostic-info',
+  'meo-diagnostic-hint'
+];
 
 function isTableInlineWhitespaceOnly(text) {
   return /^\s+$/.test(text);
@@ -266,6 +289,54 @@ function tableInlineHrefFromWikiTarget(target) {
   if (!trimmed) return '';
   if (tableInlineSchemeRe.test(trimmed)) return trimmed;
   return `${wikiLinkScheme}${encodeURIComponent(trimmed)}`;
+}
+
+function tableDiagnosticTitle(diagnostic: TableCellDiagnostics): string {
+  const parts = [];
+  if (diagnostic.source) parts.push(diagnostic.source);
+  if (diagnostic.code) parts.push(diagnostic.code);
+  const prefix = parts.length ? `${parts.join(' ')}: ` : '';
+  return `${prefix}${diagnostic.message}`;
+}
+
+function appendDiagnosticText(parent: HTMLElement, text: string, offset: number, diagnostics: TableCellDiagnostics[]) {
+  if (!text) return;
+  if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  const from = offset;
+  const to = offset + text.length;
+  const relevant = diagnostics
+    .filter((diagnostic) => diagnostic.from < to && diagnostic.to > from)
+    .sort((left, right) => left.from === right.from ? left.to - right.to : left.from - right.from);
+  if (relevant.length === 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  let cursor = from;
+  for (const diagnostic of relevant) {
+    const diagnosticFrom = Math.max(from, diagnostic.from);
+    const diagnosticTo = Math.min(to, diagnostic.to);
+    if (diagnosticTo <= diagnosticFrom || diagnosticFrom < cursor) {
+      continue;
+    }
+    if (diagnosticFrom > cursor) {
+      parent.appendChild(document.createTextNode(text.slice(cursor - from, diagnosticFrom - from)));
+    }
+    const span = document.createElement('span');
+    const severityClass = tableDiagnosticSeverityClasses[diagnostic.severity] ?? tableDiagnosticSeverityClasses[0];
+    span.className = `meo-diagnostic ${severityClass}`;
+    span.title = tableDiagnosticTitle(diagnostic);
+    span.textContent = text.slice(diagnosticFrom - from, diagnosticTo - from);
+    parent.appendChild(span);
+    cursor = diagnosticTo;
+  }
+  if (cursor < to) {
+    parent.appendChild(document.createTextNode(text.slice(cursor - from)));
+  }
 }
 
 function decodeTableInlineEscapes(text) {
@@ -585,18 +656,29 @@ function appendTableInlinePreviewImage(parent, altText, url) {
   parent.appendChild(dom);
 }
 
-function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, options: { disableLinkParsers?: boolean } = {}) {
-  const { disableLinkParsers = false } = options;
+function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, options: {
+  baseOffset?: number;
+  diagnostics?: TableCellDiagnostics[];
+  disableLinkParsers?: boolean;
+} = {}) {
+  const { baseOffset = 0, diagnostics = [], disableLinkParsers = false } = options;
   let buffer = '';
+  let bufferStart = 0;
   const flushBuffer = () => {
     if (!buffer) return;
-    parent.appendChild(document.createTextNode(buffer));
+    appendDiagnosticText(parent, buffer, baseOffset + bufferStart, diagnostics);
     buffer = '';
+  };
+  const appendToBuffer = (value: string, index: number) => {
+    if (!buffer) {
+      bufferStart = index;
+    }
+    buffer += value;
   };
 
   for (let i = 0; i < text.length;) {
     if (text[i] === '\\' && i + 1 < text.length && tableInlineEscapableChars.has(text[i + 1])) {
-      buffer += text[i + 1];
+      appendToBuffer(text[i + 1], i);
       i += 2;
       continue;
     }
@@ -616,7 +698,7 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
     if (kbd) {
       const keyText = decodeTableInlineEscapes(kbd.content).trim();
       if (!keyText) {
-        buffer += text.slice(i, kbd.nextIndex);
+        appendToBuffer(text.slice(i, kbd.nextIndex), i);
       } else {
         flushBuffer();
         const el = document.createElement('kbd');
@@ -635,7 +717,7 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         flushBuffer();
         parent.appendChild(mathElement);
       } else {
-        buffer += text.slice(math.from, math.to);
+        appendToBuffer(text.slice(math.from, math.to), math.from);
       }
       i = math.to;
       continue;
@@ -664,7 +746,10 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         if (link.url) {
           appendTableInlinePreviewLink(parent, link.label, decodeTableInlineEscapes(link.url));
         } else {
-          appendTableInlinePreviewNodes(parent, link.label, options);
+          appendTableInlinePreviewNodes(parent, link.label, {
+            ...options,
+            baseOffset: baseOffset + i + 1
+          });
         }
         i = link.nextIndex;
         continue;
@@ -684,17 +769,26 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       flushBuffer();
       if (span.kind === 'em') {
         const el = document.createElement('em');
-        appendTableInlinePreviewNodes(el, span.content);
+        appendTableInlinePreviewNodes(el, span.content, {
+          ...options,
+          baseOffset: baseOffset + i + 1
+        });
         parent.appendChild(el);
       } else if (span.kind === 'strong') {
         const el = document.createElement('strong');
         el.className = 'meo-md-strong';
-        appendTableInlinePreviewNodes(el, span.content);
+        appendTableInlinePreviewNodes(el, span.content, {
+          ...options,
+          baseOffset: baseOffset + i + 2
+        });
         parent.appendChild(el);
       } else if (span.kind === 'strike') {
         const el = document.createElement('span');
         el.className = 'meo-md-strike';
-        appendTableInlinePreviewNodes(el, span.content);
+        appendTableInlinePreviewNodes(el, span.content, {
+          ...options,
+          baseOffset: baseOffset + i + (text.startsWith('~~', i) ? 2 : 1)
+        });
         parent.appendChild(el);
       }
       i = span.nextIndex;
@@ -722,17 +816,17 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
-    buffer += text[i];
+    appendToBuffer(text[i], i);
     i += 1;
   }
 
   flushBuffer();
 }
 
-function renderTableCellInlinePreview(previewEl, value) {
+function renderTableCellInlinePreview(previewEl, value, diagnostics: TableCellDiagnostics[] = []) {
   if (!(previewEl instanceof HTMLElement)) return;
   previewEl.replaceChildren();
-  appendTableInlinePreviewNodes(previewEl, value ?? '');
+  appendTableInlinePreviewNodes(previewEl, value ?? '', { diagnostics });
 }
 
 function consumeTableInlineProtectedSpan(text, index, endIndex) {
@@ -1812,9 +1906,13 @@ class HtmlTableWidget extends WidgetType {
     this.commitMatrix(matrix, dom, { row: this.activeTarget.row, col: focusCol });
   }
 
+  cellDiagnostics(rowIndex, colIndex): TableCellDiagnostics[] {
+    return this.tableData.diagnostics?.[rowIndex]?.[colIndex] ?? [];
+  }
+
   wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview) {
     const refreshPreview = () => {
-      this.renderCellPreview(preview, input.value);
+      this.renderCellPreview(preview, input.value, this.cellDiagnostics(rowIndex, colIndex));
     };
     const notifySelectionChange = () => {
       this.emitTableSelectionChange(container);
@@ -1983,15 +2081,16 @@ class HtmlTableWidget extends WidgetType {
     });
   }
 
-  renderCellPreview(preview, value) {
+  renderCellPreview(preview, value, diagnostics: TableCellDiagnostics[] = []) {
     if (!(preview instanceof HTMLElement)) return;
-    renderTableCellInlinePreview(preview, value ?? '');
+    renderTableCellInlinePreview(preview, value ?? '', diagnostics);
   }
 
   refreshCellPreviewFromInput(input) {
     if (!(input instanceof HTMLTextAreaElement)) return;
     const preview = input.parentElement?.querySelector('.meo-md-html-table-cell-preview');
-    this.renderCellPreview(preview, input.value);
+    const coords = this.parseCellCoords(input.dataset.tableRow, input.dataset.tableCol);
+    this.renderCellPreview(preview, input.value, coords ? this.cellDiagnostics(coords.row, coords.col) : []);
   }
 
   setCellEditingState(input, isEditing) {
@@ -2000,27 +2099,37 @@ class HtmlTableWidget extends WidgetType {
     content.classList.toggle('is-editing', isEditing);
   }
 
-  createCellPreview(value) {
+  createCellPreview(value, diagnostics: TableCellDiagnostics[] = []) {
     const preview = document.createElement('div');
     preview.className = 'meo-md-html-table-cell-preview';
     preview.setAttribute('aria-hidden', 'true');
-    this.renderCellPreview(preview, value);
+    this.renderCellPreview(preview, value, diagnostics);
     return preview;
+  }
+
+  cellSourceRange(rowIndex, colIndex): TableCellRange | null {
+    return this.tableData.sourceRanges?.[rowIndex]?.[colIndex] ?? null;
   }
 
   createCellInput(value, rowIndex, colIndex) {
     const input = document.createElement('textarea');
     input.rows = 1;
+    input.spellcheck = true;
     input.value = value;
     input.dataset.tableRow = String(rowIndex);
     input.dataset.tableCol = String(colIndex);
+    const sourceRange = this.cellSourceRange(rowIndex, colIndex);
+    if (sourceRange) {
+      input.dataset.tableCellFrom = String(sourceRange.from);
+      input.dataset.tableCellTo = String(sourceRange.to);
+    }
     return input;
   }
 
   createCellEditor(value, rowEl, rowInputs, container, rowIndex, colIndex) {
     const content = document.createElement('div');
     content.className = 'meo-md-html-table-cell-content';
-    const preview = this.createCellPreview(value);
+    const preview = this.createCellPreview(value, this.cellDiagnostics(rowIndex, colIndex));
     const input = this.createCellInput(value, rowIndex, colIndex);
     this.wireInput(input, rowEl, rowInputs, container, rowIndex, colIndex, preview);
     content.append(preview, input);
@@ -2352,17 +2461,74 @@ export function parseTableInfo(state, tableNode) {
   };
 }
 
-export function addTableDecorations(builder, state, tableNode) {
+export function addTableDecorations(builder, state, tableNode, diagnostics: EditorDiagnostic[] = []) {
   const data = buildTableData(state, tableNode);
-  addTableWidgetDecoration(builder, data);
+  addTableWidgetDecoration(builder, data, diagnostics);
 }
 
-export function addTableDecorationsForLineRange(builder, state, startLineNo, endLineNo) {
+export function addTableDecorationsForLineRange(builder, state, startLineNo, endLineNo, diagnostics: EditorDiagnostic[] = []) {
   const data = buildTableDataForLineRange(state, startLineNo, endLineNo);
-  addTableWidgetDecoration(builder, data);
+  addTableWidgetDecoration(builder, data, diagnostics);
 }
 
-function addTableWidgetDecoration(builder, data) {
+function collectCellDiagnostics(
+  diagnostics: EditorDiagnostic[],
+  segment: { from: number; to: number } | undefined
+): TableCellDiagnostics[] {
+  if (!segment || !Array.isArray(diagnostics) || diagnostics.length === 0) {
+    return [];
+  }
+  return diagnostics
+    .filter((diagnostic) => diagnostic.from < segment.to && diagnostic.to > segment.from)
+    .map((diagnostic) => ({
+      from: Math.max(0, diagnostic.from - segment.from),
+      to: Math.max(0, Math.min(diagnostic.to, segment.to) - segment.from),
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      source: diagnostic.source,
+      code: diagnostic.code
+    }))
+    .filter((diagnostic) => diagnostic.to > diagnostic.from);
+}
+
+function collectTableDiagnostics(data, diagnostics: EditorDiagnostic[]): TableCellDiagnostics[][][] {
+  const rows = [];
+  const { headerLine, dataLines, colCount } = data;
+  if (!headerLine || colCount <= 0) {
+    return rows;
+  }
+
+  const collectRow = (line) => Array.from({ length: colCount }, (_value, index) => (
+    collectCellDiagnostics(diagnostics, line.segments[index])
+  ));
+
+  rows.push(collectRow(headerLine));
+  for (const line of dataLines) {
+    rows.push(collectRow(line));
+  }
+  return rows;
+}
+
+function collectTableSourceRanges(data): TableCellRange[][] {
+  const rows = [];
+  const { headerLine, dataLines, colCount } = data;
+  if (!headerLine || colCount <= 0) {
+    return rows;
+  }
+
+  const collectRow = (line) => Array.from({ length: colCount }, (_value, index) => {
+    const segment = line.segments[index];
+    return segment ? { from: segment.from, to: segment.to } : { from: line.from, to: line.from };
+  });
+
+  rows.push(collectRow(headerLine));
+  for (const line of dataLines) {
+    rows.push(collectRow(line));
+  }
+  return rows;
+}
+
+function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[] = []) {
   const { from, to, headerLine, dataLines, alignments, colCount, startLine, endLine } = data;
   if (colCount === 0 || !headerLine) return;
 
@@ -2374,7 +2540,8 @@ function addTableWidgetDecoration(builder, data) {
     colCount,
     headerCells,
     rows,
-    normalizedAlignments
+    normalizedAlignments,
+    diagnostics: collectTableDiagnostics(data, diagnostics)
   });
 
   builder.push(
@@ -2391,7 +2558,9 @@ function addTableWidgetDecoration(builder, data) {
           rows,
           signature,
           startLine,
-          endLine
+          endLine,
+          diagnostics: collectTableDiagnostics(data, diagnostics),
+          sourceRanges: collectTableSourceRanges(data)
         }
       )
     }).range(from, to)

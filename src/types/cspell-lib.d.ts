@@ -8,6 +8,7 @@ declare module 'cspell-lib' {
     offset: number;
     length?: number;
     message?: string;
+    suggestions?: string[];
   }
 
   export interface SpellCheckDocumentResult {
@@ -20,8 +21,7 @@ declare module 'cspell-lib' {
   export function searchForConfig(searchFrom: string | URL | undefined): Promise<CSpellUserSettings | undefined>;
   export function spellCheckDocument(
     document: { uri: string; text: string; languageId?: string; locale?: string },
-    options: { generateSuggestions?: boolean },
+    options: { generateSuggestions?: boolean; noConfigSearch?: boolean },
     settings: CSpellUserSettings
   ): Promise<SpellCheckDocumentResult>;
 }
-

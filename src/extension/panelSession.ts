@@ -6,10 +6,12 @@ import {
   LINE_NUMBERS_SETTING_KEY,
   GIT_CHANGES_GUTTER_SETTING_KEY,
   CONTENT_MAX_WIDTH_SETTING_KEY,
+  SPELL_CHECK_SETTING_KEY,
   getContentMaxWidthEnabled,
   getLineNumbersEnabled,
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
+  getSpellCheckEnabled,
   getOutlinePosition,
   getOutlineVisible,
   getRememberPositionLines,
@@ -29,7 +31,12 @@ import type { ExportStyleEnvironment } from '../export/runtime';
 import type { ThemeSettings } from '../shared/themeDefaults';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { OutlinePosition } from '../shared/extensionConfig';
-import { collectMeoSpellDiagnostics, hasExternalSpellDiagnostics } from '../spell/spellDiagnostics';
+import {
+  collectMeoSpellDiagnostics,
+  collectMeoSpellSuggestions,
+  hasExternalSpellDiagnostics,
+  MEO_SPELL_DIAGNOSTIC_SOURCE
+} from '../spell/spellDiagnostics';
 
 export type EditorMode = 'live' | 'source';
 export type ExportFormat = 'html' | 'pdf';
@@ -48,6 +55,7 @@ type InitMessage = {
   lineNumbers: boolean;
   gitChangesGutter: boolean;
   gitDiffLineHighlights: boolean;
+  spellCheckEnabled: boolean;
   contentMaxWidthEnabled: boolean;
   vimMode: boolean;
   vimKeybindings: VimKeybinding[];
@@ -162,6 +170,11 @@ type SetGitChangesGutterMessage = {
   enabled?: boolean;
 };
 
+type SetSpellCheckMessage = {
+  type: 'setSpellCheck';
+  enabled: boolean;
+};
+
 type SetOutlineVisibleMessage = {
   type: 'setOutlineVisible';
   visible: boolean;
@@ -235,6 +248,24 @@ type SaveImageFromClipboardMessage = {
   fileName: string;
 };
 
+type RequestDiagnosticSuggestionsMessage = {
+  type: 'requestDiagnosticSuggestions';
+  requestId: string;
+  from: number;
+  to: number;
+  message: string;
+  source?: string;
+  code?: string;
+};
+
+type DiagnosticSuggestionsResultMessage = {
+  type: 'diagnosticSuggestionsResult';
+  requestId: string;
+  from: number;
+  to: number;
+  suggestions: string[];
+};
+
 type SavedImagePathMessage = {
   type: 'savedImagePath';
   requestId: string;
@@ -277,6 +308,7 @@ type WebviewMessage =
   | SetModeMessage
   | SetLineNumbersMessage
   | SetGitChangesGutterMessage
+  | SetSpellCheckMessage
   | SetOutlineVisibleMessage
   | SetContentMaxWidthMessage
   | SetFindOptionsMessage
@@ -293,6 +325,7 @@ type WebviewMessage =
   | OpenGitRevisionForLineMessage
   | OpenGitWorktreeForLineMessage
   | SaveImageFromClipboardMessage
+  | RequestDiagnosticSuggestionsMessage
   | { type: 'ready' };
 
 type RefreshGitBaselineOptions = {
@@ -319,6 +352,7 @@ const REMEMBERED_EOF_NEAR_THRESHOLD_LINES = 10;
 const REMEMBERED_EOF_BACKOFF_LINES = 10;
 const GIT_BASELINE_STARTUP_DELAY_MS = 350;
 const GIT_BASELINE_REFRESH_DELAY_MS = 150;
+const MAX_DIAGNOSTIC_SUGGESTIONS = 1;
 const EMPTY_GIT_BASELINE_PAYLOAD: GitBaselinePayload = Object.freeze({
   available: false,
   tracked: false,
@@ -514,6 +548,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       lineNumbers: getLineNumbersEnabled(context),
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
+      spellCheckEnabled: getSpellCheckEnabled(),
       contentMaxWidthEnabled: getContentMaxWidthEnabled(context),
       vimMode: getVimModeEnabled(context),
       vimKeybindings: getVimKeybindings(),
@@ -950,6 +985,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           .update(GIT_CHANGES_GUTTER_SETTING_KEY, visible, vscode.ConfigurationTarget.Global);
         return;
       }
+      case 'setSpellCheck':
+        await vscode.workspace
+          .getConfiguration(EXTENSION_CONFIG_SECTION)
+          .update(SPELL_CHECK_SETTING_KEY, raw.enabled === true, vscode.ConfigurationTarget.Global);
+        return;
       case 'setOutlineVisible':
         await setOutlineVisible(raw.visible);
         return;
@@ -1067,6 +1107,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'saveImageFromClipboard': {
         const response = await handleSaveImageFromClipboard(raw, documentUri);
+        await postToWebview(response);
+        return;
+      }
+      case 'requestDiagnosticSuggestions': {
+        const response = await resolveDiagnosticSuggestions(document, raw);
         await postToWebview(response);
         return;
       }
@@ -1433,6 +1478,138 @@ function serializeDiagnostics(document: vscode.TextDocument): SerializedDiagnost
   }
 
   return serialized;
+}
+
+async function resolveDiagnosticSuggestions(
+  document: vscode.TextDocument,
+  request: RequestDiagnosticSuggestionsMessage
+): Promise<DiagnosticSuggestionsResultMessage> {
+  const emptyResponse: DiagnosticSuggestionsResultMessage = {
+    type: 'diagnosticSuggestionsResult',
+    requestId: request.requestId,
+    from: request.from,
+    to: request.to,
+    suggestions: []
+  };
+
+  const documentText = document.getText();
+  const normalizedTextLength = documentText.replace(/\r\n?/g, '\n').length;
+  const requestedRange = clampDiagnosticRange(request.from, request.to, normalizedTextLength);
+  if (!requestedRange) {
+    return emptyResponse;
+  }
+
+  const mappedFrom = mapNormalizedOffsetToDocumentOffset(documentText, requestedRange.from);
+  const mappedTo = mapNormalizedOffsetToDocumentOffset(documentText, requestedRange.to);
+  const range = new vscode.Range(
+    document.positionAt(Math.min(mappedFrom, mappedTo)),
+    document.positionAt(Math.max(mappedFrom, mappedTo))
+  );
+
+  if (!hasMatchingDiagnostic(document, request, requestedRange)) {
+    return emptyResponse;
+  }
+
+  const actions = await vscode.commands.executeCommand<Array<vscode.Command | vscode.CodeAction>>(
+    'vscode.executeCodeActionProvider',
+    document.uri,
+    range,
+    vscode.CodeActionKind.QuickFix.value,
+    64
+  );
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+
+  if (Array.isArray(actions)) {
+    for (const action of actions) {
+      const replacement = simpleReplacementFromCodeAction(document, requestedRange, action);
+      if (replacement === null || seen.has(replacement)) {
+        continue;
+      }
+      seen.add(replacement);
+      suggestions.push(replacement);
+      if (suggestions.length >= MAX_DIAGNOSTIC_SUGGESTIONS) {
+        break;
+      }
+    }
+  }
+
+  if (suggestions.length === 0 && request.source === MEO_SPELL_DIAGNOSTIC_SOURCE) {
+    const spellSuggestions = await collectMeoSpellSuggestions(document, requestedRange.from, requestedRange.to);
+    for (const suggestion of spellSuggestions) {
+      if (seen.has(suggestion)) {
+        continue;
+      }
+      seen.add(suggestion);
+      suggestions.push(suggestion);
+      if (suggestions.length >= MAX_DIAGNOSTIC_SUGGESTIONS) {
+        break;
+      }
+    }
+  }
+
+  return {
+    ...emptyResponse,
+    suggestions
+  };
+}
+
+function hasMatchingDiagnostic(
+  document: vscode.TextDocument,
+  request: RequestDiagnosticSuggestionsMessage,
+  requestedRange: { from: number; to: number }
+): boolean {
+  const documentText = document.getText();
+  return vscode.languages.getDiagnostics(document.uri).some((diagnostic) => {
+    const from = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(diagnostic.range.start));
+    const to = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(diagnostic.range.end));
+    const range = clampDiagnosticRange(from, to, documentText.replace(/\r\n?/g, '\n').length);
+    if (!range || range.from !== requestedRange.from || range.to !== requestedRange.to) {
+      return false;
+    }
+    if (diagnostic.message !== request.message) {
+      return false;
+    }
+    if ((diagnostic.source ?? undefined) !== (request.source ?? undefined)) {
+      return false;
+    }
+    return (normalizeDiagnosticCode(diagnostic.code) ?? undefined) === (request.code ?? undefined);
+  });
+}
+
+function simpleReplacementFromCodeAction(
+  document: vscode.TextDocument,
+  requestedRange: { from: number; to: number },
+  action: vscode.Command | vscode.CodeAction
+): string | null {
+  if (!('edit' in action) || !action.edit || ('disabled' in action && action.disabled)) {
+    return null;
+  }
+
+  const entries = action.edit.entries();
+  if (entries.length !== 1) {
+    return null;
+  }
+
+  const [uri, edits] = entries[0];
+  if (uri.toString() !== document.uri.toString() || edits.length !== 1) {
+    return null;
+  }
+
+  const [edit] = edits;
+  const documentText = document.getText();
+  const editFrom = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(edit.range.start));
+  const editTo = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(edit.range.end));
+  const editRange = clampDiagnosticRange(editFrom, editTo, documentText.replace(/\r\n?/g, '\n').length);
+  if (!editRange || !rangesOverlap(editRange, requestedRange)) {
+    return null;
+  }
+
+  return edit.newText;
+}
+
+function rangesOverlap(left: { from: number; to: number }, right: { from: number; to: number }): boolean {
+  return left.from < right.to && right.from < left.to;
 }
 
 async function handleSaveImageFromClipboard(
