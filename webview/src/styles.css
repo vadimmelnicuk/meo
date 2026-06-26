@@ -55,6 +55,7 @@
   --meo-line-height-source: 1.5;
   --meo-active-editor-line-height: 1.5;
   --meo-content-max-width: 100%;
+  --meo-editor-inline-end-padding: 16px;
   --meo-toolbar-format-optical-offset: 5px;
   --meo-toolbar-format-offset: 0px;
   --meo-task-checkbox-size: 17px;
@@ -890,6 +891,7 @@ body {
 
 .cm-editor .cm-content {
   padding-top: 0;
+  padding-right: var(--meo-editor-inline-end-padding);
   caret-color: var(--meo-caret-color);
   width: 100%;
   max-width: var(--meo-content-max-width);
@@ -1592,7 +1594,13 @@ body {
   overflow: hidden;
   user-select: none;
   text-align: center;
+  color: var(--meo-foreground);
+  background: var(--meo-code-background);
   cursor: grab;
+}
+
+.cm-editor .meo-mermaid-block.meo-mermaid-light-theme {
+  color: #1f2328;
 }
 
 .cm-editor .meo-mermaid-block.meo-mermaid-math-block {
@@ -1638,6 +1646,33 @@ body {
   height: auto;
 }
 
+.cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.node rect, .node polygon, .node ellipse, .node circle, .node path),
+.meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.node rect, .node polygon, .node ellipse, .node circle, .node path) {
+  fill: #ffffff !important;
+  stroke: #d0d7de !important;
+}
+
+.cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.nodeLabel, .label, .edgeLabel, .edgeLabel p),
+.meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.nodeLabel, .label, .edgeLabel, .edgeLabel p) {
+  color: #1f2328 !important;
+}
+
+.cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgeLabel rect, .labelBkg),
+.meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgeLabel rect, .labelBkg) {
+  fill: var(--meo-code-background) !important;
+}
+
+.cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgePaths path, .flowchart-link),
+.meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgePaths path, .flowchart-link) {
+  stroke: #d0d7de !important;
+}
+
+.cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.marker, marker path),
+.meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.marker, marker path) {
+  fill: #d0d7de !important;
+  stroke: #d0d7de !important;
+}
+
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper svg {
   max-width: 100%;
   max-height: 100%;
@@ -1671,17 +1706,58 @@ body {
 .meo-mermaid-zoom-btn {
   font-size: 16px;
   line-height: 1;
-  color: var(--meo-foreground);
-  background-color: var(--meo-surface-background);
+  color: var(--vscode-editor-foreground, var(--meo-foreground));
+  background-color: transparent;
+  box-shadow: none;
   pointer-events: auto;
 }
 
+.meo-mermaid-light-theme .meo-mermaid-zoom-btn,
+.meo-mermaid-zoom-controls.meo-mermaid-light-theme .meo-mermaid-zoom-btn {
+  color: #1f2328;
+}
+
+.meo-mermaid-zoom-btn svg {
+  color: currentColor;
+  stroke: currentColor;
+  opacity: 1;
+}
+
+.meo-mermaid-light-theme .meo-mermaid-zoom-btn svg,
+.meo-mermaid-zoom-controls.meo-mermaid-light-theme .meo-mermaid-zoom-btn svg {
+  color: #1f2328;
+  stroke: #1f2328;
+}
+
 .meo-mermaid-zoom-btn:focus {
-  outline: none;
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.meo-mermaid-light-theme .meo-mermaid-zoom-btn:hover,
+.meo-mermaid-zoom-controls.meo-mermaid-light-theme .meo-mermaid-zoom-btn:hover {
+  color: #57606a;
+  background-color: rgba(31, 35, 40, 0.04) !important;
+}
+
+.meo-mermaid-light-theme .meo-mermaid-zoom-btn:hover svg,
+.meo-mermaid-zoom-controls.meo-mermaid-light-theme .meo-mermaid-zoom-btn:hover svg {
+  color: #57606a;
+  stroke: #57606a;
 }
 
 .meo-mermaid-zoom-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #505050);
+  background-color: var(
+    --vscode-toolbar-hoverBackground,
+    rgba(31, 35, 40, 0.06)
+  );
+}
+
+.meo-mermaid-zoom-btn:active {
+  background-color: var(
+    --vscode-toolbar-activeBackground,
+    rgba(31, 35, 40, 0.16)
+  );
 }
 
 .meo-mermaid-exit-btn {
@@ -1783,7 +1859,12 @@ body {
   justify-content: center;
   position: relative;
   cursor: grab;
+  color: var(--meo-foreground);
   background-color: var(--meo-code-background);
+}
+
+.meo-mermaid-fullscreen.meo-mermaid-light-theme {
+  color: #1f2328;
 }
 
 .outline-sidebar {

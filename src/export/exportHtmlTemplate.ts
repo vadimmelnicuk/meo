@@ -248,8 +248,84 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     return resolved || fallback;
   };
 
+  const clampColorChannel = (value) => Math.min(255, Math.max(0, Math.round(value)));
+  const clampAlpha = (value) => Math.min(1, Math.max(0, value));
+
+  const parseCssNumericChannel = (value, scale) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed || trimmed === 'none') return null;
+    if (trimmed.endsWith('%')) {
+      const percent = Number.parseFloat(trimmed.slice(0, -1));
+      return Number.isFinite(percent) ? (percent / 100) * scale : null;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const parseCssAlpha = (value) => {
+    if (!value) return 1;
+    const parsed = parseCssNumericChannel(value, 1);
+    return parsed === null ? 1 : clampAlpha(parsed);
+  };
+
+  const formatMermaidRgb = (red, green, blue, alpha) => {
+    const r = clampColorChannel(red);
+    const g = clampColorChannel(green);
+    const b = clampColorChannel(blue);
+    const a = clampAlpha(alpha === undefined ? 1 : alpha);
+    if (a < 1) {
+      return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + Number(a.toFixed(3)) + ')';
+    }
+    return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+  };
+
+  const normalizeRgbColor = (value) => {
+    const match = /^rgba?\\(\\s*(.+?)\\s*\\)$/i.exec(value);
+    if (!match || !match[1]) return null;
+    const parts = match[1].split('/').map((part) => part.trim());
+    const channels = (parts[0] || '').split(/[\\s,]+/).filter(Boolean);
+    if (channels.length < 3) return null;
+    const red = parseCssNumericChannel(channels[0], 255);
+    const green = parseCssNumericChannel(channels[1], 255);
+    const blue = parseCssNumericChannel(channels[2], 255);
+    if (red === null || green === null || blue === null) return null;
+    const alpha = parts[1] ? parseCssAlpha(parts[1]) : parseCssAlpha(channels[3]);
+    return formatMermaidRgb(red, green, blue, alpha);
+  };
+
+  const normalizeSrgbColor = (value) => {
+    const match = /^color\\(\\s*srgb\\s+(.+?)\\s*\\)$/i.exec(value);
+    if (!match || !match[1]) return null;
+    const parts = match[1].split('/').map((part) => part.trim());
+    const channels = (parts[0] || '').split(/\\s+/).filter(Boolean);
+    if (channels.length < 3) return null;
+    const red = parseCssNumericChannel(channels[0], 1);
+    const green = parseCssNumericChannel(channels[1], 1);
+    const blue = parseCssNumericChannel(channels[2], 1);
+    if (red === null || green === null || blue === null) return null;
+    return formatMermaidRgb(red * 255, green * 255, blue * 255, parseCssAlpha(parts[1]));
+  };
+
+  const normalizeMermaidFallbackColor = (fallback) => {
+    const trimmed = String(fallback || '').trim();
+    if (!trimmed) return '#ffffff';
+    return normalizeRgbColor(trimmed) || normalizeSrgbColor(trimmed) || (/^color\\(/i.test(trimmed) ? '#ffffff' : trimmed);
+  };
+
+  const normalizeMermaidColor = (value, fallback) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return normalizeMermaidFallbackColor(fallback);
+    const normalized = normalizeRgbColor(trimmed) || normalizeSrgbColor(trimmed);
+    if (normalized) return normalized;
+    if (/^(?:rgba?|color)\\(/i.test(trimmed)) return normalizeMermaidFallbackColor(fallback);
+    return trimmed;
+  };
+
   const getExportThemeColor = (name, fallback, property) => {
-    return resolveCssColor(getExportThemeVar(name, fallback), fallback, property || 'backgroundColor');
+    return normalizeMermaidColor(
+      resolveCssColor(getExportThemeVar(name, fallback), fallback, property || 'backgroundColor'),
+      fallback
+    );
   };
 
   const isProbablyDarkColor = (color) => {
@@ -264,31 +340,38 @@ function buildRuntimeScript(hasMermaid: boolean): string {
 
   const getMermaidThemeConfig = () => {
     const bodyStyles = getComputedStyle(document.body);
-    const background = getExportThemeColor('--meo-bg', bodyStyles.backgroundColor || '#ffffff');
-    const codeBackground = getExportThemeColor('--meo-code-bg', background);
-    const panelBackground = getExportThemeColor('--meo-panel-bg', codeBackground);
-    const foreground = getExportThemeColor('--meo-fg', bodyStyles.color || '#24292f', 'color');
-    const border = getExportThemeColor('--meo-border', foreground, 'color');
+    const background = getExportThemeColor('--meo-code-bg', bodyStyles.backgroundColor || '#ffffff');
+    const darkMode = isProbablyDarkColor(background);
+    const nodeBackground = darkMode
+      ? getExportThemeColor('--meo-panel-bg', '#2f343d')
+      : '#ffffff';
+    const foreground = darkMode
+      ? getExportThemeColor('--meo-fg', '#c9d1d9', 'color')
+      : '#1f2328';
+    const border = darkMode
+      ? getExportThemeColor('--meo-border', '#3e444d', 'color')
+      : '#d0d7de';
     return {
       startOnLoad: false,
       securityLevel: 'strict',
       theme: 'base',
       themeVariables: {
-        background: codeBackground,
-        mainBkg: panelBackground,
-        secondBkg: panelBackground,
-        tertiaryColor: codeBackground,
-        primaryColor: panelBackground,
+        background,
+        mainBkg: nodeBackground,
+        secondBkg: nodeBackground,
+        tertiaryColor: nodeBackground,
+        primaryColor: nodeBackground,
         primaryTextColor: foreground,
         primaryBorderColor: border,
+        nodeBorder: border,
         lineColor: border,
         textColor: foreground,
         nodeTextColor: foreground,
-        edgeLabelBackground: codeBackground,
-        clusterBkg: codeBackground,
+        edgeLabelBackground: background,
+        clusterBkg: background,
         clusterBorder: border,
         titleColor: foreground,
-        darkMode: isProbablyDarkColor(background)
+        darkMode
       },
       htmlLabels: true,
       markdownAutoWrap: true,

@@ -65,16 +65,115 @@ function resolveCssColor(value: string, fallback: string, property: 'color' | 'b
   return resolved || fallback;
 }
 
+function clampColorChannel(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function clampAlpha(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function parseCssNumericChannel(value: string, scale: number): number | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'none') {
+    return null;
+  }
+  if (trimmed.endsWith('%')) {
+    const percent = Number.parseFloat(trimmed.slice(0, -1));
+    return Number.isFinite(percent) ? (percent / 100) * scale : null;
+  }
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseCssAlpha(value: string | undefined): number {
+  if (!value) {
+    return 1;
+  }
+  const parsed = parseCssNumericChannel(value, 1);
+  return parsed === null ? 1 : clampAlpha(parsed);
+}
+
+function formatMermaidRgb(red: number, green: number, blue: number, alpha = 1): string {
+  const r = clampColorChannel(red);
+  const g = clampColorChannel(green);
+  const b = clampColorChannel(blue);
+  const a = clampAlpha(alpha);
+  if (a < 1) {
+    return `rgba(${r}, ${g}, ${b}, ${Number(a.toFixed(3))})`;
+  }
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function normalizeRgbColor(value: string): string | null {
+  const match = /^rgba?\(\s*(.+?)\s*\)$/i.exec(value);
+  if (!match?.[1]) {
+    return null;
+  }
+  const [rawChannels, rawAlpha] = match[1].split('/').map((part) => part.trim());
+  const channels = rawChannels.split(/[\s,]+/).filter(Boolean);
+  if (channels.length < 3) {
+    return null;
+  }
+  const [red, green, blue] = channels.slice(0, 3).map((channel) => parseCssNumericChannel(channel, 255));
+  if (red === null || green === null || blue === null) {
+    return null;
+  }
+  const alpha = rawAlpha ? parseCssAlpha(rawAlpha) : parseCssAlpha(channels[3]);
+  return formatMermaidRgb(red, green, blue, alpha);
+}
+
+function normalizeSrgbColor(value: string): string | null {
+  const match = /^color\(\s*srgb\s+(.+?)\s*\)$/i.exec(value);
+  if (!match?.[1]) {
+    return null;
+  }
+  const [rawChannels, rawAlpha] = match[1].split('/').map((part) => part.trim());
+  const channels = rawChannels.split(/\s+/).filter(Boolean);
+  if (channels.length < 3) {
+    return null;
+  }
+  const [red, green, blue] = channels.slice(0, 3).map((channel) => parseCssNumericChannel(channel, 1));
+  if (red === null || green === null || blue === null) {
+    return null;
+  }
+  const alpha = parseCssAlpha(rawAlpha);
+  return formatMermaidRgb(red * 255, green * 255, blue * 255, alpha);
+}
+
+function normalizeMermaidFallbackColor(fallback: string): string {
+  const trimmed = fallback.trim();
+  if (!trimmed) {
+    return '#ffffff';
+  }
+  return normalizeRgbColor(trimmed) ?? normalizeSrgbColor(trimmed) ?? (/^color\(/i.test(trimmed) ? '#ffffff' : trimmed);
+}
+
+function normalizeMermaidColor(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return normalizeMermaidFallbackColor(fallback);
+  }
+  const normalized = normalizeRgbColor(trimmed) ?? normalizeSrgbColor(trimmed);
+  if (normalized) {
+    return normalized;
+  }
+  if (/^(?:rgba?|color)\(/i.test(trimmed)) {
+    return normalizeMermaidFallbackColor(fallback);
+  }
+  return trimmed;
+}
+
 function getThemeCssColor(
   name: string,
   fallback: string,
   property: 'color' | 'backgroundColor' = 'backgroundColor'
 ): string {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  if (!value || /^var\(/i.test(value)) {
-    return fallback;
+  if (!value) {
+    return normalizeMermaidColor(fallback, '#ffffff');
   }
-  return resolveCssColor(value, fallback, property);
+  return normalizeMermaidColor(resolveCssColor(value, fallback, property), fallback);
 }
 
 function isProbablyDarkColor(color: string): boolean {
@@ -91,23 +190,31 @@ function isProbablyDarkColor(color: string): boolean {
   return (red * 0.299 + green * 0.587 + blue * 0.114) < 128;
 }
 
+function isMermaidDarkTheme(background: string): boolean {
+  return isProbablyDarkColor(background);
+}
+
 function getMermaidThemeConfig() {
   const bodyStyles = getComputedStyle(document.body);
-  const background = getThemeCssColor('--meo-background', bodyStyles.backgroundColor || '#ffffff');
-  const codeBackground = getThemeCssColor('--meo-code-background', background);
-  const surfaceBackground = getThemeCssColor('--meo-surface-background', codeBackground);
-  const foreground = getThemeCssColor('--meo-foreground', bodyStyles.color || '#24292f', 'color');
-  const muted = getThemeCssColor('--meo-color-base02', foreground, 'color');
-  const border = getThemeCssColor('--meo-color-base03', muted, 'color');
+  const background = getThemeCssColor('--meo-code-background', bodyStyles.backgroundColor || '#ffffff');
+  const darkMode = isMermaidDarkTheme(background);
+  const nodeBackground = darkMode
+    ? getThemeCssColor('--meo-surface-background', '#2f343d')
+    : '#ffffff';
+  const foreground = darkMode
+    ? getThemeCssColor('--meo-foreground', '#c9d1d9', 'color')
+    : '#1f2328';
+  const border = darkMode
+    ? getThemeCssColor('--meo-color-base03', '#3e444d', 'color')
+    : '#d0d7de';
   const accent = getThemeCssColor('--meo-color-base05', border, 'color');
   const signature = [
     background,
-    codeBackground,
-    surfaceBackground,
+    nodeBackground,
     foreground,
-    muted,
     border,
-    accent
+    accent,
+    darkMode ? 'dark' : 'light'
   ].join('|');
 
   return {
@@ -117,21 +224,22 @@ function getMermaidThemeConfig() {
       securityLevel: 'strict',
       theme: 'base',
       themeVariables: {
-        background: codeBackground,
-        mainBkg: surfaceBackground,
-        secondBkg: surfaceBackground,
-        tertiaryColor: codeBackground,
-        primaryColor: surfaceBackground,
+        background,
+        mainBkg: nodeBackground,
+        secondBkg: nodeBackground,
+        tertiaryColor: nodeBackground,
+        primaryColor: nodeBackground,
         primaryTextColor: foreground,
         primaryBorderColor: border,
+        nodeBorder: border,
         lineColor: border,
         textColor: foreground,
         nodeTextColor: foreground,
-        edgeLabelBackground: codeBackground,
-        clusterBkg: codeBackground,
+        edgeLabelBackground: background,
+        clusterBkg: background,
         clusterBorder: border,
         titleColor: foreground,
-        darkMode: isProbablyDarkColor(bodyStyles.backgroundColor || background)
+        darkMode
       },
       htmlLabels: true,
       markdownAutoWrap: true,
@@ -143,6 +251,17 @@ function getMermaidThemeConfig() {
       forceLegacyMathML: true
     }
   };
+}
+
+function isCurrentMermaidLightTheme(): boolean {
+  const { config } = getMermaidThemeConfig();
+  return config?.themeVariables?.darkMode !== true;
+}
+
+function applyMermaidThemeClass(element: HTMLElement): void {
+  const lightTheme = isCurrentMermaidLightTheme();
+  element.classList.toggle('meo-mermaid-light-theme', lightTheme);
+  element.classList.toggle('meo-mermaid-dark-theme', !lightTheme);
 }
 
 function getMermaidRuntimeSource() {
@@ -368,6 +487,7 @@ export class MermaidDiagramWidget extends WidgetType {
   fullscreenSvgWrapper: HTMLElement | null;
   fullscreenCleanup: (() => void) | null;
   exitFullscreenHandler: ((e: KeyboardEvent) => void) | null;
+  themeSignature: string;
 
   constructor(diagramText: string, startLine: number = 0, endLine: number = 0) {
     super();
@@ -389,6 +509,7 @@ export class MermaidDiagramWidget extends WidgetType {
     this.fullscreenSvgWrapper = null;
     this.fullscreenCleanup = null;
     this.exitFullscreenHandler = null;
+    this.themeSignature = getMermaidThemeConfig().signature;
   }
 
   eq(other: WidgetType): boolean {
@@ -396,13 +517,15 @@ export class MermaidDiagramWidget extends WidgetType {
       other instanceof MermaidDiagramWidget &&
       other.diagramText === this.diagramText &&
       other.startLine === this.startLine &&
-      other.endLine === this.endLine
+      other.endLine === this.endLine &&
+      other.themeSignature === this.themeSignature
     );
   }
 
   toDOM() {
     const container = document.createElement('div');
     container.className = 'meo-mermaid-block';
+    applyMermaidThemeClass(container);
     if (this.startLine > 0) {
       container.dataset.meoRenderedBlockStartLine = String(this.startLine);
     }
@@ -449,6 +572,9 @@ export class MermaidDiagramWidget extends WidgetType {
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'meo-mermaid-svg-wrapper';
     svgWrapper.innerHTML = svgContent;
+    if (container.classList.contains('meo-mermaid-light-theme')) {
+      this.applyLightThemeSvgOverrides(svgWrapper);
+    }
 
     container.appendChild(svgWrapper);
     if (this.isDisplayMath) {
@@ -460,6 +586,47 @@ export class MermaidDiagramWidget extends WidgetType {
     container.appendChild(controls);
 
     this.attachInteractions(svgWrapper, container);
+  }
+
+  applyLightThemeSvgOverrides(svgWrapper) {
+    const nodeShapes = svgWrapper.querySelectorAll(
+      '.node rect, .node polygon, .node ellipse, .node circle, .node path, .label-container'
+    );
+    for (const shape of nodeShapes) {
+      if (shape instanceof SVGElement) {
+        shape.style.setProperty('fill', '#ffffff', 'important');
+        shape.style.setProperty('stroke', '#d0d7de', 'important');
+      }
+    }
+
+    const labels = svgWrapper.querySelectorAll('.nodeLabel, .label, .edgeLabel, .edgeLabel p');
+    for (const label of labels) {
+      if (label instanceof HTMLElement || label instanceof SVGElement) {
+        label.style.setProperty('color', '#1f2328', 'important');
+      }
+    }
+
+    const edgeLabels = svgWrapper.querySelectorAll('.edgeLabel rect, .labelBkg');
+    for (const edgeLabel of edgeLabels) {
+      if (edgeLabel instanceof SVGElement) {
+        edgeLabel.style.setProperty('fill', 'var(--meo-code-background)', 'important');
+      }
+    }
+
+    const edgePaths = svgWrapper.querySelectorAll('.edgePaths path, .flowchart-link');
+    for (const edgePath of edgePaths) {
+      if (edgePath instanceof SVGElement) {
+        edgePath.style.setProperty('stroke', '#d0d7de', 'important');
+      }
+    }
+
+    const markers = svgWrapper.querySelectorAll('.marker, marker path');
+    for (const marker of markers) {
+      if (marker instanceof SVGElement) {
+        marker.style.setProperty('fill', '#d0d7de', 'important');
+        marker.style.setProperty('stroke', '#d0d7de', 'important');
+      }
+    }
   }
 
   trimDisplayMathSvg(svgWrapper) {
@@ -620,6 +787,7 @@ export class MermaidDiagramWidget extends WidgetType {
   createZoomControls(svgContainer) {
     const controls = document.createElement('div');
     controls.className = 'meo-mermaid-zoom-controls';
+    applyMermaidThemeClass(controls);
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
@@ -700,10 +868,14 @@ export class MermaidDiagramWidget extends WidgetType {
 
     const fullscreenContainer = document.createElement('div');
     fullscreenContainer.className = 'meo-mermaid-fullscreen';
+    applyMermaidThemeClass(fullscreenContainer);
 
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'meo-mermaid-svg-wrapper';
     svgWrapper.innerHTML = this.svgContent;
+    if (fullscreenContainer.classList.contains('meo-mermaid-light-theme')) {
+      this.applyLightThemeSvgOverrides(svgWrapper);
+    }
 
     fullscreenContainer.appendChild(svgWrapper);
 
@@ -752,6 +924,7 @@ export class MermaidDiagramWidget extends WidgetType {
   createFullscreenControls(svgContainer) {
     const controls = document.createElement('div');
     controls.className = 'meo-mermaid-zoom-controls meo-mermaid-fullscreen-controls';
+    applyMermaidThemeClass(controls);
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
