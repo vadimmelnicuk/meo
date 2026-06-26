@@ -229,6 +229,7 @@ export function withMarkdownExtensions(basePath: string, preferExtensionlessFirs
 export async function migrateLegacyToggleSettings(context: vscode.ExtensionContext): Promise<void> {
   await migrateLegacyToggleSetting(context, LINE_NUMBERS_SETTING_KEY, LINE_NUMBERS_KEY);
   await migrateLegacyToggleSetting(context, GIT_CHANGES_GUTTER_SETTING_KEY, GIT_CHANGES_GUTTER_KEY);
+  await migrateLegacyToggleSetting(context, CONTENT_MAX_WIDTH_SETTING_KEY, CONTENT_MAX_WIDTH_ENABLED_KEY);
 }
 
 export async function resetThemeSettingsToDefault(): Promise<void> {

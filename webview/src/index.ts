@@ -242,7 +242,7 @@ const setGitChangesGutterVisible = (visible, { post = true } = {}) => {
   }
 };
 
-const setContentMaxWidthEnabled = (enabled, { post = true } = {}) => {
+const setContentMaxWidthEnabled = (enabled, { post = true, persist = true } = {}) => {
   const nextEnabled = enabled === true;
   const changed = nextEnabled !== contentMaxWidthEnabled;
   if (changed) {
@@ -258,6 +258,9 @@ const setContentMaxWidthEnabled = (enabled, { post = true } = {}) => {
   );
   scheduleToolbarTextAlignment();
   updateContentMaxWidthUI();
+  if (persist) {
+    persistUiState();
+  }
   if (post && changed) {
     vscode.postMessage({ type: 'setContentMaxWidth', enabled: contentMaxWidthEnabled });
   }
@@ -700,11 +703,13 @@ const acknowledgeReadyHandshake = () => {
 
 type WebviewUiState = {
   mode?: 'live' | 'source';
+  contentMaxWidthEnabled?: boolean;
 };
 
-const persistModeState = () => {
+const persistUiState = () => {
   const state: WebviewUiState = {
-    mode: currentMode
+    mode: currentMode,
+    contentMaxWidthEnabled
   };
   vscode.setState(state);
 };
@@ -1155,7 +1160,7 @@ const applyMode = (mode: 'live' | 'source', { post = true, persist = true, userT
   }
 
   if (persist) {
-    persistModeState();
+    persistUiState();
   }
 
   if (post) {
@@ -1744,6 +1749,9 @@ if (state && (state.mode === 'live' || state.mode === 'source')) {
 } else {
   updateModeUI();
 }
+if (typeof state?.contentMaxWidthEnabled === 'boolean') {
+  setContentMaxWidthEnabled(state.contentMaxWidthEnabled, { post: false, persist: false });
+}
 outlineController.setPosition('right');
 updateLineNumbersUI();
 updateGitChangesGutterUI();
@@ -1889,7 +1897,7 @@ contentMaxWidthBtn.addEventListener('click', () => {
 lineNumbersBtn.addEventListener('click', toggleLineNumbers);
 gitChangesGutterBtn.addEventListener('click', toggleGitChangesGutter);
 
-persistModeState();
+persistUiState();
 vscode.postMessage({ type: 'setMode', mode: currentMode });
 scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
