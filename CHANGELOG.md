@@ -1,5 +1,18 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.24
+- Added light theme and background customisation
+- Added sync with VSCodeVim custom keybindings
+- Added VS Code theme highlighting for code blocks
+- Added spell diagnostics in MEO editor
+- Added content width toolbar toggle
+- Added contextual table cell editing controls
+- Added sortable live table columns
+- Improved wide table rendering
+- Improved find result highlighting and controls
+- Fixed Git baseline refreshes during editor startup
+- Fixed pending markdown edits during save sync
+
 ## 0.1.23
 - Added inline footnote support with decorations and styling
 - Enhanced full list line decorations and currency vs latex rendering
