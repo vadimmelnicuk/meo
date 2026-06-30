@@ -1162,12 +1162,7 @@ export function createEditor({
       return false;
     }
 
-    const anchor = {
-      anchorX: event.clientX,
-      anchorY: event.clientY,
-      anchorBottomY: event.clientY
-    };
-    return requestDiagnosticSuggestionsFor(diagnostic, anchor);
+    return requestDiagnosticSuggestionsFor(diagnostic);
   };
 
   const isHistoryReplayUpdate = (update: ViewUpdate): boolean => {

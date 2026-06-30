@@ -290,6 +290,27 @@ function isTableInlineEscaped(text, index) {
   return (slashCount % 2) === 1;
 }
 
+function isTableInlineAsciiAlnum(char) {
+  return Boolean(char) && /[A-Za-z0-9]/.test(char);
+}
+
+function canOpenTableInlineDelimiter(text, index, marker) {
+  if (isTableInlineEscaped(text, index)) return false;
+  const markerLen = marker.length;
+  const next = text[index + markerLen] ?? '';
+  if (!next || /\s/.test(next)) return false;
+  if (marker.includes('_') && isTableInlineAsciiAlnum(text[index - 1] ?? '')) return false;
+  return true;
+}
+
+function canCloseTableInlineDelimiter(text, index, marker) {
+  if (isTableInlineEscaped(text, index)) return false;
+  const previous = text[index - 1] ?? '';
+  if (!previous || /\s/.test(previous)) return false;
+  if (marker.includes('_') && isTableInlineAsciiAlnum(text[index + marker.length] ?? '')) return false;
+  return true;
+}
+
 function isTableInlineUrlLike(text) {
   return tableInlineRawUrlRe.test(text) || tableInlineSchemeRe.test(text);
 }
@@ -626,7 +647,7 @@ function findTableInlineClosingMarker(text, startIndex, marker, { singleTilde = 
   const markerLen = marker.length;
   for (let i = startIndex; i <= text.length - markerLen; i += 1) {
     if (!text.startsWith(marker, i)) continue;
-    if (isTableInlineEscaped(text, i)) continue;
+    if (!canCloseTableInlineDelimiter(text, i, marker)) continue;
     if (singleTilde && (text[i - 1] === '~' || text[i + 1] === '~')) continue;
     return i;
   }
@@ -637,7 +658,7 @@ function parseTableInlineDelimitedSpan(text, index) {
   const strongMarker = text.startsWith('**', index)
     ? '**'
     : (text.startsWith('__', index) ? '__' : null);
-  if (strongMarker) {
+  if (strongMarker && canOpenTableInlineDelimiter(text, index, strongMarker)) {
     const start = index + 2;
     const close = findTableInlineClosingMarker(text, start, strongMarker);
     if (close > start) {
@@ -660,7 +681,7 @@ function parseTableInlineDelimitedSpan(text, index) {
   }
 
   const emMarker = (text[index] === '*' || text[index] === '_') ? text[index] : null;
-  if (emMarker && text[index + 1] !== emMarker) {
+  if (emMarker && text[index + 1] !== emMarker && canOpenTableInlineDelimiter(text, index, emMarker)) {
     const start = index + 1;
     const close = findTableInlineClosingMarker(text, start, emMarker);
     if (close > start) {

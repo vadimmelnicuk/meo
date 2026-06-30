@@ -112,7 +112,7 @@ export const createSelectionMenuController = (
     const margin = 8;
     const menuWidth = elements.menu.offsetWidth;
     const anchorX = selectionState.anchorX ?? 0;
-    const rawLeft = selectionState.align === 'start' ? anchorX : anchorX - (menuWidth / 2);
+    const rawLeft = selectionState.align === 'center' ? anchorX - (menuWidth / 2) : anchorX;
     const maxLeft = Math.max(margin, window.innerWidth - menuWidth - margin);
     const clampedLeft = Math.min(maxLeft, Math.max(margin, rawLeft));
     const menuHeight = elements.menu.offsetHeight;
