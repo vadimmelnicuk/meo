@@ -1,5 +1,11 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.26
+- Improved dark Mermaid diagram line contrast
+- Fixed live find matches and preserve active highlight
+- Fixed inline toolbox and ignore intraword underscores
+- Fixed find results in rendered tables
+
 ## 0.1.25
 - Added spellcheck suggestions and toolbar toggle
 - Fixed mermaid diagram rendering and controls
