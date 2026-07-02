@@ -205,8 +205,8 @@ function getMermaidThemeConfig() {
     ? getThemeCssColor('--meo-foreground', '#c9d1d9', 'color')
     : '#1f2328';
   const border = darkMode
-    ? getThemeCssColor('--meo-color-base03', '#3e444d', 'color')
-    : '#d0d7de';
+    ? getThemeCssColor('--meo-foreground', '#c9d1d9', 'color')
+    : '#6e7781';
   const accent = getThemeCssColor('--meo-color-base05', border, 'color');
   const signature = [
     background,
@@ -595,7 +595,7 @@ export class MermaidDiagramWidget extends WidgetType {
     for (const shape of nodeShapes) {
       if (shape instanceof SVGElement) {
         shape.style.setProperty('fill', '#ffffff', 'important');
-        shape.style.setProperty('stroke', '#d0d7de', 'important');
+        shape.style.setProperty('stroke', '#6e7781', 'important');
       }
     }
 
@@ -616,15 +616,15 @@ export class MermaidDiagramWidget extends WidgetType {
     const edgePaths = svgWrapper.querySelectorAll('.edgePaths path, .flowchart-link');
     for (const edgePath of edgePaths) {
       if (edgePath instanceof SVGElement) {
-        edgePath.style.setProperty('stroke', '#d0d7de', 'important');
+        edgePath.style.setProperty('stroke', '#6e7781', 'important');
       }
     }
 
     const markers = svgWrapper.querySelectorAll('.marker, marker path');
     for (const marker of markers) {
       if (marker instanceof SVGElement) {
-        marker.style.setProperty('fill', '#d0d7de', 'important');
-        marker.style.setProperty('stroke', '#d0d7de', 'important');
+        marker.style.setProperty('fill', '#6e7781', 'important');
+        marker.style.setProperty('stroke', '#6e7781', 'important');
       }
     }
   }

@@ -1688,7 +1688,7 @@ body {
 .cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.node rect, .node polygon, .node ellipse, .node circle, .node path),
 .meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.node rect, .node polygon, .node ellipse, .node circle, .node path) {
   fill: #ffffff !important;
-  stroke: #d0d7de !important;
+  stroke: #6e7781 !important;
 }
 
 .cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.nodeLabel, .label, .edgeLabel, .edgeLabel p),
@@ -1703,13 +1703,13 @@ body {
 
 .cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgePaths path, .flowchart-link),
 .meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.edgePaths path, .flowchart-link) {
-  stroke: #d0d7de !important;
+  stroke: #6e7781 !important;
 }
 
 .cm-editor .meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.marker, marker path),
 .meo-mermaid-fullscreen.meo-mermaid-light-theme .meo-mermaid-svg-wrapper svg :where(.marker, marker path) {
-  fill: #d0d7de !important;
-  stroke: #d0d7de !important;
+  fill: #6e7781 !important;
+  stroke: #6e7781 !important;
 }
 
 .meo-mermaid-fullscreen .meo-mermaid-svg-wrapper svg {

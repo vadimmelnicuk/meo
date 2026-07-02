@@ -349,8 +349,8 @@ function buildRuntimeScript(hasMermaid: boolean): string {
       ? getExportThemeColor('--meo-fg', '#c9d1d9', 'color')
       : '#1f2328';
     const border = darkMode
-      ? getExportThemeColor('--meo-border', '#3e444d', 'color')
-      : '#d0d7de';
+      ? getExportThemeColor('--meo-fg', '#c9d1d9', 'color')
+      : '#6e7781';
     return {
       startOnLoad: false,
       securityLevel: 'strict',
