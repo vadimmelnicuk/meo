@@ -957,11 +957,6 @@ body {
   background-color: var(--meo-selection-bg) !important;
 }
 
-.cm-editor.has-search-selection .cm-selectionBackground,
-.cm-editor.has-search-selection.cm-focused .cm-selectionBackground {
-  background-color: transparent !important;
-}
-
 .cm-editor .meo-search-match {
   color: #1f1f1f;
   background: #fff59d;
@@ -973,6 +968,11 @@ body {
   color: #1f1f1f;
   background: #ffff00;
   outline: 1px solid #f0c000;
+}
+
+.cm-editor .meo-search-match-active::selection,
+.cm-editor .meo-search-match-active *::selection {
+  background-color: transparent !important;
 }
 
 .cm-editor .meo-diagnostic {

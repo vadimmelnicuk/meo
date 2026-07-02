@@ -255,6 +255,8 @@ export function createEditor({
   let onTableOpenLink = null;
   let onTableSelectionChange = null;
   let onScroll = null;
+  let pendingLiveSearchRevealFrame: number | null = null;
+  let pendingLiveSearchRevealToken = 0;
   let gitBlameHover = null;
   let gitDiffOverviewRuler = null;
   let sourceLinkHoverPointerActive = false;
@@ -1205,11 +1207,62 @@ export function createEditor({
     return null;
   };
 
+  const scheduleLiveSearchMatchReveal = (position: number) => {
+    pendingLiveSearchRevealToken += 1;
+    const revealToken = pendingLiveSearchRevealToken;
+    if (pendingLiveSearchRevealFrame !== null) {
+      window.cancelAnimationFrame(pendingLiveSearchRevealFrame);
+      pendingLiveSearchRevealFrame = null;
+    }
+    if (currentMode !== 'live') {
+      return;
+    }
+
+    pendingLiveSearchRevealFrame = window.requestAnimationFrame(() => {
+      pendingLiveSearchRevealFrame = null;
+      if (!view || currentMode !== 'live' || revealToken !== pendingLiveSearchRevealToken) {
+        return;
+      }
+
+      view.requestMeasure({
+        read(editorView) {
+          if (currentMode !== 'live' || revealToken !== pendingLiveSearchRevealToken) {
+            return null;
+          }
+          const max = editorView.state.doc.length;
+          const targetPos = Math.max(0, Math.min(position, max));
+          const coords = editorView.coordsAtPos(targetPos);
+          const scrollerRect = editorView.scrollDOM.getBoundingClientRect();
+          if (!coords || scrollerRect.height <= 0) {
+            return null;
+          }
+          if (coords.top >= scrollerRect.top && coords.bottom <= scrollerRect.bottom) {
+            return null;
+          }
+
+          const lineBlock = editorView.lineBlockAt(targetPos);
+          const targetTop = Math.max(
+            0,
+            lineBlock.top - Math.max(0, (editorView.scrollDOM.clientHeight - lineBlock.height) / 2)
+          );
+          return { targetTop };
+        },
+        write(measure, editorView) {
+          if (!measure || currentMode !== 'live' || revealToken !== pendingLiveSearchRevealToken) {
+            return;
+          }
+          editorView.scrollDOM.scrollTop = measure.targetTop;
+        }
+      });
+    });
+  };
+
   const selectSearchMatch = (from, to, { focusEditor = true } = {}) => {
     view.dispatch({
       selection: { anchor: from, head: to },
       effects: EditorView.scrollIntoView(from, { y: 'center' })
     });
+    scheduleLiveSearchMatchReveal(from);
     if (focusEditor) {
       view.focus();
     }
@@ -1827,6 +1880,11 @@ export function createEditor({
       if (capturedPointerId !== null) {
         releasePointerCaptureIfHeld(capturedPointerId);
         capturedPointerId = null;
+      }
+      pendingLiveSearchRevealToken += 1;
+      if (pendingLiveSearchRevealFrame !== null) {
+        window.cancelAnimationFrame(pendingLiveSearchRevealFrame);
+        pendingLiveSearchRevealFrame = null;
       }
       setSourceLinkHoverCursor(view, false);
       view.destroy();
