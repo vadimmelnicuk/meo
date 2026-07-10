@@ -1,8 +1,4 @@
-const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-
-export const isPrimaryModifier = (event: KeyboardEvent): boolean => {
-  return event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
-};
+import { isMac, hasPrimaryModifier, hasSecondaryModifier } from './modifiers';
 
 export const isShortcutKey = (event: KeyboardEvent, key: string, code: string): boolean => {
   return event.key.toLowerCase() === key || event.code === code;
@@ -31,8 +27,9 @@ export const handleEditorShortcut = (
   if (!editor || event.isComposing) {
     return false;
   }
-  
-  const hasPrimaryModifier = isPrimaryModifier(event);
+
+  const primaryModifierHeld = hasPrimaryModifier(event);
+  const secondaryModifierHeld = hasSecondaryModifier(event);
   const editorFocused = editor.hasFocus();
   const vimEditorFocused = vimModeEnabled && editorFocused;
   const vimWinsCtrlConflicts = vimEditorFocused && !isMac;
@@ -61,14 +58,14 @@ export const handleEditorShortcut = (
     return false;
   }
 
-  if (hasPrimaryModifier && isShortcutKey(event, 's', 'KeyS') && !event.altKey) {
+  if (primaryModifierHeld && !secondaryModifierHeld && isShortcutKey(event, 's', 'KeyS') && !event.altKey) {
     event.preventDefault();
     event.stopPropagation();
     context.requestSave();
     return true;
   }
 
-  if (hasPrimaryModifier && isShortcutKey(event, 'f', 'KeyF') && !event.altKey && !event.shiftKey) {
+  if (primaryModifierHeld && !secondaryModifierHeld && isShortcutKey(event, 'f', 'KeyF') && !event.altKey && !event.shiftKey) {
     if (vimWinsCtrlConflicts) {
       return false;
     }
@@ -79,7 +76,7 @@ export const handleEditorShortcut = (
   }
 
   if (
-    hasPrimaryModifier &&
+    primaryModifierHeld && !secondaryModifierHeld &&
     (
       (isMac && isShortcutKey(event, 'f', 'KeyF') && event.altKey) ||
       (!isMac && isShortcutKey(event, 'h', 'KeyH') && !event.altKey)
@@ -98,7 +95,7 @@ export const handleEditorShortcut = (
     return false;
   }
 
-  if (!hasPrimaryModifier) {
+  if (!primaryModifierHeld || secondaryModifierHeld) {
     return false;
   }
 

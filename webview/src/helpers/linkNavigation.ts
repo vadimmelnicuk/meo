@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import { resolvedSyntaxTree } from './markdownSyntax';
 import { isWikiLinkNode, parseWikiLinkData } from './wikiLinks';
 import { findRawSourceUrlMatches, linkSchemeRe, normalizeSourceHref } from './rawUrls';
+import { hasPrimaryModifier, hasSecondaryModifier } from './modifiers';
 
 const linkReferenceCache = new WeakMap<object, Map<string, string>>();
 type LinkLookupOptions = {
@@ -188,7 +189,7 @@ export function isPrimaryModifierPointerClick(event: MouseEvent | PointerEvent):
   if (event.altKey || event.shiftKey) {
     return false;
   }
-  return event.metaKey || event.ctrlKey;
+  return hasPrimaryModifier(event) && !hasSecondaryModifier(event);
 }
 
 export function getDecoratedLinkHrefFromTarget(target: EventTarget | null): string {

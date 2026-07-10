@@ -7,6 +7,7 @@ import { emojiData } from './emoji';
 import { parseKbdTagAt } from './kbd';
 import { createLatexMathElement, parseLatexMathAt } from './math';
 import { isPrimaryModifierPointerClick } from './linkNavigation';
+import { hasPrimaryModifier, hasSecondaryModifier } from './modifiers';
 import { wikiLinkScheme } from './wikiLinks';
 import { normalizeSourceHref } from './rawUrls';
 import type { EditorDiagnostic } from './diagnostics';
@@ -234,11 +235,6 @@ function isSelectionMenuTarget(target) {
 
 function targetElementFrom(target) {
   return target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-}
-
-function isPrimaryModifier(event) {
-  if (event.altKey) return false;
-  return event.metaKey || event.ctrlKey;
 }
 
 function isModifierLinkActivationEvent(event) {
@@ -1725,7 +1721,7 @@ class HtmlTableWidget extends WidgetType {
   }
 
   handleHistoryShortcut(event, table) {
-    if (!isPrimaryModifier(event) || (!isUndoShortcut(event) && !isRedoShortcut(event))) {
+    if (!hasPrimaryModifier(event) || hasSecondaryModifier(event) || (!isUndoShortcut(event) && !isRedoShortcut(event))) {
       return false;
     }
     event.preventDefault();

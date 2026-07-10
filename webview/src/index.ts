@@ -8,7 +8,7 @@ import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights
 import { applyThemeSettings } from './helpers/theme';
 import { setShikiTheme, setShikiEnabled } from './helpers/shikiHighlighter';
 import { createFailureNoticeManager, getErrorMessage, isTransientMermaidRuntimeError, shouldAutoFallbackToSourceForLiveError, logWebviewRenderError, type EditorNotice, type FailureNoticeManager } from './helpers/errors';
-import { isPrimaryModifier, isShortcutKey, normalizeEol, handleEditorShortcut, type ShortcutHandlerContext } from './helpers/shortcuts';
+import { isShortcutKey, normalizeEol, handleEditorShortcut, type ShortcutHandlerContext } from './helpers/shortcuts';
 import { createFindPanel, createFindPanelController, type FindPanelController } from './helpers/findPanel';
 import { createSelectionMenu, createSelectionMenuController, type SelectionMenuController } from './helpers/selectionMenu';
 import { createExportHandler, type ExportHandlerContext } from './helpers/export';
