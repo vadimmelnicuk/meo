@@ -123,8 +123,8 @@ Each key in `syntaxTokens` maps to a syntax category. Color values must use `#he
 
 `fonts` controls typography in live/source editors and heading/line-height behavior.
 
-- `liveFont`: Font family for rendered markdown text.
-- `sourceFont`: Font family for source/code text (also used for inline code and code blocks in Live mode).
+- `liveFont`: Font family for rendered markdown text (empty defaults to the same proportional fonts used in VS Code's Markdown Preview).
+- `sourceFont`: Font family for source/code text (also used for inline code and code blocks in Live mode; empty defaults to VS Code's monospace editor font).
 - `liveFontWeight`: Font weight for live mode text. Free-form CSS font-weight values (for example `normal`, `bold`, `500`, `600`).
 - `sourceFontWeight`: Font weight for source mode text (and monospaced token rendering in both export and Live mode code areas).
 - `liveFontSize`: Live mode font size (`null` = use VS Code editor font size).
@@ -137,7 +137,8 @@ Each key in `syntaxTokens` maps to a syntax category. Color values must use `#he
 
 - Empty syntax token color (`""`) falls back to that token's palette-derived default.
 - Missing `backgroundColor` in older theme files falls back to `var(--vscode-editor-background)`.
-- Empty `fonts.liveFont` or `fonts.sourceFont` falls back to VS Code editor font family.
+- Empty `fonts.liveFont` falls back to your VS Code `markdown.preview.fontFamily`, or, failing that, VS Code's [defaults](https://github.com/microsoft/vscode/blob/1.96.4/extensions/markdown-language-features/package.json#L343-L348).
+- Empty `fonts.sourceFont` falls back to VS Code's editor font family (the monospace font from `editor.fontFamily`).
 - `fonts.liveFontSize: null` and `fonts.sourceFontSize: null` fall back to VS Code editor font size.
 - Empty `fonts.liveFontWeight` or `fonts.sourceFontWeight` falls back to VS Code editor font weight.
 - `fonts.h1FontSize` to `fonts.h6FontSize` default to `1.6`, `1.5`, `1.3`, `1.2`, `1.1`, and `1` respectively (and `null` falls back to those defaults).

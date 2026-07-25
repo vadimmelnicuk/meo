@@ -12,6 +12,7 @@ import {
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
   getSpellCheckEnabled,
+  getVSCodePreviewFontFamily,
   getOutlinePosition,
   getOutlineVisible,
   getRememberPositionLines,
@@ -24,6 +25,16 @@ import {
   type VimKeybinding
 } from '../shared/extensionConfig';
 import { openLink, resolveLocalLinkTargets, resolveWebviewImageSrc, resolveWikiLinkTargets } from '../shared/documentLinks';
+import type {
+  ApplyChangesMessage,
+  EditorMode,
+  ExportFormat,
+  ExtensionMessage,
+  FindOptions,
+  RequestDiagnosticSuggestionsMessage,
+  SaveImageFromClipboardMessage,
+  WebviewMessage
+} from '../shared/webviewMessages';
 import { GitDocumentState, hashGitBaselinePayload } from '../git/documentState';
 import { openGitRevisionForLine, openGitWorktreeForLine, resolveGitBlameForRequest } from '../git/blameActions';
 import type { GitBaselinePayload, GitBlameLineResult } from '../git/types';
@@ -38,13 +49,7 @@ import {
   MEO_SPELL_DIAGNOSTIC_SOURCE
 } from '../spell/spellDiagnostics';
 
-export type EditorMode = 'live' | 'source';
-export type ExportFormat = 'html' | 'pdf';
-
-type FindOptions = {
-  wholeWord: boolean;
-  caseSensitive: boolean;
-};
+export type { EditorMode, ExportFormat };
 
 type InitMessage = {
   type: 'init';
@@ -61,6 +66,7 @@ type InitMessage = {
   vimKeybindings: VimKeybinding[];
   vimLeader: string;
   findOptions: FindOptions;
+  vscodePreviewFontFamily?: string;
   outlinePosition: OutlinePosition;
   outlineVisible: boolean;
   theme: ThemeSettings;
@@ -97,107 +103,6 @@ type RevealSelectionPayload = {
   head: number;
 };
 
-type ApplyChangesMessage = {
-  type: 'applyChanges';
-  baseVersion: number;
-  changes: Array<{ from: number; to: number; insert: string }>;
-};
-
-type DraftChangedMessage = {
-  type: 'draftChanged';
-  text: string | null;
-};
-
-type SetModeMessage = {
-  type: 'setMode';
-  mode: EditorMode;
-};
-
-type OpenLinkMessage = {
-  type: 'openLink';
-  href: string;
-};
-
-type ResolveImageSrcMessage = {
-  type: 'resolveImageSrc';
-  requestId: string;
-  url: string;
-};
-
-type ResolveWikiLinksMessage = {
-  type: 'resolveWikiLinks';
-  requestId: string;
-  targets: string[];
-};
-
-type ResolveLocalLinksMessage = {
-  type: 'resolveLocalLinks';
-  requestId: string;
-  targets: string[];
-};
-
-type SaveDocumentMessage = {
-  type: 'saveDocument';
-};
-
-type ExportDocumentMessage = {
-  type: 'exportDocument';
-  format: ExportFormat;
-};
-
-type ExportSnapshotMessage = {
-  type: 'exportSnapshot';
-  requestId: string;
-  text: string;
-  environment?: ExportStyleEnvironment;
-};
-
-type ExportSnapshotErrorMessage = {
-  type: 'exportSnapshotError';
-  requestId: string;
-  message: string;
-};
-
-type SetLineNumbersMessage = {
-  type: 'setLineNumbers';
-  visible?: boolean;
-  enabled?: boolean;
-};
-
-type SetGitChangesGutterMessage = {
-  type: 'setGitChangesGutter';
-  visible?: boolean;
-  enabled?: boolean;
-};
-
-type SetSpellCheckMessage = {
-  type: 'setSpellCheck';
-  enabled: boolean;
-};
-
-type SetOutlineVisibleMessage = {
-  type: 'setOutlineVisible';
-  visible: boolean;
-};
-
-type SetContentMaxWidthMessage = {
-  type: 'setContentMaxWidth';
-  enabled: boolean;
-};
-
-type SetFindOptionsMessage = {
-  type: 'setFindOptions';
-  wholeWord?: boolean;
-  caseSensitive?: boolean;
-  findOptions?: Partial<FindOptions>;
-};
-
-type ViewPositionChangedMessage = {
-  type: 'viewPositionChanged';
-  topLine: number;
-  topLineOffset?: number;
-};
-
 type ResolvedImageSrcMessage = {
   type: 'resolvedImageSrc';
   requestId: string;
@@ -219,43 +124,6 @@ type ResolvedLocalLinksMessage = {
 type RequestExportSnapshotMessage = {
   type: 'requestExportSnapshot';
   requestId: string;
-};
-
-type RequestGitBlameMessage = {
-  type: 'requestGitBlame';
-  requestId: string;
-  lineNumber: number;
-  text?: string;
-  localEditGeneration: number;
-};
-
-type OpenGitRevisionForLineMessage = {
-  type: 'openGitRevisionForLine';
-  lineNumber: number;
-  text?: string;
-};
-
-type OpenGitWorktreeForLineMessage = {
-  type: 'openGitWorktreeForLine';
-  lineNumber: number;
-  text?: string;
-};
-
-type SaveImageFromClipboardMessage = {
-  type: 'saveImageFromClipboard';
-  requestId: string;
-  imageData: string;
-  fileName: string;
-};
-
-type RequestDiagnosticSuggestionsMessage = {
-  type: 'requestDiagnosticSuggestions';
-  requestId: string;
-  from: number;
-  to: number;
-  message: string;
-  source?: string;
-  code?: string;
 };
 
 type DiagnosticSuggestionsResultMessage = {
@@ -301,32 +169,6 @@ type DiagnosticsChangedMessage = {
   type: 'diagnosticsChanged';
   diagnostics: SerializedDiagnostic[];
 };
-
-type WebviewMessage =
-  | ApplyChangesMessage
-  | DraftChangedMessage
-  | SetModeMessage
-  | SetLineNumbersMessage
-  | SetGitChangesGutterMessage
-  | SetSpellCheckMessage
-  | SetOutlineVisibleMessage
-  | SetContentMaxWidthMessage
-  | SetFindOptionsMessage
-  | ViewPositionChangedMessage
-  | OpenLinkMessage
-  | ResolveImageSrcMessage
-  | ResolveWikiLinksMessage
-  | ResolveLocalLinksMessage
-  | SaveDocumentMessage
-  | ExportDocumentMessage
-  | ExportSnapshotMessage
-  | ExportSnapshotErrorMessage
-  | RequestGitBlameMessage
-  | OpenGitRevisionForLineMessage
-  | OpenGitWorktreeForLineMessage
-  | SaveImageFromClipboardMessage
-  | RequestDiagnosticSuggestionsMessage
-  | { type: 'ready' };
 
 type RefreshGitBaselineOptions = {
   forcePost?: boolean;
@@ -455,7 +297,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     });
   };
 
-  const postToWebview = async (message: Record<string, unknown>): Promise<boolean> => {
+  const postToWebview = async (message: ExtensionMessage): Promise<boolean> => {
     if (disposed) {
       return false;
     }
@@ -554,6 +396,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       vimKeybindings: getVimKeybindings(),
       vimLeader: getVimLeaderKey(),
       findOptions: getFindOptions(),
+      vscodePreviewFontFamily: getVSCodePreviewFontFamily(),
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),
       theme: getThemeSettings(),
@@ -1054,7 +897,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         });
         return;
       case 'exportSnapshotError':
-        rejectPendingExportSnapshot(raw.requestId, new Error(raw.message || 'Failed to collect export snapshot.'));
+        rejectPendingExportSnapshot(raw.requestId, new Error(raw.error || 'Failed to collect export snapshot.'));
         return;
       case 'requestGitBlame': {
         const resolved = await resolveGitBlameForRequest(documentUri, raw, document.getText(), gitDocumentState);

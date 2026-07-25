@@ -5,6 +5,7 @@
   "version": "0.1.26",
   "publisher": "vadimmelnicuk",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.97.0"
@@ -747,6 +748,9 @@
   "scripts": {
     "install:all": "bun install && (cd webview && bun install)",
     "typecheck:webview": "tsc -p webview/tsconfig.json --noEmit",
+    "test": "bun run test:unit && bun run test:browser",
+    "test:unit": "bun test src webview",
+    "test:browser": "bun run build:webview && bun test --timeout 60000 browserTests",
     "build": "bun run build:webview && bun run build:extension",
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist webview/dist/katex && bun build webview/src/index.ts --target=browser --format=esm --splitting --minify --outdir=webview/dist && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js && cp node_modules/katex/dist/katex.min.css webview/dist/katex/katex.min.css && cp -R node_modules/katex/dist/fonts webview/dist/katex/fonts",
     "build:extension": "bun run build:extension:main && bun run build:extension:export-runtime && bun run build:extension:puppeteer-runtime",
@@ -789,8 +793,10 @@
     "shiki": "^4.2.0"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.14",
     "@types/markdown-it": "^14.1.2",
     "@types/sanitize-html": "^2.16.0",
+    "puppeteer": "^24.1.1",
     "typescript": "^5.9.3"
   }
 }

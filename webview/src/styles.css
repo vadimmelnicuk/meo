@@ -26,13 +26,22 @@
     var(--meo-code-background, var(--vscode-textCodeBlock-background)) 82%,
     var(--vscode-editor-selectionBackground) 18%
   );
+
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-sideBar-background) 50%, transparent 50%);
-  --meo-font-live: var(--vscode-editor-font-family);
-  --meo-font-source: var(--vscode-editor-font-family);
+  /* VS Code passes a CSS variable naming the (usually monospace) editor font family
+   * but does _not_ pass an equivalent for the (usually proportional) Markdown Preview font family, so -
+   * at least while we wait for `init` or `applyThemeSettings` to name something more appropriate -
+   * Live mode falls back to this **hardcoded** font stack, copied and pasted from VS Code's default for `markdown.preview.fontFamily`
+   * (https://github.com/microsoft/vscode/blob/1.96.4/extensions/markdown-language-features/package.json#L343-L348).
+   */
+  --meo-font-live: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
   --meo-font-live-weight: var(--vscode-editor-font-weight);
-  --meo-font-source-weight: var(--vscode-editor-font-weight);
   --meo-font-live-size: var(--vscode-editor-font-size, 13px);
+
+  --meo-font-source: var(--vscode-editor-font-family);
+  --meo-font-source-weight: var(--vscode-editor-font-weight);
   --meo-font-source-size: var(--vscode-editor-font-size, 13px);
+
   --meo-heading-1-size: 1.6em;
   --meo-heading-2-size: 1.5em;
   --meo-heading-3-size: 1.3em;

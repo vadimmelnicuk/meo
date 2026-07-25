@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Write to bun install cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run typecheck:webview
+
+  unit:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Read from bun install cache?
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Unit tests
+        run: bun run test:unit
+
+  browser:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      # For _this_ job, we do need `puppeteer` to install Chrome for Testing using its `postinstall` hook.
+      PUPPETEER_SKIP_DOWNLOAD: 0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Read from bun install cache?
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Cache the puppeteer browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Allow puppeteer's Chrome sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Browser tests
+        run: bun run test:browser
+
+  package:
+    needs: [unit, browser]
+    # Only produce `.vsix` artifacts on 'branch' and manual/'workflow_dispatch' builds
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Read from bun install cache?
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the webview and extension bundles
+        run: bun run build
+
+      # `vsce` may skip deps since we're already bundling everything into `dist/`, and `**/node_modules/` are excluded anyway.
+      # Also note that aside from `--no-dependencies`, `vsce` is only constrained by `/.vscodeignore` and not by `.gitignore`, etc.
+      - name: List the package contents
+        run: bunx @vscode/vsce@3 ls --tree --no-dependencies
+      - name: Package the extension
+        run: bunx @vscode/vsce@3 package --no-dependencies
+
+      # A `.vsix` is itself a zip archive,
+      # so **`archive: false`** uploads it as-is rather than nesting it inside a (`name`able) outer archive.
+      - name: Upload the `.vsix` package
+        uses: actions/upload-artifact@v7
+        with:
+          path: "*.vsix"
+          archive: false
+          if-no-files-found: error

@@ -1428,7 +1428,7 @@ const withMessageErrorBoundary = (context: string, action: () => void): void => 
 };
 
 window.addEventListener('message', (event) => {
-  const message = event.data;
+  const message = event.data as ExtensionMessage;
 
   if (!message || typeof message !== 'object') {
     return;
@@ -1437,7 +1437,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'init') {
     acknowledgeReadyHandshake();
     withMessageErrorBoundary('init handler', () => {
-      applyThemeSettings(message.theme);
+      applyThemeSettings(message.theme, { vscodePreviewFontFamily: message.vscodePreviewFontFamily });
       setShikiEnabled(message.shikiCodeBlocks === true);
       setShikiTheme(message.codeTheme);
       initialMountRecoveryAttempted = false;
@@ -1473,7 +1473,7 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'themeChanged') {
     withMessageErrorBoundary('themeChanged handler', () => {
-      applyThemeSettings(message.theme);
+      applyThemeSettings(message.theme, { vscodePreviewFontFamily: message.vscodePreviewFontFamily });
       refreshMermaidTheme();
       setShikiTheme(message.codeTheme);
       editor?.refreshDecorations();

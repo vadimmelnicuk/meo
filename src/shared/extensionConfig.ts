@@ -222,6 +222,16 @@ export function getExportEditorFontEnvironment(): { editorFontFamily?: string; e
   };
 }
 
+/**
+ * This is currently passed to webview as an additional postMessage property,
+ * complementing the `--vscode-editor-font-family` CSS variable that VS Code already passes.
+ */
+export function getVSCodePreviewFontFamily(): string | undefined {
+  const markdownConfig = vscode.workspace.getConfiguration('markdown');
+  const fontFamily = `${markdownConfig.get<string>('preview.fontFamily', '') ?? ''}`.trim();
+  return fontFamily || undefined;
+}
+
 export function isMarkdownDocumentPath(filePath: string): boolean {
   return MARKDOWN_FILE_EXTENSIONS.some((extension) => filePath.endsWith(extension));
 }

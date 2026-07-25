@@ -5,8 +5,6 @@ import {
   themeColorKeys
 } from '../../../src/shared/themeDefaults';
 
-const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
-const vscodeEditorFontSize = 'var(--vscode-editor-font-size, 13px)';
 const styleValueInjectionPattern = /[\n\r;{}]/g;
 const defaultHeadingFontWeight = '600';
 const headingSizeFallbacks = ['1.6em', '1.5em', '1.3em', '1.2em', '1.1em', '1em'] as const;
@@ -92,7 +90,10 @@ const normalizeThemeHeadingSize = (value: number | undefined, fallback: string, 
   return `${value}px`;
 };
 
-export const applyThemeSettings = (theme?: ThemeSettings): void => {
+export const applyThemeSettings = (
+  theme?: ThemeSettings,
+  { vscodePreviewFontFamily }: { vscodePreviewFontFamily?: string } = {}
+): void => {
   let resolvedTheme: ThemeSettings;
   const editorFontWeight = resolveEditorFontWeight();
   try {
@@ -161,12 +162,15 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
   ];
   const liveLineHeight = normalizeThemeLineHeight(resolvedTheme.fonts.liveLineHeight, 1.5);
   const sourceLineHeight = normalizeThemeLineHeight(resolvedTheme.fonts.sourceLineHeight, 1.5);
-  rootStyle.setProperty('--meo-font-live', liveFont || vscodeEditorFontFamily);
-  rootStyle.setProperty('--meo-font-source', sourceFont || vscodeEditorFontFamily);
+
+  // Setting a property to '' removes it, per the CSS Object Model,
+  // so any unresolved property will fall through to the default value that we set in `./webview/src/styles.css`.
+  rootStyle.setProperty('--meo-font-live', liveFont || sanitizeThemeFontStyle(vscodePreviewFontFamily ?? ''));
+  rootStyle.setProperty('--meo-font-source', sourceFont);
   rootStyle.setProperty('--meo-font-live-weight', liveFontWeight || editorFontWeight);
   rootStyle.setProperty('--meo-font-source-weight', sourceFontWeight || editorFontWeight);
-  rootStyle.setProperty('--meo-font-live-size', liveFontSize || vscodeEditorFontSize);
-  rootStyle.setProperty('--meo-font-source-size', sourceFontSize || vscodeEditorFontSize);
+  rootStyle.setProperty('--meo-font-live-size', liveFontSize);
+  rootStyle.setProperty('--meo-font-source-size', sourceFontSize);
   for (const [index, size] of headingFontSizes.entries()) {
     rootStyle.setProperty(`--meo-heading-${index + 1}-size`, size);
   }

@@ -50,6 +50,7 @@ import {
   getGitChangesGutterEnabled,
   getGitDiffLineHighlightsEnabled,
   getLineNumbersEnabled,
+  getVSCodePreviewFontFamily,
   getOutlinePosition,
   getOutlineVisible,
   getContentMaxWidthEnabled,
@@ -64,6 +65,7 @@ import {
 } from './shared/extensionConfig';
 import { createPanelSessionController, type ExportFormat, type PanelSession } from './extension/panelSession';
 import { serializeThemeSettings, themePresets, type ThemeSettings, validateThemePayload } from './shared/themeDefaults';
+import type { ExtensionMessage } from './shared/webviewMessages';
 import {
   runWithTimedUiTimeout,
   showTimedErrorMessage,
@@ -582,9 +584,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     }
 
     if (
-      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.theme`)
+      event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.theme`) ||
+      event.affectsConfiguration('markdown.preview.fontFamily')
     ) {
-      this.broadcast({ type: 'themeChanged', theme: getThemeSettings(), codeTheme: getCodeBlockVscodeTheme() });
+      this.notifyThemeChanged();
     }
 
     if (
@@ -609,7 +612,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   notifyThemeChanged(): void {
-    this.broadcast({ type: 'themeChanged', theme: getThemeSettings(), codeTheme: getCodeBlockVscodeTheme() });
+    this.broadcast({
+      type: 'themeChanged',
+      theme: getThemeSettings(),
+      vscodePreviewFontFamily: getVSCodePreviewFontFamily(),
+      codeTheme: getCodeBlockVscodeTheme()
+    });
   }
 
   async toggleActiveEditorMode(): Promise<void> {
@@ -620,7 +628,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     this.lastActivePanel = session.panel;
     await session.ensureInitDelivered();
-    await session.panel.webview.postMessage({ type: 'toggleMode' });
+
+    const toggleMode: ExtensionMessage = { type: 'toggleMode' };
+    await session.panel.webview.postMessage(toggleMode);
   }
 
   async resolveCustomTextEditor(
@@ -688,7 +698,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     this.updateActiveEditorContext();
   }
 
-  private broadcast(message: Record<string, unknown>): void {
+  private broadcast(message: ExtensionMessage): void {
     for (const panel of this.activePanels) {
       void panel.webview.postMessage(message);
     }

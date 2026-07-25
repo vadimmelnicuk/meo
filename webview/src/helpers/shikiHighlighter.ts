@@ -1,11 +1,8 @@
 import type { HighlighterCore } from 'shiki/core';
 
-export type RawVscodeTheme = {
-  name: string;
-  type: 'light' | 'dark';
-  colors: Record<string, string>;
-  tokenColors: unknown[];
-};
+import type { RawVscodeTheme } from '../../../src/shared/vscodeTheme';
+
+export type { RawVscodeTheme };
 
 const THEME_NAME = 'meo-code-theme';
 const CACHE_LIMIT = 300;
