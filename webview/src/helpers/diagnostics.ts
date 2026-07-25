@@ -1,14 +1,9 @@
 import { RangeSetBuilder, StateEffect, StateField, type Transaction } from '@codemirror/state';
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 
-export type EditorDiagnostic = {
-  from: number;
-  to: number;
-  severity: 0 | 1 | 2 | 3;
-  message: string;
-  source?: string;
-  code?: string;
-};
+import type { EditorDiagnostic } from '../../../src/shared/webviewMessages';
+
+export type { EditorDiagnostic };
 
 export const setDiagnosticsEffect = StateEffect.define<EditorDiagnostic[]>();
 

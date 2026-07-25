@@ -1428,7 +1428,7 @@ const withMessageErrorBoundary = (context: string, action: () => void): void => 
 };
 
 window.addEventListener('message', (event) => {
-  const message = event.data;
+  const message = event.data as ExtensionMessage;
 
   if (!message || typeof message !== 'object') {
     return;
