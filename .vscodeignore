@@ -1,21 +1,34 @@
-.vscode/**
-.vscode-test/**
-out/**
-node_modules/**
-webview/node_modules/**
-webview/src/**
-webview/.gitignore
-webview/tsconfig.*
-src/**
-.gitignore
+# These are `minimatch` globs, not `.gitignore` patterns
+# https://code.visualstudio.com/api/working-with-extensions/publishing-extension#using-vscodeignore
+
+# Directory trees from repo root
+.github/
+.vscode/
+.vscode-test/
+assets/
+browserTests/
+docs/
+out/
+releases/
+scripts/
+src/
+webview/src/
+
+# File paths from repo root
+bun.lock
+features.md
+
+# Directories at any level
+**/.claude/
+**/.git/
+**/node_modules/
+**/tests/
+
+# Files at any level
+**/*.code-workspace
 **/*.map
 **/*.ts
+**/.gitignore
 **/.vscode-test.*
-scripts/**
-releases/**
-tests/**
-docs/**
-assets/**
-.claude/
-AGENTS.md
-features.md
+**/AGENTS.md
+**/tsconfig.*
