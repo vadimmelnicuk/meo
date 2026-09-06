@@ -35,6 +35,7 @@ import type { ExportStyleEnvironment } from '../export/runtime';
 import type { ThemeSettings } from '../shared/themeDefaults';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { OutlinePosition } from '../shared/extensionConfig';
+import { cspellReplacementEdit } from '../spell/cspellCodeActions';
 import {
   collectMeoSpellDiagnostics,
   collectMeoSpellSuggestions,
@@ -1679,34 +1680,43 @@ function simpleReplacementFromCodeAction(
   requestedRange: { from: number; to: number },
   action: vscode.Command | vscode.CodeAction
 ): string | null {
-  if (!('edit' in action) || !action.edit || ('disabled' in action && action.disabled)) {
+  if ('disabled' in action && action.disabled) {
     return null;
   }
 
-  const entries = action.edit.entries();
-  if (entries.length !== 1) {
-    return null;
+  let edit: vscode.TextEdit;
+  if ('edit' in action && action.edit) {
+    const entries = action.edit.entries();
+    if (entries.length !== 1) {
+      return null;
+    }
+    const [uri, edits] = entries[0];
+    if (uri.toString() !== document.uri.toString() || edits.length !== 1) {
+      return null;
+    }
+    [edit] = edits;
+  } else {
+    const commandEdit = cspellReplacementEdit(action, document.uri.toString(), document.version);
+    if (!commandEdit) {
+      return null;
+    }
+    edit = new vscode.TextEdit(new vscode.Range(
+      commandEdit.range.start.line,
+      commandEdit.range.start.character,
+      commandEdit.range.end.line,
+      commandEdit.range.end.character
+    ), commandEdit.newText);
   }
 
-  const [uri, edits] = entries[0];
-  if (uri.toString() !== document.uri.toString() || edits.length !== 1) {
-    return null;
-  }
-
-  const [edit] = edits;
   const documentText = document.getText();
   const editFrom = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(edit.range.start));
   const editTo = mapDocumentOffsetToNormalizedOffset(documentText, document.offsetAt(edit.range.end));
   const editRange = clampDiagnosticRange(editFrom, editTo, documentText.replace(/\r\n?/g, '\n').length);
-  if (!editRange || !rangesOverlap(editRange, requestedRange)) {
+  if (!editRange || editRange.from !== requestedRange.from || editRange.to !== requestedRange.to) {
     return null;
   }
 
   return edit.newText;
-}
-
-function rangesOverlap(left: { from: number; to: number }, right: { from: number; to: number }): boolean {
-  return left.from < right.to && right.from < left.to;
 }
 
 async function handleSaveImageFromClipboard(

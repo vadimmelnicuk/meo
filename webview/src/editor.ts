@@ -53,6 +53,7 @@ import {
 } from './helpers/tables';
 import { parseFrontmatter, sourceFrontmatterField } from './helpers/frontmatter';
 import { collectLatexMathRanges } from './helpers/math';
+import type { SelectionMenuState } from './helpers/selectionMenu';
 import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 
 declare module '@codemirror/view' {
@@ -214,6 +215,7 @@ export function createEditor({
     anchorX: number;
     anchorY: number;
     anchorBottomY: number;
+    suggestions?: string[];
   } | null = null;
 
   const expandVimLeader = (keys: string, leaderKey: string) => keys.replace(/<leader>/gi, leaderKey || '\\');
@@ -734,13 +736,10 @@ export function createEditor({
     return coords;
   };
 
-  const getActiveTableSelectionState = (input) => {
+  const getActiveTableSelectionState = (input: HTMLTextAreaElement): (SelectionMenuState & { from: number; to: number }) | null => {
     const selection = getTableInputDocumentSelection(input);
     if (!selection) return null;
     const diagnostic = diagnosticForRange(selection.from, selection.to);
-    if (diagnostic) {
-      requestDiagnosticSuggestionsFor(diagnostic, selection);
-    }
     return {
       visible: true,
       from: selection.from,
@@ -1015,6 +1014,37 @@ export function createEditor({
     diagnostic.from === from && diagnostic.to === to
   ));
 
+  const publishSelectionMenu = (
+    state: SelectionMenuState & { from?: number; to?: number }
+  ): void => {
+    if (!state.visible || state.from === undefined || state.to === undefined) {
+      clearDiagnosticSuggestionState();
+      onSelectionChange?.(state);
+      return;
+    }
+
+    const diagnostic = diagnosticForRange(state.from, state.to);
+    if (!diagnostic) {
+      clearDiagnosticSuggestionState();
+      onSelectionChange?.(state);
+      return;
+    }
+
+    requestDiagnosticSuggestionsFor(diagnostic, {
+      anchorX: state.anchorX ?? 0,
+      anchorY: state.anchorY ?? 0,
+      anchorBottomY: state.anchorBottomY
+    });
+    onSelectionChange?.({
+      ...state,
+      diagnosticSuggestions: pendingDiagnosticSuggestionRequest?.suggestions?.map((text) => ({
+        from: diagnostic.from,
+        to: diagnostic.to,
+        text
+      }))
+    });
+  };
+
   const emitSelectionChange = () => {
     if (!view || typeof onSelectionChange !== 'function') {
       return;
@@ -1022,7 +1052,7 @@ export function createEditor({
 
     const activeTableInput = getActiveTableInput();
     if (activeTableInput) {
-      onSelectionChange(getActiveTableSelectionState(activeTableInput) ?? { visible: false });
+      publishSelectionMenu(getActiveTableSelectionState(activeTableInput) ?? { visible: false });
       return;
     }
 
@@ -1032,26 +1062,26 @@ export function createEditor({
 
     const selection = view.state.selection.main;
     if (selection.empty) {
-      onSelectionChange({ visible: false });
+      publishSelectionMenu({ visible: false });
       return;
     }
 
     const from = Math.min(selection.from, selection.to);
     const to = Math.max(selection.from, selection.to);
     if (isSearchMatchSelection(from, to)) {
-      onSelectionChange({ visible: false });
+      publishSelectionMenu({ visible: false });
       return;
     }
 
     if (!isRegularInlineSelection(view.state, from, to)) {
-      onSelectionChange({ visible: false });
+      publishSelectionMenu({ visible: false });
       return;
     }
 
     const align = isDiagnosticSelectionRange(from, to) ? 'start' : undefined;
     const nativeAnchor = resolveNativeSelectionAnchor();
     if (nativeAnchor) {
-      onSelectionChange({
+      publishSelectionMenu({
         visible: true,
         from,
         to,
@@ -1066,7 +1096,7 @@ export function createEditor({
     const fromCoords = view.coordsAtPos(from);
     const toCoords = view.coordsAtPos(to);
     if (!fromCoords || !toCoords) {
-      onSelectionChange({ visible: false });
+      publishSelectionMenu({ visible: false });
       return;
     }
 
@@ -1075,7 +1105,7 @@ export function createEditor({
     const anchorY = fromCharCoords ? Math.min(fromCoords.top, fromCharCoords.top) : fromCoords.top;
     const anchorBottomY = fromCharCoords ? Math.max(fromCoords.bottom, fromCharCoords.bottom) : fromCoords.bottom;
 
-    onSelectionChange({
+    publishSelectionMenu({
       visible: true,
       from,
       to,
@@ -1771,16 +1801,16 @@ export function createEditor({
         syncGitGutterVisibility();
         emitSearchStateChange();
 
+        if (update.docChanged) {
+          clearDiagnosticSuggestionState();
+        }
+
         if (update.selectionSet) {
           syncSelectionClass();
           emitSelectionChange();
         } else if (update.viewportChanged) {
           emitSelectionChange();
           onViewportChange?.();
-        }
-
-        if (update.docChanged) {
-          clearDiagnosticSuggestionState();
         }
 
         if (!update.docChanged || applyingExternal || applyingRenumber) {
@@ -2322,8 +2352,17 @@ export function createEditor({
     },
     setDiagnostics(diagnostics: EditorDiagnostic[]) {
       currentDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
-      clearDiagnosticSuggestionState();
+      // Providers can publish diagnostics while a suggestion request is in flight.
+      const keepSuggestionRequest = pendingDiagnosticSuggestionRequest !== null && currentDiagnostics.some(
+        (diagnostic) => diagnosticKey(diagnostic) === pendingDiagnosticSuggestionRequest?.key
+      );
+      if (!keepSuggestionRequest) {
+        clearDiagnosticSuggestionState();
+      }
       view.dispatch({ effects: setDiagnosticsEffect.of(currentDiagnostics) });
+      if (!keepSuggestionRequest) {
+        emitSelectionChange();
+      }
     },
     showDiagnosticSuggestions(requestId, payload) {
       if (
@@ -2344,6 +2383,12 @@ export function createEditor({
       ));
       if (!diagnostic) {
         pendingDiagnosticSuggestionRequest = null;
+        return;
+      }
+
+      pendingDiagnosticSuggestionRequest.suggestions = payload.suggestions;
+      // Pointer-up will render the completed selection, including fast responses.
+      if (selectionPointerId !== null) {
         return;
       }
 

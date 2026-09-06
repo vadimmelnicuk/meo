@@ -1053,8 +1053,6 @@ const focusEditorFromHost = () => {
 const applyDiagnosticsFromHost = (diagnostics: unknown): void => {
   const nextDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
   pendingDiagnostics = nextDiagnostics;
-  pendingDiagnosticSuggestionRequests.clear();
-  selectionMenuController.hide();
   editor?.setDiagnostics?.(nextDiagnostics);
 };
 
