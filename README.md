@@ -10,7 +10,7 @@ An optimized markdown editor with live editing mode for VS Code.
 ### Writing & Editing
 
 - **Live/Source modes** - Switch between clean writing and raw markdown in a single tab
-- **Read Only** - Lock all documents in Live and Source using the button beside Spell Check. Read Only defaults to off and is remembered across editor sessions and workspaces. Live stays rendered while selecting and copying text. Toggle off to edit.
+- **Read Only** - Navigate and read text without accidental edits
 - **Toolbar formatting** - Insert headings, lists, tasks, tables, code blocks, links, images, and quotes in one click
 - **Floating selection menu** - Instantly apply bold, italic, strikethrough, inline code, or links on any text selection
 - **Spellcheck** - Fix issues with built-in spelling suggestions
