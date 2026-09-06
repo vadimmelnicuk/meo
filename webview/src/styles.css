@@ -711,12 +711,13 @@ body {
 .cm-editor .cm-line {
   font-family: var(--meo-active-editor-font);
   color: var(--meo-foreground);
-  background: var(--meo-background);
   min-width: 0;
   min-height: 1.2em;
 }
 
 .cm-editor .cm-scroller {
+  /* Keep content and default line backgrounds clear for CodeMirror's selection layer. */
+  background: var(--meo-background);
   scrollbar-gutter: stable;
   scrollbar-color: var(--meo-scrollbar-thumb) transparent;
   scrollbar-width: thin;
@@ -1047,6 +1048,11 @@ body {
 
 .cm-editor.meo-mode-live .cm-activeLine.meo-md-code-block {
   background-color: var(--meo-active-line-bg);
+}
+
+/* Native and drawn selections must not blend with opposite sides of the active line. */
+.cm-editor.has-selection .cm-line.cm-activeLine {
+  background-color: transparent;
 }
 
 .cm-editor.meo-mode-live .cm-content {

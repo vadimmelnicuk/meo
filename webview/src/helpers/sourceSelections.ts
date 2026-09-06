@@ -1,4 +1,4 @@
-import { EditorSelection, EditorState, Prec, type Extension } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, Prec, type Extension } from '@codemirror/state';
 import { simplifySelection } from '@codemirror/commands';
 import { selectNextOccurrence } from '@codemirror/search';
 import { drawSelection, keymap, type Command } from '@codemirror/view';
@@ -29,9 +29,20 @@ const insertCursorAtLineEnds: Command = (view) => {
 };
 
 export function sourceSelectionExtensions(): Extension[] {
+  const selectionDrawing = new Compartment();
+  const nativeSelection: Extension = [];
+  const multipleSelections = drawSelection();
+
   return [
     EditorState.allowMultipleSelections.of(true),
-    drawSelection(),
+    // Match Live's native highlight, including text with its own background.
+    // CodeMirror's selection layer is only needed for additional ranges/cursors.
+    selectionDrawing.of(nativeSelection),
+    EditorState.transactionExtender.of((transaction) => {
+      const drawing = transaction.state.selection.ranges.length > 1 ? multipleSelections : nativeSelection;
+      if (selectionDrawing.get(transaction.state) === drawing) return null;
+      return { effects: selectionDrawing.reconfigure(drawing) };
+    }),
     Prec.high(keymap.of([
       { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true, stopPropagation: true },
       { key: 'Shift-Alt-i', run: insertCursorAtLineEnds, preventDefault: true, stopPropagation: true },
