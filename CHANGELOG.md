@@ -1,7 +1,7 @@
 # Markdown Editor Optimized (MEO)
 ---
-## Unreleased
-- Added a shared Read Only toggle
+## 0.1.27
+- Added a shared read only toggle
 - Added the theme color to customize the active-line highlight
 - Added visual multiline editing to live table cells
 - Added link-reference definitions as visible linked lists in HTML and PDF exports
