@@ -582,7 +582,7 @@ readOnlyBtn.dataset.action = 'readOnly';
 readOnlyBtn.title = 'Enable Read Only';
 readOnlyBtn.setAttribute('aria-label', 'Enable Read Only');
 readOnlyBtn.setAttribute('aria-pressed', 'false');
-readOnlyBtn.appendChild(createElement(PencilOff, { width: 18, height: 18 }));
+readOnlyBtn.appendChild(createElement(PencilOff, { width: 16, height: 16 }));
 
 modeGroup.append(liveButton, sourceButton);
 rightGroup.insertBefore(readOnlyBtn, exportWrapper);
