@@ -10,6 +10,7 @@ import { liveModeExtensions } from './liveMode';
 import { readOnlyExtensions, activeLineHighlightExtensions, externalSyncAnnotation, copyReadOnlySelection } from './helpers/readOnly';
 import { headingCollapseSharedExtensions, headingCollapseSourceSpacerExtensions } from './helpers/headingCollapse';
 import { buildUserKeymapBindings, type KeymapCommandHandlers } from './helpers/userKeymap';
+import { sourceSelectionExtensions } from './helpers/sourceSelections';
 import type { NormalizedKeymapBinding } from '../../src/shared/keymapConfig';
 import { resolveCodeLanguage, insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
@@ -1565,11 +1566,13 @@ export function createEditor({
         {
           key: 'Enter',
           run: (view) =>
-            handleEnterContinueQuotedCodeBlock(view) ||
-            handleEnterOnEmptyListItem(view) ||
-            handleEnterAtListContentStart(view) ||
-            handleEnterContinueList(view) ||
-            handleEnterBeforeNestedList(view)
+            view.state.selection.ranges.length === 1 && (
+              handleEnterContinueQuotedCodeBlock(view) ||
+              handleEnterOnEmptyListItem(view) ||
+              handleEnterAtListContentStart(view) ||
+              handleEnterContinueList(view) ||
+              handleEnterBeforeNestedList(view)
+            )
         },
         { key: 'Shift-Enter', run: insertTableCellLineBreak },
         { key: 'ArrowUp', run: (view) => tryEnterAdjacentTable(view, 'up') },
@@ -2551,6 +2554,7 @@ function deleteTableCellLineBreakBackward(view) {
 }
 
 function deleteBackwardSmart(view) {
+  if (view.state.selection.ranges.length > 1) return false;
   return handleBackspaceAtListContentStart(view) || deleteTableCellLineBreakBackward(view);
 }
 
@@ -2933,6 +2937,7 @@ function insertWikiLink(view, selection) {
 
 function sourceMode() {
   return [
+    ...sourceSelectionExtensions(),
     markdown({
       base: markdownLanguage,
       addKeymap: false,

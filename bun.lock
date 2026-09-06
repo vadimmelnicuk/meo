@@ -18,6 +18,7 @@
         "@codemirror/lang-rust": "^6.0.2",
         "@codemirror/lang-sql": "^6.10.0",
         "@codemirror/language": "6.11.3",
+        "@codemirror/search": "6.6.0",
         "@codemirror/state": "6.5.2",
         "@codemirror/view": "6.36.4",
         "@lezer/highlight": "^1.2.3",

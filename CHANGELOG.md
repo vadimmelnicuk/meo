@@ -9,6 +9,7 @@
 - Fixed live table cell clicks caret placing
 - Fixed the selection formatting toolbox flickering while highlighting text
 - Fixed disappearing floating toolbar and missing spelling suggestions
+- Fixed multiple selection shortcuts in Source mode
 - Hardened external document sync
 
 ## 0.1.26
