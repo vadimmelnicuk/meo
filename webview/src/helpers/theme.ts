@@ -123,9 +123,13 @@ export const applyThemeSettings = (theme?: ThemeSettings): void => {
     `color-mix(in srgb, ${resolvedTheme.colors.base05} 28%, transparent 72%)`
   );
   rootStyle.setProperty('--meo-caret-color', resolvedTheme.colors.base01);
+  const activeLineBackground = typeof resolvedTheme.activeLineBackground === 'string'
+    ? resolvedTheme.activeLineBackground.trim()
+    : '';
   rootStyle.setProperty(
     '--meo-active-line-bg',
-    `color-mix(in srgb, ${resolvedTheme.colors.base03} 35%, transparent 65%)`
+    activeLineBackground
+      || `color-mix(in srgb, ${resolvedTheme.colors.base03} 35%, transparent 65%)`
   );
 
   for (const key of themeColorKeys) {

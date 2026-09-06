@@ -335,6 +335,8 @@ export type ThemeSettings = {
   id: string;
   name: string;
   backgroundColor: string;
+  /** Empty uses the built-in mix from base03. */
+  activeLineBackground: string;
   colors: ThemeColors;
   syntaxTokens: ThemeSyntaxTokens;
   fonts: ThemeFonts;
@@ -405,6 +407,7 @@ const createThemeFromColors = (params: {
   id: string;
   name: string;
   backgroundColor?: string;
+  activeLineBackground?: string;
   colors?: Partial<ThemeColors>;
   syntaxTokenPaletteOverrides?: Partial<ThemeSyntaxTokenPalette>;
   syntaxTokenOverrides?: Partial<ThemeSyntaxTokens>;
@@ -416,6 +419,7 @@ const createThemeFromColors = (params: {
     id: params.id,
     name: params.name,
     backgroundColor: params.backgroundColor ?? defaultThemeBackgroundColor,
+    activeLineBackground: params.activeLineBackground ?? '',
     colors,
     syntaxTokens: {
       ...buildSyntaxTokenColors(colors, params.syntaxTokenPaletteOverrides),
@@ -576,7 +580,7 @@ export const defaultThemeSettings: ThemeSettings = themePresets[0] as ThemeSetti
 
 const hexColorRegex = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const rgbColorRegex = /^rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0(?:\.\d+)?|1(?:\.0+)?|\d*\.?\d+))?\s*\)$/;
-const hslColorRegex = /^hsla?\(\s*(?:[+\-]?\d+(?:\.\d+)?(?:deg|rad|grad|turn)?\s*,\s*){2}\d{1,3}%?(?:\s*,\s*(?:0(?:\.\d+)?|1(?:\.0+)?|\d*\.?\d+))?\s*\)$/;
+const hslColorRegex = /^hsla?\(\s*[+\-]?\d+(?:\.\d+)?(?:deg|rad|grad|turn)?\s*,\s*\d+(?:\.\d+)?%\s*,\s*\d+(?:\.\d+)?%(?:\s*,\s*(?:0(?:\.\d+)?|1(?:\.0+)?|\d*\.?\d+))?\s*\)$/;
 const cssVarColorRegex = /^var\(\s*--[A-Za-z0-9_-]+\s*(?:,\s*[^)]+)?\)$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -597,6 +601,22 @@ const isValidThemeColor = (value: string): boolean => {
   }
   const candidate = value.trim();
   return hexColorRegex.test(candidate) || rgbColorRegex.test(candidate) || hslColorRegex.test(candidate) || cssVarColorRegex.test(candidate);
+};
+
+const isValidActiveLineColor = (value: string): boolean => (
+  value.trim().toLowerCase() === 'transparent' || isValidThemeColor(value)
+);
+
+/** Empty string uses the built-in mix from base03. */
+const resolveOptionalThemeColor = (value: unknown): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  return isValidActiveLineColor(trimmed) ? trimmed : '';
 };
 
 const sanitizeThemeColor = (value: unknown, fallback: string): string => {
@@ -746,6 +766,7 @@ export const serializeThemeSettings = (theme: ThemeSettings): ThemeSettingsPaylo
     id: theme.id,
     name: theme.name,
     backgroundColor: theme.backgroundColor,
+    activeLineBackground: theme.activeLineBackground,
     colors: { ...theme.colors },
     syntaxTokens,
     fonts: { ...theme.fonts }
@@ -758,6 +779,7 @@ export const resolveTheme = (themeOverride?: Partial<ThemeSettings>): ThemeSetti
     id: normalizeString(themeOverride?.id, defaultThemeSettings.id),
     name: normalizeString(themeOverride?.name, defaultThemeSettings.name),
     backgroundColor: sanitizeThemeColor(themeOverride?.backgroundColor, defaultThemeBackgroundColor),
+    activeLineBackground: resolveOptionalThemeColor(themeOverride?.activeLineBackground),
     colors,
     syntaxTokens: resolveThemeSyntaxTokens(themeOverride?.syntaxTokens, colors),
     fonts: resolveThemeFonts(themeOverride?.fonts)
@@ -790,6 +812,14 @@ export const validateThemePayload = (value: unknown): ThemeValidationResult => {
   if (value.backgroundColor !== undefined) {
     if (typeof value.backgroundColor !== 'string' || !isValidThemeColor(value.backgroundColor)) {
       errors.push('Theme "backgroundColor" must be a valid hex, rgb, hsl, or var(--...) color string.');
+    }
+  }
+
+  if (value.activeLineBackground !== undefined) {
+    if (typeof value.activeLineBackground !== 'string') {
+      errors.push('Theme "activeLineBackground" must be a string.');
+    } else if (value.activeLineBackground.trim() && !isValidActiveLineColor(value.activeLineBackground)) {
+      errors.push('Theme "activeLineBackground" must be empty (default), transparent, or a valid hex, rgb, hsl, or var(--...) color string.');
     }
   }
 

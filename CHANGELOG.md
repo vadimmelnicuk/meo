@@ -1,6 +1,7 @@
 # Markdown Editor Optimized (MEO)
 ---
 ## Unreleased
+- Added the theme color `activeLineBackground` to customize the active-line highlight in Live and Source
 - Added a shared Read Only toggle beside Spell Check that blocks editing in Live and Source while preserving reading, selection, copying, and external updates; the preference defaults to off and persists across documents, sessions, and workspaces
 - Added visual multiline editing to live table cells while storing line breaks as `<br>` in Markdown
 - Added link-reference definitions as visible linked lists in HTML and PDF exports, and restored copying selections across rendered blocks
