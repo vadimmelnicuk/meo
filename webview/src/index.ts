@@ -1,4 +1,4 @@
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare, PanelLeftRightDashed, SpellCheck2, LockKeyhole } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, ListTree, Hash, Code, Terminal, Quote, Minus, Table2, Link, Brackets, Image, Bold, Italic, Strikethrough, Search, Share, GitCompare, PanelLeftRightDashed, SpellCheck2, BookOpenText } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -582,7 +582,7 @@ readOnlyBtn.dataset.action = 'readOnly';
 readOnlyBtn.title = 'Enable Read Only';
 readOnlyBtn.setAttribute('aria-label', 'Enable Read Only');
 readOnlyBtn.setAttribute('aria-pressed', 'false');
-readOnlyBtn.appendChild(createElement(LockKeyhole, { width: 18, height: 18 }));
+readOnlyBtn.appendChild(createElement(BookOpenText, { width: 18, height: 18 }));
 
 modeGroup.append(liveButton, sourceButton);
 rightGroup.insertBefore(readOnlyBtn, exportWrapper);

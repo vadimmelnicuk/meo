@@ -80,7 +80,7 @@
       {
         "command": "markdownEditorOptimized.toggleReadOnly",
         "title": "Markdown Editor Optimized: Toggle Read Only",
-        "icon": "$(lock)"
+        "icon": "$(book)"
       },
       {
         "command": "markdownEditorOptimized.exportHtml",
