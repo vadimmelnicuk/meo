@@ -10,6 +10,8 @@ import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
 import { normalizeSourceHref } from './rawUrls';
 import type { EditorDiagnostic } from './diagnostics';
+import { createStickyTableHeader } from './tableStickyHeader';
+import { findSyncChange } from './textChange';
 
 declare global {
   interface HTMLDivElement {
@@ -25,6 +27,7 @@ interface TableData {
   endLine?: number;
   indent?: string;
   signature?: string;
+  contentSignature?: string;
   from?: number;
   to?: number;
   headerCells?: string[];
@@ -42,10 +45,12 @@ interface DomRefs {
   rowInputs: HTMLTextAreaElement[][];
   allRowInputs: HTMLTextAreaElement[][];
   table: HTMLTableElement;
+  headerTable: HTMLTableElement;
+  headerColEls: HTMLTableColElement[];
   tbody: HTMLTableSectionElement;
   container: HTMLElement;
   shell: HTMLElement;
-  wrap: HTMLElement;
+  wrap: HTMLDivElement;
   toolbar: HTMLElement;
   cellGrid: HTMLTableCellElement[][];
   rowEntries: RowEntry[];
@@ -1356,6 +1361,8 @@ function buildTableDataForLineRange(state, startLineNo, endLineNo) {
   };
 }
 
+const tableWidgetOwners = new WeakMap<HTMLElement, HtmlTableWidget>();
+
 class HtmlTableWidget extends WidgetType {
   tableData: TableData;
   view: EditorView | null;
@@ -1400,6 +1407,32 @@ class HtmlTableWidget extends WidgetType {
       other.tableData.signature === this.tableData.signature &&
       other.tableData.indent === this.tableData.indent
     );
+  }
+
+  updateDOM(dom: HTMLElement): boolean {
+    const owner = tableWidgetOwners.get(dom);
+    if (!owner?.domRefs || owner.tableData.contentSignature !== this.tableData.contentSignature) return false;
+
+    // Diagnostic updates must retain the inputs, pending edits, focus, and scroll position.
+    // Event listeners still belong to the instance that created this DOM.
+    owner.tableData = this.tableData;
+    const inputs = [owner.domRefs.headerInputs, ...owner.domRefs.sourceBodyRowInputs];
+    for (const [row, rowInputs] of inputs.entries()) {
+      for (const [col, input] of rowInputs.entries()) {
+        const range = owner.cellSourceRange(row, col);
+        if (range) {
+          input.dataset.tableCellFrom = String(range.from);
+          input.dataset.tableCellTo = String(range.to);
+        }
+        owner.renderCellPreview(
+          input.parentElement?.querySelector('.meo-md-html-table-cell-preview'),
+          tableCellEditorTextToMarkdown(input.value),
+          owner.cellDiagnostics(row, col),
+          range
+        );
+      }
+    }
+    return true;
   }
 
   getEditorView(dom?: HTMLElement): EditorView | null {
@@ -1668,7 +1701,7 @@ class HtmlTableWidget extends WidgetType {
   findCellElement(node) {
     if (!this.domRefs || !(node instanceof Element)) return null;
     const cell = node.closest(tableCellSelector);
-    if (!cell || !this.domRefs.table.contains(cell)) return null;
+    if (!cell || !this.domRefs.shell.contains(cell)) return null;
     return cell;
   }
 
@@ -1684,7 +1717,7 @@ class HtmlTableWidget extends WidgetType {
     const nextCaret = Math.min(Math.max(caret ?? input.value.length, 0), input.value.length);
     input.setSelectionRange(nextCaret, nextCaret);
     input.closest(tableCellSelector)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    const container = input.closest('.meo-md-html-table-wrap');
+    const container = input.closest('.meo-md-html-table-shell');
     if (container instanceof HTMLElement) {
       this.emitTableSelectionChange(container);
     }
@@ -1826,7 +1859,7 @@ class HtmlTableWidget extends WidgetType {
     const active = document.activeElement;
     if (!(active instanceof Element)) return false;
     if (!view.dom.contains(active)) return false;
-    return active.closest('.meo-md-html-table-wrap') !== null;
+    return active.closest('.meo-md-html-table-shell') !== null;
   }
 
   selectedCellCount() {
@@ -2095,7 +2128,15 @@ class HtmlTableWidget extends WidgetType {
       return;
     }
 
-    view.dispatch({ changes: { from: range.from, to: range.to, insert: markdown } });
+    const change = findSyncChange(current, markdown);
+    if (!change) return;
+    const changes = view.state.changes({
+      from: range.from + change.from,
+      to: range.from + change.to,
+      insert: change.insert
+    });
+    // Keep the table in the viewport while CodeMirror measures its replacement widget.
+    view.dispatch({ changes, effects: view.scrollSnapshot().map(changes) });
     this.hasPendingCellEdits = false;
     if (focusTarget) {
       this.scheduleFocusCellAfterCommit(view, tableStartLine, focusTarget);
@@ -2327,7 +2368,7 @@ class HtmlTableWidget extends WidgetType {
 
   fitColumnWidths() {
     if (!this.domRefs) return false;
-    const { shell, wrap, table, colEls, headerInputs, rowInputs } = this.domRefs;
+    const { shell, wrap, table, headerTable, colEls, headerColEls, headerInputs, rowInputs } = this.domRefs;
     const chPx = this.measureChPx(wrap);
     const cellChromePx = (cellHorizontalPaddingCh * chPx) + cellBorderPx;
     const minPx = (minColumnWidthCh * chPx) + cellChromePx;
@@ -2346,11 +2387,13 @@ class HtmlTableWidget extends WidgetType {
       colEls[i].style.width = `${widthPx}px`;
       colEls[i].style.minWidth = `${widthPx}px`;
       colEls[i].style.maxWidth = 'none';
+      headerColEls[i].style.cssText = colEls[i].style.cssText;
     }
     this.lastAppliedWidths = nextAppliedWidths;
     table.style.width = `${targetTotal}px`;
     table.style.minWidth = `${targetTotal}px`;
     table.style.maxWidth = 'none';
+    headerTable.style.cssText = table.style.cssText;
     this.updateApplySortAnchor(shell, wrap, targetTotal);
     return changed;
   }
@@ -2566,6 +2609,7 @@ class HtmlTableWidget extends WidgetType {
     }
     const shell = document.createElement('div');
     shell.className = 'meo-md-html-table-shell';
+    tableWidgetOwners.set(shell, this);
     const wrap = document.createElement('div');
     wrap.className = 'meo-md-html-table-wrap';
     if (Number.isFinite(this.tableData.startLine)) {
@@ -2619,7 +2663,7 @@ class HtmlTableWidget extends WidgetType {
       const th = document.createElement('th');
       th.dataset.tableRow = '0';
       th.dataset.tableCol = String(col);
-      const { content, input } = this.createCellEditor(this.tableData.headerCells[col] ?? '', headerRow, headerInputs, wrap, 0, col);
+      const { content, input } = this.createCellEditor(this.tableData.headerCells[col] ?? '', headerRow, headerInputs, shell, 0, col);
       headerInputs.push(input);
       headerCells.push(th);
       th.appendChild(content);
@@ -2649,7 +2693,7 @@ class HtmlTableWidget extends WidgetType {
     cellGrid.push(headerCells);
     allRowInputs.push(headerInputs);
     thead.appendChild(headerRow);
-    table.appendChild(thead);
+
 
     const tbody = document.createElement('tbody');
     const bodyRowInputs = [];
@@ -2665,7 +2709,7 @@ class HtmlTableWidget extends WidgetType {
         const td = document.createElement('td');
         td.dataset.tableRow = String(tableRowIndex);
         td.dataset.tableCol = String(col);
-        const { content, input } = this.createCellEditor(this.tableData.rows[rowIdx][col] ?? '', tr, inputs, wrap, tableRowIndex, col);
+        const { content, input } = this.createCellEditor(this.tableData.rows[rowIdx][col] ?? '', tr, inputs, shell, tableRowIndex, col);
         inputs.push(input);
         bodyCells.push(td);
         td.appendChild(content);
@@ -2682,11 +2726,16 @@ class HtmlTableWidget extends WidgetType {
     table.appendChild(tbody);
 
     wrap.append(table);
-    shell.append(toolbar, wrap, applySortButton);
+    const stickyHeader = createStickyTableHeader(shell, wrap, thead, this.tableData.colCount);
+    stickyHeader.band.prepend(toolbar, applySortButton);
+    shell.append(stickyHeader.band, wrap);
+    this.cleanupFns.push(stickyHeader.destroy);
     this.domRefs = {
       shell,
       wrap,
       table,
+      headerTable: stickyHeader.table,
+      headerColEls: stickyHeader.columns,
       tbody,
       container: shell,
       toolbar,
@@ -2704,7 +2753,7 @@ class HtmlTableWidget extends WidgetType {
       toolbarButtons
     };
     this.updateActionTargetStyles();
-    this.wireTableSelection(table);
+    this.wireTableSelection(shell);
     this.pendingResizeRows = true;
     this.scheduleLayout({ resizeRows: true });
 
@@ -2742,9 +2791,15 @@ class HtmlTableWidget extends WidgetType {
   }
 
   destroy(dom) {
+    const owner = tableWidgetOwners.get(dom);
+    tableWidgetOwners.delete(dom);
+    if (owner && owner !== this) {
+      owner.destroy(dom);
+      return;
+    }
     for (const cleanup of this.cleanupFns) cleanup();
     this.cleanupFns = [];
-    dom?._meoTableResizeObserver?.disconnect();
+    this.domRefs?.wrap._meoTableResizeObserver?.disconnect();
     if (this.layoutFrame) {
       cancelAnimationFrame(this.layoutFrame);
       this.layoutFrame = 0;
@@ -2877,6 +2932,7 @@ function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[]
   const normalizedAlignments = normalizeRow(alignments, colCount).map((value) => value ?? null);
   const headerCells = normalizeRow(headerLine.cells, colCount);
   const rows = dataLines.map((line) => normalizeRow(line.cells, colCount));
+  const contentSignature = JSON.stringify({ colCount, headerCells, rows, normalizedAlignments, indent });
   const signature = JSON.stringify({
     colCount,
     headerCells,
@@ -2898,6 +2954,7 @@ function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[]
           headerCells,
           rows,
           signature,
+          contentSignature,
           startLine,
           endLine,
           diagnostics: collectTableDiagnostics(data, diagnostics),

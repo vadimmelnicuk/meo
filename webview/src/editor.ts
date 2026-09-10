@@ -5,6 +5,7 @@ import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-mar
 import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing, codeFolding } from '@codemirror/language';
 import { vim, Vim } from '@replit/codemirror-vim';
 import { highlightStyle } from './theme';
+import { findSyncChange } from './helpers/textChange';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import { liveModeExtensions } from './liveMode';
 import { readOnlyExtensions, activeLineHighlightExtensions, externalSyncAnnotation, copyReadOnlySelection } from './helpers/readOnly';
@@ -520,7 +521,7 @@ export function createEditor({
         if (!(hit instanceof Element)) {
           continue;
         }
-        const wrap = hit.closest('.meo-md-html-table-wrap');
+        const wrap = hit.closest('.meo-md-html-table-shell');
         if (!(wrap instanceof HTMLElement) || !editorView.dom.contains(wrap)) {
           continue;
         }
@@ -637,7 +638,7 @@ export function createEditor({
     if (!view.dom.contains(active)) {
       return null;
     }
-    return active.closest('.meo-md-html-table-wrap') ? active : null;
+    return active.closest('.meo-md-html-table-shell') ? active : null;
   };
 
   const getTableInputSourceRange = (input: HTMLTextAreaElement): { from: number; to: number } | null => {
@@ -2570,35 +2571,6 @@ function isInsideTableCell(state, position) {
     node = node.parent;
   }
   return false;
-}
-
-function findSyncChange(previousText, nextText) {
-  if (previousText === nextText) {
-    return null;
-  }
-
-  let from = 0;
-  const maxStart = Math.min(previousText.length, nextText.length);
-  while (from < maxStart && previousText.charCodeAt(from) === nextText.charCodeAt(from)) {
-    from += 1;
-  }
-
-  let previousTo = previousText.length;
-  let nextTo = nextText.length;
-  while (
-    previousTo > from &&
-    nextTo > from &&
-    previousText.charCodeAt(previousTo - 1) === nextText.charCodeAt(nextTo - 1)
-  ) {
-    previousTo -= 1;
-    nextTo -= 1;
-  }
-
-  return {
-    from,
-    to: previousTo,
-    insert: nextText.slice(from, nextTo)
-  };
 }
 
 // Map a position through a single replace change so external syncs keep the cursor nearby.

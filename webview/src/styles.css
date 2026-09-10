@@ -2405,10 +2405,35 @@ body {
 
 .cm-editor .meo-md-html-table-shell {
   position: relative;
-  padding: 30px 0;
+  padding: 0 0 30px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+}
+
+.cm-editor .meo-md-html-table-sticky-header {
+  position: sticky;
+  top: 0;
+  padding-top: 30px;
+  background: var(--meo-background);
+  z-index: 210;
+}
+
+.cm-editor .meo-md-html-table-header-wrap {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cm-editor .meo-md-html-table-header-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+.cm-editor .meo-md-html-table thead {
+  background: var(--meo-background);
+}
+
+.cm-editor .meo-md-html-table td {
+  scroll-margin-top: var(--meo-table-sticky-height, 30px);
 }
 
 .cm-editor .meo-md-html-table-wrap {
@@ -2474,7 +2499,9 @@ body {
 }
 
 .cm-editor .meo-md-html-table {
-  border-collapse: collapse;
+  /* Separate borders move with the sticky header. */
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
 }
 
@@ -2483,6 +2510,15 @@ body {
   position: relative;
   padding: 0;
   border: 1px solid var(--meo-color-base03);
+  border-width: 0 1px 1px 0;
+}
+
+.cm-editor .meo-md-html-table tr > :first-child {
+  border-left-width: 1px;
+}
+
+.cm-editor .meo-md-html-table thead th {
+  border-top-width: 1px;
 }
 
 .cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
