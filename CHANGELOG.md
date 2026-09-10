@@ -1,5 +1,11 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.28
+- Added sticky table header
+- Added HTML comment decorations and gutter support
+- Fixed $ sign rendering issue
+- Updated Read Only feature description for clarity
+
 ## 0.1.27
 - Added a shared read only toggle
 - Added the theme color to customize the active-line highlight
