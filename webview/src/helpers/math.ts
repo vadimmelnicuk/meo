@@ -233,7 +233,12 @@ function findInlineMathClose(
       return { close: -1, rangeIndex };
     }
 
-    if (character === '$' && !isEscaped(text, index) && braceLevel <= 0 && isInlineMathClose(text, index)) {
+    if (character === '$' && !isEscaped(text, index) && braceLevel <= 0) {
+      // A dollar before a digit starts another amount, as in $180k–$300k.
+      // Stop here so this candidate cannot consume a later formula on the line.
+      if (/[0-9]/.test(text[index + 1] ?? '') || !isInlineMathClose(text, index)) {
+        return { close: -1, rangeIndex };
+      }
       return { close: index, rangeIndex };
     }
 

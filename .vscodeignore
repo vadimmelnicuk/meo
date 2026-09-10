@@ -16,6 +16,5 @@ releases/**
 tests/**
 docs/**
 assets/**
-.claude/
 AGENTS.md
 features.md

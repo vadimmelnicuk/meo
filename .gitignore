@@ -9,6 +9,5 @@ bun.lockb
 releases/
 tests/
 assets/
-.claude/
 AGENTS.md
 features.md
