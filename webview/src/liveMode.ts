@@ -65,6 +65,7 @@ import {
   type LatexMathMode
 } from './helpers/math';
 import { diagnosticDataField } from './helpers/diagnostics';
+import { htmlCommentDecorations, htmlCommentGutter } from './helpers/htmlComments';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
 const activeLineMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active' });
@@ -1127,6 +1128,7 @@ function buildDecorations(state) {
     getLiveRenderedBlocks(state)
   );
   const parsedTableRanges = [];
+  const commentRanges = [];
   let tableDepth = 0;
 
   let frontmatter = null;
@@ -1164,6 +1166,13 @@ function buildDecorations(state) {
 
       if (node.name === 'Table') {
         tableDepth += 1;
+      }
+
+      if (node.name === 'Comment' || node.name === 'CommentBlock') {
+        if (!isInsideFrontmatter(frontmatter, node.from)) {
+          commentRanges.push(...htmlCommentDecorations(state, node, activeLines));
+        }
+        return false;
       }
 
       const headingLevel = headingLevelFromName(node.name);
@@ -1426,7 +1435,10 @@ function buildDecorations(state) {
     addRange(ranges, section.collapseFrom, section.collapseTo, collapsedHeadingBodyDeco);
   }
 
-  const result = Decoration.set(ranges, true);
+  const visibleRanges = ranges.filter((range) => !commentRanges.some(
+    (comment) => range.from >= comment.from && range.to <= comment.to
+  ));
+  const result = Decoration.set([...visibleRanges, ...commentRanges], true);
   return filterDecorationsOutsideMergeConflicts(state, result);
 }
 
@@ -2217,6 +2229,7 @@ export function liveModeExtensions() {
     }),
     syntaxHighlighting(highlightStyle),
     liveDecorationField,
+    htmlCommentGutter(liveDecorationField),
     liveLineNumberMarkerField,
     ...mergeConflictSourceExtensions(),
     ...headingCollapseSharedExtensions(),

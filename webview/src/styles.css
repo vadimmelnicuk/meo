@@ -689,7 +689,6 @@ body {
   background: var(--meo-background);
   min-width: 0;
   position: relative;
-  --meo-gutters-width: 89px;
 }
 
 .cm-editor.meo-mode-live {
@@ -768,14 +767,17 @@ body {
 .cm-editor .cm-gutters {
   width: auto;
   min-width: 23px;
-  max-width: 89px;
   background: var(--meo-background);
   border-right: 0;
   overflow: visible;
 }
 
 .meo-content-max-width-enabled .cm-editor .cm-gutters {
-  left: max(0px, calc((100% - var(--meo-content-max-width) - var(--meo-gutters-width)) / 2));
+  margin-left: auto;
+}
+
+.meo-content-max-width-enabled .cm-editor .cm-content {
+  margin-left: 0;
 }
 
 .cm-editor .cm-gutter.meo-md-fold-gutter {
@@ -784,6 +786,7 @@ body {
   position: relative;
   z-index: 2;
   overflow: visible;
+  pointer-events: none;
 }
 
 .cm-editor .cm-gutter.meo-md-fold-gutter .cm-gutterElement {
@@ -793,6 +796,40 @@ body {
   padding: 0;
   position: relative;
   overflow: visible;
+}
+
+.cm-editor .cm-gutter.meo-md-comment-gutter {
+  /* Comment markers share the existing fold column without widening the gutter. */
+  width: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.meo-md-comment-toggle {
+  position: relative;
+  left: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--meo-color-base02, #888);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.meo-md-comment-toggle:hover,
+.meo-md-comment-toggle:focus-visible {
+  color: var(--vscode-editor-foreground, #ccc);
+  background: var(--vscode-toolbar-hoverBackground, #ffffff14);
+}
+
+.meo-md-comment-toggle:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
 }
 
 .cm-editor .cm-gutter.cm-lineNumbers {
@@ -822,6 +859,7 @@ body {
 }
 
 .cm-editor .meo-md-fold-toggle {
+  pointer-events: auto;
   display: inline-grid;
   place-items: center;
   width: 16px;
@@ -909,10 +947,6 @@ body {
 .cm-editor.meo-line-numbers-hidden .cm-lineNumbers .cm-gutterElement,
 .cm-editor.meo-line-numbers-hidden .cm-gutterElement.cm-activeLineGutter {
   color: transparent !important;
-}
-
-.cm-editor.meo-line-numbers-hidden {
-  --meo-gutters-width: 23px;
 }
 
 .cm-editor.meo-line-numbers-hidden .cm-gutter.cm-lineNumbers,
