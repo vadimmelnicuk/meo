@@ -1,5 +1,8 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.29
+- Fixed Cursor file editor associations on AI pending edits
+
 ## 0.1.28
 - Added sticky table header
 - Added HTML comment decorations and gutter support
