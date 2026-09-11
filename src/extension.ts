@@ -24,6 +24,7 @@ import {
   resolveWorktreeUriFromGitUri
 } from './agents/resourceMatching';
 import { AgentReviewOverrideController } from './agents/reviewOverrides';
+import { AgentReviewDocumentPrimer, isMarkdownFileUri } from './agents/documentPrimer';
 import {
   EXTENSION_CONFIG_SECTION,
   GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY,
@@ -68,6 +69,7 @@ import {
   resetThemeSettingsToDefault
 } from './shared/extensionConfig';
 import { createPanelSessionController, type ExportFormat, type PanelSession } from './extension/panelSession';
+import { MarkdownCustomDocument } from './extension/markdownCustomDocument';
 import { serializeThemeSettings, themePresets, type ThemeSettings, validateThemePayload } from './shared/themeDefaults';
 import {
   runWithTimedUiTimeout,
@@ -155,6 +157,11 @@ export function activate(context: vscode.ExtensionContext): void {
     getOpenTextDocumentForComparableKey,
     isLikelyAgentReviewUri
   });
+  const agentReviewPrimer = new AgentReviewDocumentPrimer({
+    getComparableResourceKey,
+    getOpenTextDocumentForUri,
+    overrides: agentReviewOverrides
+  });
   void agentReviewOverrides.syncNow();
 
   const provider = new MarkdownWebviewProvider(context, agentReviewHandoff);
@@ -188,11 +195,41 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((document) => {
+      if (isMarkdownFileUri(document.uri)) {
+        void agentReviewPrimer.ensureReady(document.uri);
+      }
       if (!isLikelyAgentReviewUri(document.uri)) {
         return;
       }
       void agentReviewOverrides.syncNow();
-      void provider.redirectOpenEditorsForCopilotReview(document.uri);
+      if (!agentReviewPrimer.isPriming) {
+        void provider.redirectOpenEditorsForCopilotReview(document.uri);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidCreateFiles((event) => {
+      for (const uri of event.files) {
+        void agentReviewPrimer.ensureReady(uri);
+      }
+    })
+  );
+
+  const markdownFileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{md,markdown,mdx,mdc}');
+  context.subscriptions.push(
+    markdownFileWatcher,
+    markdownFileWatcher.onDidCreate((uri) => {
+      void agentReviewPrimer.ensureReady(uri);
+    }),
+    markdownFileWatcher.onDidChange((uri) => {
+      if (agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(uri)) {
+        return;
+      }
+      if (getOpenTextDocumentForUri(uri)) {
+        return;
+      }
+      void agentReviewPrimer.ensureReady(uri);
     })
   );
 
@@ -226,7 +263,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (isAgentReviewDocument) {
         agentReviewOverrides.scheduleSync();
       }
-      if (!agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(event.document.uri)) {
+      if (!agentReviewPrimer.isPriming && !agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(event.document.uri)) {
         void provider.redirectOpenEditorsForCopilotReview(event.document.uri);
       }
 
@@ -249,6 +286,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.tabGroups.onDidChangeTabs((event) => {
       agentReviewHandoff.noteRecentTextDiffActivity(event.opened);
       agentReviewHandoff.noteRecentTextDiffActivity(event.changed);
+      if (!agentReviewPrimer.isPriming) {
+        for (const tab of [...event.opened, ...event.changed]) {
+          void primeDiffTabResources(tab, agentReviewPrimer);
+        }
+      }
       void agentReviewHandoff.flushPendingMEOtabDedups();
       if (!agentReviewHandoff.hasPendingDeferredReopens()) {
         return;
@@ -275,11 +317,16 @@ export function activate(context: vscode.ExtensionContext): void {
         getOpenTextDocumentForUri,
         getOpenTextDocumentForUri(targetUri)?.getText()
       );
+      await agentReviewPrimer.ensureReady(targetUri);
+      try {
+        await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
+      } catch {
+        await agentReviewPrimer.ensureReady(targetUri, { forceNative: true });
+        await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
+      }
       if (pendingReview) {
         agentReviewHandoff.scheduleDeferredReopen(targetUri);
-        return;
       }
-      await vscode.commands.executeCommand('vscode.openWith', targetUri, VIEW_TYPE);
     })
   );
 
@@ -461,17 +508,80 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
+class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCustomDocument> {
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
+  private readonly customDocuments = new Map<string, MarkdownCustomDocument>();
   private readonly spellDiagnosticCollection = vscode.languages.createDiagnosticCollection('meo-spell');
+  private readonly customDocumentChangeEmitter = new vscode.EventEmitter<
+    vscode.CustomDocumentContentChangeEvent<MarkdownCustomDocument>
+  >();
+  readonly onDidChangeCustomDocument = this.customDocumentChangeEmitter.event;
   private lastActivePanel: vscode.WebviewPanel | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly agentReviewHandoff: AgentReviewHandoffController
   ) {
-    this.context.subscriptions.push(this.spellDiagnosticCollection);
+    this.context.subscriptions.push(this.spellDiagnosticCollection, this.customDocumentChangeEmitter);
+    this.context.subscriptions.push(
+      vscode.workspace.onDidChangeTextDocument((event) => {
+        if (event.contentChanges.length === 0) {
+          return;
+        }
+        const customDocument = this.customDocuments.get(event.document.uri.toString());
+        if (!customDocument) {
+          return;
+        }
+        this.customDocumentChangeEmitter.fire({ document: customDocument });
+      })
+    );
+  }
+
+  async openCustomDocument(
+    uri: vscode.Uri,
+    openContext: vscode.CustomDocumentOpenContext,
+    _token: vscode.CancellationToken
+  ): Promise<MarkdownCustomDocument> {
+    const customDocument = await MarkdownCustomDocument.open(uri, openContext);
+    customDocument.bindLifecycle(() => {
+      if (this.customDocuments.get(uri.toString()) === customDocument) {
+        this.customDocuments.delete(uri.toString());
+      }
+    });
+    this.customDocuments.set(uri.toString(), customDocument);
+    customDocument.onDidChangeContent(() => {
+      this.customDocumentChangeEmitter.fire({ document: customDocument });
+    });
+    return customDocument;
+  }
+
+  async resolveCustomEditor(
+    document: MarkdownCustomDocument,
+    panel: vscode.WebviewPanel,
+    token: vscode.CancellationToken
+  ): Promise<void> {
+    await this.resolveMarkdownEditor(document, panel, token);
+  }
+
+  async saveCustomDocument(document: MarkdownCustomDocument): Promise<void> {
+    await document.save();
+  }
+
+  async saveCustomDocumentAs(document: MarkdownCustomDocument, destination: vscode.Uri): Promise<void> {
+    await document.save(destination);
+  }
+
+  async revertCustomDocument(document: MarkdownCustomDocument): Promise<void> {
+    await document.revert();
+  }
+
+  async backupCustomDocument(
+    document: MarkdownCustomDocument,
+    context: vscode.CustomDocumentBackupContext,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.CustomDocumentBackup> {
+    return document.backup(context.destination);
   }
 
   async initializeGitWatcher(): Promise<void> {
@@ -531,7 +641,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
 
       this.agentReviewHandoff.scheduleDeferredReopen(session.documentUri);
-      await this.redirectCopilotReviewToNativeEditor(session.document, session.panel);
+      await this.redirectCopilotReviewToNativeEditor(session.documentUri, session.panel);
     }
   }
 
@@ -643,30 +753,32 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     await setReadOnlyEnabled(!getReadOnlyEnabled());
   }
 
-  async resolveCustomTextEditor(
-    document: vscode.TextDocument,
+  async resolveMarkdownEditor(
+    document: MarkdownCustomDocument,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    const pendingReview = findLikelyAgentReviewState(
-      document.uri,
-      getComparableResourceKey,
-      getOpenTextDocumentForUri,
-      document.getText()
-    );
+    const pendingReview = document.isSynchronized
+      ? findLikelyAgentReviewState(
+        document.uri,
+        getComparableResourceKey,
+        getOpenTextDocumentForUri,
+        document.getText()
+      )
+      : undefined;
     if (pendingReview) {
       this.agentReviewHandoff.scheduleDeferredReopen(document.uri);
-      await this.redirectCopilotReviewToNativeEditor(document, panel, true);
+      await this.redirectCopilotReviewToNativeEditor(document.uri, panel, true);
       return;
     }
 
-    if (await this.redirectGitResourceToNativeEditor(document, panel)) {
+    if (await this.redirectGitResourceToNativeEditor(document.uri, panel)) {
       return;
     }
 
     this.activePanels.add(panel);
 
-    const documentUri = resolveWorktreeUri(document);
+    const documentUri = resolveWorktreeUri(document.uri);
     const distRoot = vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist');
     panel.webview.options = {
       enableScripts: true,
@@ -891,10 +1003,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   private async redirectGitResourceToNativeEditor(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     panel: vscode.WebviewPanel
   ): Promise<boolean> {
-    if (document.uri.scheme !== 'git') {
+    if (uri.scheme !== 'git') {
       return false;
     }
 
@@ -904,7 +1016,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       preview: true,
       override: 'default'
     };
-    const existingDiff = findDiffContextForGitUri(document.uri);
+    const existingDiff = findDiffContextForGitUri(uri);
 
     if (existingDiff) {
       await vscode.commands.executeCommand(
@@ -918,14 +1030,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       return true;
     }
 
-    const ref = getGitUriRef(document.uri);
+    const ref = getGitUriRef(uri);
     if (isWorkingTreeOrIndexRef(ref)) {
-      const targetUri = resolveWorktreeUri(document);
-      const title = getNativeWorkingTreeTitle(document.uri, targetUri);
+      const targetUri = resolveWorktreeUri(uri);
+      const title = getNativeWorkingTreeTitle(uri, targetUri);
 
       await vscode.commands.executeCommand(
         '_workbench.diff',
-        document.uri,
+        uri,
         targetUri,
         title,
         [viewColumn, editorOptions]
@@ -938,14 +1050,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   private async redirectCopilotReviewToNativeEditor(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     panel: vscode.WebviewPanel,
     preserveFocus = false
   ): Promise<void> {
     const viewColumn = panel.viewColumn ?? vscode.ViewColumn.Active;
     await vscode.commands.executeCommand(
       'vscode.openWith',
-      document.uri,
+      uri,
       'default',
       {
         viewColumn,
@@ -1111,12 +1223,12 @@ function replaceFileExtension(filePath: string, ext: '.html' | '.pdf'): string {
   return path.join(parsed.dir, `${parsed.name}${ext}`);
 }
 
-function resolveWorktreeUri(document: vscode.TextDocument): vscode.Uri {
-  if (document.uri.scheme === 'file') {
-    return document.uri;
+function resolveWorktreeUri(uri: vscode.Uri): vscode.Uri {
+  if (uri.scheme === 'file') {
+    return uri;
   }
 
-  return resolveWorktreeUriFromGitUri(document.uri) ?? document.uri;
+  return resolveWorktreeUriFromGitUri(uri) ?? uri;
 }
 
 function findDiffContextForGitUri(uri: vscode.Uri): { original: vscode.Uri; modified: vscode.Uri; title: string } | undefined {
@@ -1247,6 +1359,19 @@ function isBuiltInThemeId(themeId: string): boolean {
 
 function normalizeThemeId(id: string): string {
   return id.trim().toLowerCase();
+}
+
+function primeDiffTabResources(tab: vscode.Tab, primer: AgentReviewDocumentPrimer): void {
+  const input = tab.input;
+  if (!(input instanceof vscode.TabInputTextDiff)) {
+    return;
+  }
+
+  for (const uri of [input.original, input.modified]) {
+    if (isMarkdownFileUri(uri)) {
+      void primer.ensureReady(uri, { forceNative: true });
+    }
+  }
 }
 
 export function deactivate(): void {}

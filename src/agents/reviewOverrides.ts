@@ -1,5 +1,5 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { getFileEditorAssociationGlobs } from './resourceMatching';
 import { areAgentReviewTextsEquivalent } from './reviewState';
 
 const REVIEW_FILE_OVERRIDE_STATE_KEY = 'copilotReviewNativeFileOverrides';
@@ -12,11 +12,24 @@ type AgentReviewOverrideDeps = {
 
 export class AgentReviewOverrideController {
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly pinnedOverrideKeys = new Set<string>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly deps: AgentReviewOverrideDeps
   ) {}
+
+  pinFile(fileUri: vscode.Uri): void {
+    for (const key of this.getOverridePatterns(fileUri)) {
+      this.pinnedOverrideKeys.add(key);
+    }
+  }
+
+  unpinFile(fileUri: vscode.Uri): void {
+    for (const key of this.getOverridePatterns(fileUri)) {
+      this.pinnedOverrideKeys.delete(key);
+    }
+  }
 
   scheduleSync(delayMs = 50): void {
     if (this.syncTimer) {
@@ -52,7 +65,7 @@ export class AgentReviewOverrideController {
   }
 
   private collectOverrideKeys(): Set<string> {
-    const keys = new Set<string>();
+    const keys = new Set<string>(this.pinnedOverrideKeys);
 
     for (const document of vscode.workspace.textDocuments) {
       if (!this.deps.isLikelyAgentReviewUri(document.uri)) {
@@ -69,7 +82,7 @@ export class AgentReviewOverrideController {
         continue;
       }
 
-      for (const key of this.getOverridePatterns(targetKey)) {
+      for (const key of this.getOverridePatterns(vscode.Uri.file(targetKey))) {
         keys.add(key);
       }
     }
@@ -77,12 +90,8 @@ export class AgentReviewOverrideController {
     return keys;
   }
 
-  private getOverridePatterns(targetKey: string): string[] {
-    const keys = new Set<string>([targetKey]);
-    const posixKey = targetKey.split(path.sep).join(path.posix.sep);
-    keys.add(posixKey);
-
-    return Array.from(keys);
+  private getOverridePatterns(fileUri: vscode.Uri): string[] {
+    return getFileEditorAssociationGlobs(fileUri);
   }
 
   private applyOverrideAssociations(

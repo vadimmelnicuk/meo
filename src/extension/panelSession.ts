@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AgentReviewHandoffController } from '../agents/reviewHandoff';
+import type { MarkdownCustomDocument } from './markdownCustomDocument';
 import {
   EXTENSION_CONFIG_SECTION,
   LINE_NUMBERS_SETTING_KEY,
@@ -385,7 +386,7 @@ const EMPTY_GIT_BASELINE_PAYLOAD: GitBaselinePayload = Object.freeze({
 
 type PanelSessionControllerParams = {
   panel: vscode.WebviewPanel;
-  document: vscode.TextDocument;
+  document: MarkdownCustomDocument;
   documentUri: vscode.Uri;
   context: vscode.ExtensionContext;
   spellDiagnosticCollection: vscode.DiagnosticCollection;
@@ -401,7 +402,7 @@ type PanelSessionControllerParams = {
 
 export type PanelSession = {
   panel: vscode.WebviewPanel;
-  document: vscode.TextDocument;
+  document: MarkdownCustomDocument;
   documentUri: vscode.Uri;
   gitDocumentState: GitDocumentState;
   getMode: () => EditorMode;
@@ -507,11 +508,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return false;
     }
 
-    const edit = new vscode.WorkspaceEdit();
-    const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(currentText.length));
     agentReviewHandoff.noteRecentMEOOwnedFileChangeForUri(document.uri);
-    edit.replace(document.uri, fullRange, draftText);
-    const applied = await vscode.workspace.applyEdit(edit);
+    const applied = await document.replaceFull(draftText);
     if (applied) {
       pendingDraftText = null;
     }
@@ -604,7 +602,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
 
   const runSpellCheck = async (generation: number): Promise<void> => {
     try {
-      const diagnostics = await collectMeoSpellDiagnostics(document);
+      const diagnostics = document.textDocument
+        ? await collectMeoSpellDiagnostics(document.textDocument)
+        : [];
       if (disposed || generation !== spellCheckGeneration) {
         return;
       }
@@ -1238,6 +1238,19 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }), 'sendDocChanged');
   });
 
+  const localChangeSubscription = document.onDidChangeContent(() => {
+    if (document.isSynchronized) {
+      return;
+    }
+    scheduleSpellCheck();
+    if (isApplyingOwnChange) {
+      return;
+    }
+    runBackground(enqueue(async () => {
+      await sendDocChanged();
+    }), 'sendDocChanged');
+  });
+
   const documentSaveSubscription = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
     if (savedDocument.uri.toString() !== documentKey) {
       return;
@@ -1249,7 +1262,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     if (!event.uris.some((uri) => uri.toString() === documentKey)) {
       return;
     }
-    if (hasExternalSpellDiagnostics(document)) {
+    if (document.textDocument && hasExternalSpellDiagnostics(document.textDocument)) {
       spellCheckGeneration += 1;
       if (pendingSpellCheckTimer !== null) {
         clearTimeout(pendingSpellCheckTimer);
@@ -1324,6 +1337,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     rejectPendingExportSnapshots(new Error('The editor was closed before export completed.'));
     messageSubscription.dispose();
     documentChangeSubscription.dispose();
+    localChangeSubscription.dispose();
     documentSaveSubscription.dispose();
     diagnosticsSubscription.dispose();
     textEditorSelectionSubscription.dispose();
@@ -1414,7 +1428,7 @@ function pruneRememberedViewPositionMap(
 }
 
 async function applyDocumentChanges(
-  document: vscode.TextDocument,
+  document: MarkdownCustomDocument,
   message: ApplyChangesMessage,
   sendDocChanged: () => Promise<boolean>,
   sendApplied: (version: number) => Promise<boolean>,
@@ -1426,7 +1440,6 @@ async function applyDocumentChanges(
     return;
   }
 
-  const edit = new vscode.WorkspaceEdit();
   const sortedChanges = [...message.changes].sort((a, b) => b.from - a.from);
   const documentText = document.getText();
   const mappedOffsetCache = new Map<number, number>();
@@ -1440,20 +1453,17 @@ async function applyDocumentChanges(
     return mapped;
   };
 
-  for (const change of sortedChanges) {
-    // Webview offsets are LF-normalized; remap to real document offsets before applying edits.
+  const replacements = sortedChanges.map((change) => {
     const mappedFrom = mapOffset(change.from);
     const mappedTo = mapOffset(change.to);
-    const startOffset = Math.min(mappedFrom, mappedTo);
-    const endOffset = Math.max(mappedFrom, mappedTo);
-    const range = new vscode.Range(
-      document.positionAt(startOffset),
-      document.positionAt(endOffset)
-    );
-    edit.replace(document.uri, range, change.insert);
-  }
+    return {
+      startOffset: Math.min(mappedFrom, mappedTo),
+      endOffset: Math.max(mappedFrom, mappedTo),
+      insert: change.insert
+    };
+  });
 
-  const applied = await vscode.workspace.applyEdit(edit);
+  const applied = await document.applyReplacements(replacements);
 
   if (!applied) {
     await sendAppliedFailed();
@@ -1546,7 +1556,7 @@ function clampDiagnosticRange(from: number, to: number, textLength: number): { f
   return { from: clampedFrom, to: clampedTo };
 }
 
-function serializeDiagnostics(document: vscode.TextDocument): SerializedDiagnostic[] {
+function serializeDiagnostics(document: MarkdownCustomDocument): SerializedDiagnostic[] {
   const diagnostics = vscode.languages.getDiagnostics(document.uri);
   if (!diagnostics.length) {
     return [];
@@ -1579,7 +1589,7 @@ function serializeDiagnostics(document: vscode.TextDocument): SerializedDiagnost
 }
 
 async function resolveDiagnosticSuggestions(
-  document: vscode.TextDocument,
+  document: MarkdownCustomDocument,
   request: RequestDiagnosticSuggestionsMessage
 ): Promise<DiagnosticSuggestionsResultMessage> {
   const emptyResponse: DiagnosticSuggestionsResultMessage = {
@@ -1589,6 +1599,10 @@ async function resolveDiagnosticSuggestions(
     to: request.to,
     suggestions: []
   };
+
+  if (!document.textDocument) {
+    return emptyResponse;
+  }
 
   const documentText = document.getText();
   const normalizedTextLength = documentText.replace(/\r\n?/g, '\n').length;
@@ -1633,7 +1647,9 @@ async function resolveDiagnosticSuggestions(
   }
 
   if (suggestions.length === 0 && request.source === MEO_SPELL_DIAGNOSTIC_SOURCE) {
-    const spellSuggestions = await collectMeoSpellSuggestions(document, requestedRange.from, requestedRange.to);
+    const spellSuggestions = document.textDocument
+      ? await collectMeoSpellSuggestions(document.textDocument, requestedRange.from, requestedRange.to)
+      : [];
     for (const suggestion of spellSuggestions) {
       if (seen.has(suggestion)) {
         continue;
@@ -1653,7 +1669,7 @@ async function resolveDiagnosticSuggestions(
 }
 
 function hasMatchingDiagnostic(
-  document: vscode.TextDocument,
+  document: MarkdownCustomDocument,
   request: RequestDiagnosticSuggestionsMessage,
   requestedRange: { from: number; to: number }
 ): boolean {
@@ -1676,7 +1692,7 @@ function hasMatchingDiagnostic(
 }
 
 function simpleReplacementFromCodeAction(
-  document: vscode.TextDocument,
+  document: MarkdownCustomDocument,
   requestedRange: { from: number; to: number },
   action: vscode.Command | vscode.CodeAction
 ): string | null {

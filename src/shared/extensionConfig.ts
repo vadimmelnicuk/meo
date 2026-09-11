@@ -399,7 +399,15 @@ async function syncEditorAssociationsForTarget(
     'chat-editing-text-model:**/*.md': 'default',
     'chat-editing-text-model:**/*.markdown': 'default',
     'chat-editing-text-model:**/*.mdx': 'default',
-    'chat-editing-text-model:**/*.mdc': 'default'
+    'chat-editing-text-model:**/*.mdc': 'default',
+    'chat-editing-snapshot-text-model:/**/*.md': 'default',
+    'chat-editing-snapshot-text-model:/**/*.markdown': 'default',
+    'chat-editing-snapshot-text-model:/**/*.mdx': 'default',
+    'chat-editing-snapshot-text-model:/**/*.mdc': 'default',
+    'chat-editing-snapshot-text-model:**/*.md': 'default',
+    'chat-editing-snapshot-text-model:**/*.markdown': 'default',
+    'chat-editing-snapshot-text-model:**/*.mdx': 'default',
+    'chat-editing-snapshot-text-model:**/*.mdc': 'default'
   };
 
   await config.update('editorAssociations', markdownAssociations, target);

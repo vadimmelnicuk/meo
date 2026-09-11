@@ -47,6 +47,27 @@ export function getPreferredCommandUri(value: unknown): vscode.Uri | undefined {
   return shouldPreferActiveContextUri(commandUri, activeContextUri) ? activeContextUri : commandUri;
 }
 
+export function getFileEditorAssociationGlobs(fileUri: vscode.Uri): string[] {
+  const globs = new Set<string>();
+  if (fileUri.scheme && fileUri.path) {
+    // VS Code matches path globs against `${scheme}:${path}` (e.g. file:/Users/me/note.md).
+    globs.add(`${fileUri.scheme}:${fileUri.path}`);
+  }
+
+  const comparableKey = getComparableResourceKey(fileUri);
+  if (comparableKey) {
+    globs.add(`file:${vscode.Uri.file(comparableKey).path}`);
+  }
+
+  const relativeSource = comparableKey ? vscode.Uri.file(comparableKey) : fileUri;
+  const relative = vscode.workspace.asRelativePath(relativeSource, false);
+  if (relative && !path.isAbsolute(relative)) {
+    globs.add(`**/${relative.split(path.sep).join(path.posix.sep)}`);
+  }
+
+  return Array.from(globs);
+}
+
 export function getComparableResourceKey(uri: vscode.Uri): string | undefined {
   if (uri.scheme === 'file') {
     return path.normalize(uri.fsPath);

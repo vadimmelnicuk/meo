@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 
-export const AGENT_REVIEW_MODEL_SCHEMES = ['chat-editing-text-model'] as const;
+export const AGENT_REVIEW_MODEL_SCHEMES = [
+  'chat-editing-text-model',
+  'chat-editing-snapshot-text-model'
+] as const;
 const agentReviewModelSchemeSet = new Set<string>(AGENT_REVIEW_MODEL_SCHEMES);
 
 export type LikelyAgentReviewState = {
