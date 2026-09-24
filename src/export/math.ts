@@ -42,26 +42,45 @@ function lineEndAt(text: string, index: number): number {
   return nextBreak < 0 ? text.length : nextBreak;
 }
 
-function hasOwnLineDisplayFences(text: string, openIndex: number, closeIndex: number): boolean {
+function hasOwnLineDisplayFences(
+  text: string,
+  openIndex: number,
+  closeIndex: number,
+  delimiterLength = 2
+): boolean {
   const openLineStart = lineStartAt(text, openIndex);
-  const openLineEnd = lineEndAt(text, openIndex + 2);
+  const openLineEnd = lineEndAt(text, openIndex + delimiterLength);
   if (text.slice(openLineStart, openIndex).trim()) {
     return false;
   }
-  if (text.slice(openIndex + 2, openLineEnd).trim()) {
+  if (text.slice(openIndex + delimiterLength, openLineEnd).trim()) {
     return false;
   }
 
   const closeLineStart = lineStartAt(text, closeIndex);
-  const closeLineEnd = lineEndAt(text, closeIndex + 2);
+  const closeLineEnd = lineEndAt(text, closeIndex + delimiterLength);
   if (text.slice(closeLineStart, closeIndex).trim()) {
     return false;
   }
-  if (text.slice(closeIndex + 2, closeLineEnd).trim()) {
+  if (text.slice(closeIndex + delimiterLength, closeLineEnd).trim()) {
     return false;
   }
 
   return true;
+}
+
+function bracketDisplayDelimiterLength(text: string, index: number): number {
+  if (text[index] !== '\\' || isEscaped(text, index)) {
+    return 0;
+  }
+  if (text.startsWith('\\\\[', index)) {
+    return 3;
+  }
+  return text.startsWith('\\[', index) ? 2 : 0;
+}
+
+function normalizeBracketMathContent(content: string): string {
+  return content.replace(/\\_(?=[A-Za-z0-9{])/g, '_').replace(/\\\\,/g, '\\,');
 }
 
 function looksLikeCurrencyContent(content: string): boolean {
@@ -192,14 +211,72 @@ function findDisplayMathClose(text: string, start: number): number {
   return -1;
 }
 
+function findBracketDisplayMathClose(text: string, start: number, delimiterLength: number): number {
+  const closeDelimiter = delimiterLength === 3 ? '\\\\]' : '\\]';
+  let braceLevel = 0;
+
+  for (let index = start; index < text.length;) {
+    if (braceLevel === 0 && text.startsWith(closeDelimiter, index) && !isEscaped(text, index)) {
+      return index;
+    }
+    if (text[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (text[index] === '{') {
+      braceLevel += 1;
+    } else if (text[index] === '}' && braceLevel > 0) {
+      braceLevel -= 1;
+    }
+    index += 1;
+  }
+
+  return -1;
+}
+
+export function parseBracketDisplayMathAt(text: string, index: number): LatexMathRange | null {
+  const delimiterLength = bracketDisplayDelimiterLength(text, index);
+  if (!delimiterLength) {
+    return null;
+  }
+
+  const close = findBracketDisplayMathClose(text, index + delimiterLength, delimiterLength);
+  if (close <= index + delimiterLength) {
+    return null;
+  }
+  const rawContent = text.slice(index + delimiterLength, close);
+  const content = normalizeBracketMathContent(rawContent.trim());
+  const fencedDisplay = hasOwnLineDisplayFences(text, index, close, delimiterLength);
+  if (!content || ((rawContent.includes('\n') || rawContent.includes('\r') || delimiterLength === 3) && !fencedDisplay)) {
+    return null;
+  }
+
+  return {
+    from: index,
+    to: close + delimiterLength,
+    mode: 'display',
+    content,
+    raw: text.slice(index, close + delimiterLength),
+    fencedDisplay
+  };
+}
+
 export function collectLatexMathRanges(text: string): LatexMathRange[] {
-  if (!text || text.length < 2 || text.indexOf('$') < 0) {
+  if (!text || text.length < 2 || (text.indexOf('$') < 0 && text.indexOf('\\[') < 0)) {
     return [];
   }
 
   const ranges: LatexMathRange[] = [];
 
   for (let index = 0; index < text.length;) {
+    if (text[index] === '\\') {
+      const bracketMath = parseBracketDisplayMathAt(text, index);
+      if (bracketMath) {
+        ranges.push(bracketMath);
+        index = bracketMath.to;
+        continue;
+      }
+    }
     if (text[index] !== '$' || isEscaped(text, index)) {
       index += 1;
       continue;

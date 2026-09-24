@@ -80,11 +80,37 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     }
   };
 
-  const isDisplayMathDiagram = (diagramText) => MERMAID_DISPLAY_MATH_RE.test(String(diagramText || '').trim());
+  const getDisplayMathContent = (diagramText) => {
+    const trimmed = String(diagramText || '').trim();
+    if (MERMAID_DISPLAY_MATH_RE.test(trimmed)) {
+      return trimmed.slice(2, -2).trim();
+    }
 
-  const compactDisplayMath = (diagramText) => {
-    const inner = String(diagramText || '').trim().slice(2, -2).trim();
-    const singleLine = inner
+    const slash = String.fromCharCode(92);
+    const slashCount = trimmed.startsWith(slash + slash + '[') ? 2 : trimmed.startsWith(slash + '[') ? 1 : 0;
+    if (!slashCount) {
+      return null;
+    }
+    const openFence = slash.repeat(slashCount) + '[';
+    const closeFence = slash.repeat(slashCount) + ']';
+    if (!trimmed.endsWith(closeFence)) {
+      return null;
+    }
+    const lines = trimmed.split(/\\r?\\n/);
+    if ((lines.length > 1 || slashCount === 2) &&
+        (lines[0].trim() !== openFence || lines[lines.length - 1].trim() !== closeFence)) {
+      return null;
+    }
+    const content = trimmed.slice(openFence.length, -closeFence.length).trim();
+    return content
+      .split(slash + '_').join('_')
+      .split(slash + slash + ',').join(slash + ',');
+  };
+
+  const isDisplayMathDiagram = (diagramText) => getDisplayMathContent(diagramText) !== null;
+
+  const compactDisplayMath = (content) => {
+    const singleLine = content
       .split(/\\r?\\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -104,7 +130,11 @@ function buildRuntimeScript(hasMermaid: boolean): string {
       return text;
     }
 
-    const escapedMath = escapeForMermaidLabel(compactDisplayMath(trimmed));
+    const mathContent = getDisplayMathContent(trimmed);
+    if (mathContent === null) {
+      return text;
+    }
+    const escapedMath = escapeForMermaidLabel(compactDisplayMath(mathContent));
     const initConfig = JSON.stringify({
       flowchart: { diagramPadding: 0 },
       themeCSS: MERMAID_DISPLAY_MATH_THEME_CSS

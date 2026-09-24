@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { collectLatexMathRanges, renderLatexMathToHtml } from './math';
+import { collectLatexMathRanges, parseBracketDisplayMathAt, renderLatexMathToHtml } from './math';
 
 type MathInlineChunkPart = {
   token: any;
@@ -61,7 +61,7 @@ function renderMathFromRawInlineContent(
   TokenCons: any,
   onRenderedMath?: () => void
 ): { changed: boolean; children: any[] } {
-  if (!source || !source.includes('$')) {
+  if (!source || (!source.includes('$') && !source.includes('\\['))) {
     return { changed: false, children: [] };
   }
 
@@ -162,7 +162,7 @@ function renderMathChunk(
 ): { changed: boolean; children: any[] } {
   const parts: MathInlineChunkPart[] = [];
   let offset = 0;
-  let hasDollar = false;
+  let hasMathDelimiter = false;
 
   for (const child of chunk) {
     if (child.type === 'text' || child.type === 'text_special') {
@@ -175,8 +175,8 @@ function renderMathChunk(
       };
       parts.push(part);
       offset = part.to;
-      if (!hasDollar && text.includes('$')) {
-        hasDollar = true;
+      if (!hasMathDelimiter && (text.includes('$') || text.includes('\\['))) {
+        hasMathDelimiter = true;
       }
       continue;
     }
@@ -191,7 +191,7 @@ function renderMathChunk(
     offset = part.to;
   }
 
-  if (!hasDollar) {
+  if (!hasMathDelimiter) {
     return { changed: false, children: chunk };
   }
 
@@ -241,8 +241,31 @@ export function installMathTransform(
     onRenderedMath?: () => void;
   } = {}
 ): void {
+  md.inline.ruler.before('escape', 'meo-bracket-math', (state: any, silent: boolean) => {
+    if (state.src[state.pos] !== '\\') {
+      return false;
+    }
+    const math = parseBracketDisplayMathAt(state.src, state.pos);
+    if (!math) {
+      return false;
+    }
+    if (silent) {
+      return true;
+    }
+    const renderedMath = renderLatexMathToHtml(math.content, 'display');
+    if (!renderedMath) {
+      return false;
+    }
+    const token = state.push('html_inline', '', 0);
+    const fencedClass = math.fencedDisplay ? ' meo-export-math-fenced-display' : '';
+    token.content = `<span class="meo-export-math meo-export-math-display${fencedClass}">${renderedMath}</span>`;
+    state.pos = math.to;
+    options.onRenderedMath?.();
+    return true;
+  });
+
   md.core.ruler.after('inline', 'meo-math-transform', (state: any) => {
-    if (!String(state.src ?? '').includes('$')) {
+    if (!String(state.src ?? '').includes('$') && !String(state.src ?? '').includes('\\[')) {
       return;
     }
 
@@ -251,7 +274,7 @@ export function installMathTransform(
         continue;
       }
 
-      if (!String(token.content ?? '').includes('$')) {
+      if (!String(token.content ?? '').includes('$') && !String(token.content ?? '').includes('\\[')) {
         continue;
       }
 

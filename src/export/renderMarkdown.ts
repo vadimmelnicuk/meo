@@ -47,7 +47,8 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   const embeddedImageDataUrlCache = new Map<string, string | null>();
   const normalizedMarkdown = normalizeMarkdownForExport(options.markdownText);
   const extractedFrontmatter = extractExportFrontmatter(normalizedMarkdown);
-  const shouldEnableMathTransform = extractedFrontmatter.bodyMarkdown.includes('$');
+  const shouldEnableMathTransform =
+    extractedFrontmatter.bodyMarkdown.includes('$') || extractedFrontmatter.bodyMarkdown.includes('\\[');
 
   const md = new MarkdownIt({
     html: true,

@@ -1,6 +1,7 @@
 import { WidgetType } from '@codemirror/view';
 import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2, X } from 'lucide';
 import type { EditorState } from '@codemirror/state';
+import { parseLatexMathAt } from './math';
 
 declare global {
   interface Window {
@@ -398,12 +399,20 @@ export function refreshMermaidTheme(): void {
 }
 
 function isDisplayMathDiagram(diagramText) {
-  return MERMAID_DISPLAY_MATH_RE.test(diagramText.trim());
+  return getDisplayMathContent(diagramText) !== null;
 }
 
-function compactDisplayMath(diagramText) {
-  const inner = diagramText.trim().slice(2, -2).trim();
-  const singleLine = inner
+function getDisplayMathContent(diagramText: string): string | null {
+  const trimmed = diagramText.trim();
+  if (MERMAID_DISPLAY_MATH_RE.test(trimmed)) {
+    return trimmed.slice(2, -2).trim();
+  }
+  const math = parseLatexMathAt(trimmed, 0, { allowInline: false });
+  return math?.mode === 'display' && math.to === trimmed.length ? math.content : null;
+}
+
+function compactDisplayMath(content: string): string {
+  const singleLine = content
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -415,7 +424,7 @@ function escapeForMermaidLabel(text) {
   return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-function normalizeMermaidDiagramText(diagramText) {
+export function normalizeMermaidDiagramText(diagramText: string): string {
   const trimmed = diagramText.trim();
   if (!trimmed || MERMAID_DIAGRAM_START_RE.test(trimmed)) {
     return diagramText;
@@ -424,7 +433,11 @@ function normalizeMermaidDiagramText(diagramText) {
     return diagramText;
   }
 
-  const escapedMath = escapeForMermaidLabel(compactDisplayMath(trimmed));
+  const mathContent = getDisplayMathContent(trimmed);
+  if (mathContent === null) {
+    return diagramText;
+  }
+  const escapedMath = escapeForMermaidLabel(compactDisplayMath(mathContent));
   const initConfig = JSON.stringify({
     flowchart: { diagramPadding: 0 },
     themeCSS: MERMAID_DISPLAY_MATH_THEME_CSS

@@ -1835,7 +1835,7 @@ function collectMathRanges(
   }
 
   const text = state.doc.toString();
-  if (text.indexOf('$') === -1) {
+  if (text.indexOf('$') === -1 && text.indexOf('\\[') === -1) {
     return [];
   }
 
