@@ -1,6 +1,8 @@
 .vscode/**
 .vscode-test/**
+apps/**
 out/**
+packages/**
 node_modules/**
 webview/node_modules/**
 webview/src/**
