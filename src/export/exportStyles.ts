@@ -401,6 +401,32 @@ sup.footnote-ref {
   vertical-align: super;
 }
 
+sup.meo-gpt-citation {
+  font-size: 0.78em;
+  line-height: 1;
+  vertical-align: super;
+  white-space: nowrap;
+}
+
+.meo-gpt-citation a {
+  color: var(--meo-link);
+  text-decoration: none;
+}
+
+.meo-gpt-citation-key {
+  margin-top: 1.6em;
+  padding-top: 1em;
+  border-top: 1px solid var(--meo-hr);
+}
+
+.meo-gpt-citation-key ol {
+  padding-left: 2em;
+}
+
+.meo-gpt-citation-key li {
+  overflow-wrap: anywhere;
+}
+
 .footnote-ref a,
 .footnote-backref {
   color: var(--meo-link);

@@ -1,11 +1,14 @@
 import MarkdownIt from 'markdown-it';
+import path from 'node:path';
 import { full as emoji } from 'markdown-it-emoji';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { rewriteExportImageSrc, type ExportHtmlImageMode } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
 import { prepareMarkdownWithFootnotes } from './footnotes';
+import { installExportGptCitations } from './gptCitations';
 import { installMathTransform } from './mathTransform';
+import { parseGptCitationDefinitions } from '../shared/gptCitations';
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 
 const POWER_QUERY_KEYWORDS =
@@ -45,7 +48,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   let hasMermaid = false;
   let hasMath = false;
   const embeddedImageDataUrlCache = new Map<string, string | null>();
-  const normalizedMarkdown = normalizeMarkdownForExport(options.markdownText);
+  const normalizedMarkdown = ensureBlankLinesAroundTableBlocks(normalizeMermaidColonFences(options.markdownText));
   const extractedFrontmatter = extractExportFrontmatter(normalizedMarkdown);
   const shouldEnableMathTransform =
     extractedFrontmatter.bodyMarkdown.includes('$') || extractedFrontmatter.bodyMarkdown.includes('\\[');
@@ -93,6 +96,11 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       }
     });
   }
+  const citationDefinitions = parseGptCitationDefinitions(extractedFrontmatter.bodyMarkdown);
+  const citationHrefPrefix = options.target === 'html' && options.outputFilePath
+    ? encodeURIComponent(path.basename(options.outputFilePath))
+    : '';
+  const gptCitations = installExportGptCitations(md, citationDefinitions, citationHrefPrefix);
 
   const defaultImageRule = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts));
   md.renderer.rules.image = (tokens, idx, opts, env, self) => {
@@ -110,17 +118,21 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     return defaultImageRule(tokens, idx, opts, env, self);
   };
 
-  const preparedMarkdown = prepareMarkdownWithFootnotes(extractedFrontmatter.bodyMarkdown, {
+  gptCitations.prime(extractedFrontmatter.bodyMarkdown);
+  const citedIds = new Set(gptCitations.index.sources.map((source) => source.id));
+  const visibleBodyMarkdown = ensureVisibleReferenceSections(extractedFrontmatter.bodyMarkdown, citedIds);
+  const preparedMarkdown = prepareMarkdownWithFootnotes(visibleBodyMarkdown, {
     target: options.target,
     outputFilePath: options.outputFilePath,
     renderMarkdown: (markdownText) => md.render(markdownText),
-    normalizeMarkdown: normalizeMarkdownForExport
+    normalizeMarkdown: (markdownText) => normalizeMarkdownForExport(markdownText, citedIds)
   });
   const bodyHtml = md.render(preparedMarkdown.bodyMarkdown);
   const rawHtml = [
     extractedFrontmatter.frontmatterHtml,
     bodyHtml,
-    preparedMarkdown.footnotesHtml
+    preparedMarkdown.footnotesHtml,
+    gptCitations.renderKey()
   ].join('');
   const html = sanitizeHtml(rawHtml, {
     allowedTags: [
@@ -220,9 +232,10 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   return { html, hasMermaid, hasMath };
 }
 
-function normalizeMarkdownForExport(markdownText: string): string {
+function normalizeMarkdownForExport(markdownText: string, citationIds: ReadonlySet<string>): string {
   return ensureVisibleReferenceSections(
-    ensureBlankLinesAroundTableBlocks(normalizeMermaidColonFences(markdownText))
+    ensureBlankLinesAroundTableBlocks(normalizeMermaidColonFences(markdownText)),
+    citationIds
   );
 }
 
@@ -234,7 +247,7 @@ type LinkReferenceDefinition = {
 const referenceSectionHeadingPattern = /^([ \t]{0,3})(#{1,6})[ \t]+(?:references|sources|citations)[ \t]*#*[ \t]*$/i;
 const linkReferenceDefinitionPattern = /^[ \t]{0,3}\[([^\]^][^\]]*)\]:[ \t]*(?:<[^>\r\n]+>|\S+)(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/;
 
-function ensureVisibleReferenceSections(markdownText: string): string {
+function ensureVisibleReferenceSections(markdownText: string, citationIds: ReadonlySet<string>): string {
   const lines = String(markdownText ?? '').split(/\r?\n/);
   const out: string[] = [];
   const fenceState = { inFence: false, char: '', length: 0 };
@@ -253,7 +266,8 @@ function ensureVisibleReferenceSections(markdownText: string): string {
       continue;
     }
 
-    const definitions = collectReferenceDefinitions(lines, index + 1, headingMatch[2].length);
+    const definitions = collectReferenceDefinitions(lines, index + 1, headingMatch[2].length)
+      .filter((definition) => !citationIds.has(definition.label));
     if (!definitions.length) {
       continue;
     }

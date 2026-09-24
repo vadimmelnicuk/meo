@@ -12,6 +12,8 @@ import { normalizeSourceHref } from './rawUrls';
 import type { EditorDiagnostic } from './diagnostics';
 import { createStickyTableHeader } from './tableStickyHeader';
 import { findSyncChange } from './textChange';
+import { findGptCitationGroups, type GptCitationSource } from '../../../src/shared/gptCitations';
+import { createGptCitationElement } from './gptCitations';
 
 declare global {
   interface HTMLDivElement {
@@ -33,6 +35,7 @@ interface TableData {
   headerCells?: string[];
   diagnostics?: TableCellDiagnostics[][][];
   sourceRanges?: TableCellRange[][];
+  citationSources?: ReadonlyMap<string, GptCitationSource>;
 }
 
 interface RowEntry {
@@ -898,8 +901,9 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   disableLinkParsers?: boolean;
   searchState?: TableSearchState | null;
   sourceRange?: TableCellRange | null;
+  citationSources?: ReadonlyMap<string, GptCitationSource>;
 } = {}) {
-  const { baseOffset = 0, diagnostics = [], disableLinkParsers = false, searchState = null, sourceRange = null } = options;
+  const { baseOffset = 0, diagnostics = [], disableLinkParsers = false, searchState = null, sourceRange = null, citationSources } = options;
   let buffer = '';
   let bufferStart = 0;
   const flushBuffer = () => {
@@ -915,6 +919,17 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   };
 
   for (let i = 0; i < text.length;) {
+    if (citationSources && text.startsWith('cite', i)) {
+      const group = findGptCitationGroups(text.slice(i))[0];
+      if (group?.from === 0 && group.ids.every((id) => citationSources.has(id))) {
+        flushBuffer();
+        const sources = [...new Set(group.ids)].map((id) => citationSources.get(id)!);
+        parent.appendChild(createGptCitationElement(sources));
+        i += group.to;
+        continue;
+      }
+    }
+
     if (text[i] === '\\' && i + 1 < text.length && tableInlineEscapableChars.has(text[i + 1])) {
       appendToBuffer(text[i + 1], i);
       i += 2;
@@ -1076,11 +1091,12 @@ function renderTableCellInlinePreview(
   value,
   diagnostics: TableCellDiagnostics[] = [],
   searchState: TableSearchState | null = null,
-  sourceRange: TableCellRange | null = null
+  sourceRange: TableCellRange | null = null,
+  citationSources?: ReadonlyMap<string, GptCitationSource>
 ) {
   if (!(previewEl instanceof HTMLElement)) return;
   previewEl.replaceChildren();
-  appendTableInlinePreviewNodes(previewEl, value ?? '', { diagnostics, searchState, sourceRange });
+  appendTableInlinePreviewNodes(previewEl, value ?? '', { diagnostics, searchState, sourceRange, citationSources });
 }
 
 function consumeTableInlineProtectedSpan(text, index, endIndex) {
@@ -2429,7 +2445,7 @@ class HtmlTableWidget extends WidgetType {
     sourceRange: TableCellRange | null = null
   ) {
     if (!(preview instanceof HTMLElement)) return;
-    renderTableCellInlinePreview(preview, value ?? '', diagnostics, this.searchState, sourceRange);
+    renderTableCellInlinePreview(preview, value ?? '', diagnostics, this.searchState, sourceRange, this.tableData.citationSources);
   }
 
   refreshCellPreviewFromInput(input) {
@@ -2857,14 +2873,27 @@ export function parseTableInfo(state, tableNode) {
   };
 }
 
-export function addTableDecorations(builder, state, tableNode, diagnostics: EditorDiagnostic[] = []) {
+export function addTableDecorations(
+  builder,
+  state,
+  tableNode,
+  diagnostics: EditorDiagnostic[] = [],
+  citationSources: ReadonlyMap<string, GptCitationSource> = new Map()
+) {
   const data = buildTableData(state, tableNode);
-  addTableWidgetDecoration(builder, data, diagnostics);
+  addTableWidgetDecoration(builder, data, diagnostics, citationSources);
 }
 
-export function addTableDecorationsForLineRange(builder, state, startLineNo, endLineNo, diagnostics: EditorDiagnostic[] = []) {
+export function addTableDecorationsForLineRange(
+  builder,
+  state,
+  startLineNo,
+  endLineNo,
+  diagnostics: EditorDiagnostic[] = [],
+  citationSources: ReadonlyMap<string, GptCitationSource> = new Map()
+) {
   const data = buildTableDataForLineRange(state, startLineNo, endLineNo);
-  addTableWidgetDecoration(builder, data, diagnostics);
+  addTableWidgetDecoration(builder, data, diagnostics, citationSources);
 }
 
 function collectCellDiagnostics(
@@ -2924,7 +2953,12 @@ function collectTableSourceRanges(data): TableCellRange[][] {
   return rows;
 }
 
-function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[] = []) {
+function addTableWidgetDecoration(
+  builder,
+  data,
+  diagnostics: EditorDiagnostic[] = [],
+  citationSources: ReadonlyMap<string, GptCitationSource> = new Map()
+) {
   const { from, to, headerLine, dataLines, alignments, colCount, startLine, endLine } = data;
   if (colCount === 0 || !headerLine) return;
 
@@ -2932,13 +2966,15 @@ function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[]
   const normalizedAlignments = normalizeRow(alignments, colCount).map((value) => value ?? null);
   const headerCells = normalizeRow(headerLine.cells, colCount);
   const rows = dataLines.map((line) => normalizeRow(line.cells, colCount));
-  const contentSignature = JSON.stringify({ colCount, headerCells, rows, normalizedAlignments, indent });
+  const citationSignature = Array.from(citationSources.values()).map((source) => [source.id, source.number, source.href, source.title]);
+  const contentSignature = JSON.stringify({ colCount, headerCells, rows, normalizedAlignments, indent, citationSignature });
   const signature = JSON.stringify({
     colCount,
     headerCells,
     rows,
     normalizedAlignments,
-    diagnostics: collectTableDiagnostics(data, diagnostics)
+    diagnostics: collectTableDiagnostics(data, diagnostics),
+    citationSignature
   });
 
   builder.push(
@@ -2958,7 +2994,8 @@ function addTableWidgetDecoration(builder, data, diagnostics: EditorDiagnostic[]
           startLine,
           endLine,
           diagnostics: collectTableDiagnostics(data, diagnostics),
-          sourceRanges: collectTableSourceRanges(data)
+          sourceRanges: collectTableSourceRanges(data),
+          citationSources
         }
       )
     }).range(from, to)

@@ -1219,6 +1219,19 @@ body {
   cursor: pointer;
 }
 
+.cm-editor .meo-md-gpt-citation {
+  color: var(--meo-color-base05);
+  font-size: 0.78em;
+  line-height: 1;
+  vertical-align: super;
+  white-space: nowrap;
+}
+
+.cm-editor .meo-md-gpt-citation-link {
+  color: var(--meo-token-link-color, var(--meo-color-base05));
+  cursor: pointer;
+}
+
 .cm-editor .meo-md-footnote-ref {
   vertical-align: super;
   font-size: 0.78em;

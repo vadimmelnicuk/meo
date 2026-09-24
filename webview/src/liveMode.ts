@@ -52,6 +52,9 @@ import {
   detectAlertInBlockquote
 } from './helpers/alerts';
 import { parseFootnotes, footnoteReferenceKey } from './helpers/footnotes';
+import { collectLiveGptCitationIndex, createGptCitationElement } from './helpers/gptCitations';
+import { getDecoratedLinkHrefFromTarget, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
+import type { GptCitationSource, NumberedGptCitationGroup } from '../../src/shared/gptCitations';
 import { getLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { getMermaidColonBlocks, rangeOverlapsMermaidColonBlock } from './helpers/mermaidColonBlocks';
 import { findRawSourceUrlMatches, normalizeSourceHref } from './helpers/rawUrls';
@@ -640,6 +643,39 @@ class FootnoteReferenceWidget extends WidgetType {
   }
 }
 
+class GptCitationWidget extends WidgetType {
+  constructor(private readonly sources: ReadonlyArray<GptCitationSource>) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return other instanceof GptCitationWidget &&
+      other.sources.length === this.sources.length &&
+      this.sources.every((source, index) => {
+        const candidate = other.sources[index];
+        return candidate?.id === source.id && candidate.number === source.number &&
+          candidate.href === source.href && candidate.title === source.title;
+      });
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const wrapper = createGptCitationElement(this.sources);
+    wrapper.addEventListener('pointerdown', (event) => {
+      if (!isPrimaryModifierPointerClick(event) || !getDecoratedLinkHrefFromTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    wrapper.addEventListener('click', (event) => {
+      const href = getDecoratedLinkHrefFromTarget(event.target);
+      if (!isPrimaryModifierPointerClick(event) || !href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      view.dom.dispatchEvent(new CustomEvent('meo-open-link', { bubbles: true, detail: { href } }));
+    });
+    return wrapper;
+  }
+}
+
 class FootnoteBacklinkWidget extends WidgetType {
   footnoteNumber: number;
   referenceFrom: number;
@@ -1142,6 +1178,7 @@ function buildDecorations(state) {
   }
   addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, codeBlockLines);
   const mathRanges = collectMathRanges(state, tree, mermaidColonBlocks, renderedTableRanges, frontmatter);
+  const gptCitations = collectLiveGptCitationIndex(state, [...mathRanges, ...mermaidColonBlocks]);
 
   tree.iterate({
     enter: (node) => {
@@ -1199,7 +1236,7 @@ function buildDecorations(state) {
       } else if (node.name === 'Table') {
         const tableInfo = parseTableInfo(state, node);
         parsedTableRanges.push({ from: tableInfo.from, to: tableInfo.to });
-        addTableDecorations(ranges, state, node, diagnostics);
+        addTableDecorations(ranges, state, node, diagnostics, gptCitations.sourceById);
       } else if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
         addLineClass(ranges, state, node.from, node.to, lineStyleDecos.codeBlock);
         if (node.name === 'FencedCode') {
@@ -1420,7 +1457,7 @@ function buildDecorations(state) {
     },
   });
 
-  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics);
+  addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics, gptCitations.sourceById);
   addRawFileUrlDecorations(ranges, state, tree, frontmatter);
   addSingleTildeStrikeDecorations(ranges, state, activeLines, strikeRanges, codeBlockLines);
   addListLineDecorations(ranges, state, indentSelectedLines, frontmatter, codeBlockLines);
@@ -1429,6 +1466,7 @@ function buildDecorations(state) {
   addEmojiDecorationsWithMath(ranges, state, mathRanges, codeBlockLines);
   addMermaidColonFenceDecorations(ranges, state, mermaidColonBlocks, activeLines);
   addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines);
+  addGptCitationDecorations(ranges, state, gptCitations.groups, activeLines, renderedTableRanges);
   addDetailsBlockDecorations(ranges, state, detailsBlocks, activeLines);
   for (const section of collapsedHeadingSections) {
     addLineClass(ranges, state, section.lineFrom, section.lineTo, collapsedHeadingLineDeco);
@@ -1440,6 +1478,27 @@ function buildDecorations(state) {
   ));
   const result = Decoration.set([...visibleRanges, ...commentRanges], true);
   return filterDecorationsOutsideMergeConflicts(state, result);
+}
+
+function addGptCitationDecorations(
+  builder: any[],
+  state: EditorState,
+  groups: ReadonlyArray<NumberedGptCitationGroup>,
+  activeLines: ReadonlySet<number>,
+  renderedTableRanges: ReadonlyArray<{ from: number; to: number }>
+): void {
+  for (const group of groups) {
+    if (activeLines.has(state.doc.lineAt(group.from).number) || overlapsSelection(state, group.from, group.to)) {
+      continue;
+    }
+    if (renderedTableRanges.some((range) => group.from < range.to && group.to > range.from)) {
+      continue;
+    }
+    builder.push(Decoration.replace({
+      widget: new GptCitationWidget(group.sources),
+      inclusive: false
+    }).range(group.from, group.to));
+  }
 }
 
 function hasCodeBlockAncestor(node) {
@@ -2131,7 +2190,7 @@ function detectTableBlocks(state) {
   return blocks;
 }
 
-function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics = []) {
+function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, mermaidColonBlocks, diagnostics = [], citationSources = new Map()) {
   const tableBlocks = detectTableBlocks(state);
   for (const block of tableBlocks) {
     const from = state.doc.line(block.startLineNo).from;
@@ -2139,7 +2198,7 @@ function addFallbackTableDecorations(builder, state, tree, parsedTableRanges, me
     if (overlapsParsedTableRange(from, to, parsedTableRanges)) continue;
     if (isInsideCodeBlock(tree, from)) continue;
     if (rangeOverlapsMermaidColonBlock(mermaidColonBlocks, from, to)) continue;
-    addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo, diagnostics);
+    addTableDecorationsForLineRange(builder, state, block.startLineNo, block.endLineNo, diagnostics, citationSources);
   }
 }
 
