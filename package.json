@@ -806,7 +806,7 @@
     "build:extension:puppeteer-runtime": "bun build src/export/puppeteerRuntime.ts --target=node --format=cjs --minify --outfile=dist/puppeteer-runtime.js",
     "release:prep": "bun scripts/release-prep.mjs",
     "release:finalize": "bun scripts/release-prep.mjs finalize",
-    "vscode:publish": "vsce package --no-dependencies"
+    "vscode:publish": "bun run build && vsce package --no-dependencies"
   },
   "dependencies": {
     "@codemirror/commands": "6.8.1",
