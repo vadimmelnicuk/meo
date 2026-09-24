@@ -1,5 +1,10 @@
 # Markdown Editor Optimized (MEO)
 ---
+## 0.1.30
+- Added ChatGPT citations rendering
+- Added LaTeX display math delimiters and escaped variants
+- Fixed custom editor edits when backing text documents close
+
 ## 0.1.29
 - Fixed Cursor file editor associations on AI pending edits
 
