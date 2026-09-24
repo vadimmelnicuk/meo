@@ -202,15 +202,20 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       void agentReviewOverrides.syncNow();
-      if (!agentReviewPrimer.isPriming) {
-        void provider.redirectOpenEditorsForCopilotReview(document.uri);
-      }
+      void agentReviewPrimer.whenIdle().then(() => {
+        if (getOpenTextDocumentForUri(document.uri)) {
+          return provider.redirectOpenEditorsForCopilotReview(document.uri);
+        }
+      }).catch((error) => {
+        console.error('[MEO] redirectOpenEditorsForCopilotReview', error);
+      });
     })
   );
 
   context.subscriptions.push(
     vscode.workspace.onDidCreateFiles((event) => {
       for (const uri of event.files) {
+        void provider.refreshFileBackedDocument(uri);
         void agentReviewPrimer.ensureReady(uri);
       }
     })
@@ -220,9 +225,11 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     markdownFileWatcher,
     markdownFileWatcher.onDidCreate((uri) => {
+      void provider.refreshFileBackedDocument(uri);
       void agentReviewPrimer.ensureReady(uri);
     }),
     markdownFileWatcher.onDidChange((uri) => {
+      void provider.refreshFileBackedDocument(uri);
       if (agentReviewHandoff.hasRecentMEOOwnedFileChangeForUri(uri)) {
         return;
       }
@@ -533,7 +540,18 @@ class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCus
         if (!customDocument) {
           return;
         }
-        this.customDocumentChangeEmitter.fire({ document: customDocument });
+        customDocument.notifyExternalChange(event.document);
+      }),
+      vscode.workspace.onDidCloseTextDocument((textDocument) => {
+        const customDocument = this.customDocuments.get(textDocument.uri.toString());
+        if (!customDocument) {
+          return;
+        }
+        customDocument.detachTextDocument(textDocument);
+        void this.refreshFileBackedDocument(textDocument.uri);
+      }),
+      vscode.workspace.onDidSaveTextDocument((textDocument) => {
+        this.customDocuments.get(textDocument.uri.toString())?.noteSavedTextDocument(textDocument);
       })
     );
   }
@@ -550,8 +568,10 @@ class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCus
       }
     });
     this.customDocuments.set(uri.toString(), customDocument);
-    customDocument.onDidChangeContent(() => {
-      this.customDocumentChangeEmitter.fire({ document: customDocument });
+    customDocument.onDidChangeContent((kind) => {
+      if (kind === 'edit') {
+        this.customDocumentChangeEmitter.fire({ document: customDocument });
+      }
     });
     return customDocument;
   }
@@ -565,11 +585,20 @@ class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCus
   }
 
   async saveCustomDocument(document: MarkdownCustomDocument): Promise<void> {
+    await this.prepareDocumentSave(document);
     await document.save();
   }
 
   async saveCustomDocumentAs(document: MarkdownCustomDocument, destination: vscode.Uri): Promise<void> {
+    await this.prepareDocumentSave(document);
     await document.save(destination);
+  }
+
+  private async prepareDocumentSave(document: MarkdownCustomDocument): Promise<void> {
+    const session = Array.from(this.panelSessions.values()).find((candidate) => candidate.document === document);
+    if (session && !await session.prepareSave()) {
+      throw new Error(`Cannot save ${document.uri.fsPath || document.uri.toString()}: pending editor changes were not applied.`);
+    }
   }
 
   async revertCustomDocument(document: MarkdownCustomDocument): Promise<void> {
@@ -582,6 +611,14 @@ class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCus
     _token: vscode.CancellationToken
   ): Promise<vscode.CustomDocumentBackup> {
     return document.backup(context.destination);
+  }
+
+  async refreshFileBackedDocument(uri: vscode.Uri): Promise<void> {
+    try {
+      await this.customDocuments.get(uri.toString())?.refreshFromDisk();
+    } catch (error) {
+      console.error('[MEO] refreshFileBackedDocument', error);
+    }
   }
 
   async initializeGitWatcher(): Promise<void> {
@@ -758,14 +795,12 @@ class MarkdownWebviewProvider implements vscode.CustomEditorProvider<MarkdownCus
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    const pendingReview = document.isSynchronized
-      ? findLikelyAgentReviewState(
-        document.uri,
-        getComparableResourceKey,
-        getOpenTextDocumentForUri,
-        document.getText()
-      )
-      : undefined;
+    const pendingReview = findLikelyAgentReviewState(
+      document.uri,
+      getComparableResourceKey,
+      getOpenTextDocumentForUri,
+      document.getText()
+    );
     if (pendingReview) {
       this.agentReviewHandoff.scheduleDeferredReopen(document.uri);
       await this.redirectCopilotReviewToNativeEditor(document.uri, panel, true);

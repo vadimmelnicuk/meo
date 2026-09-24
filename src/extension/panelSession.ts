@@ -407,6 +407,7 @@ export type PanelSession = {
   gitDocumentState: GitDocumentState;
   getMode: () => EditorMode;
   ensureInitDelivered: () => Promise<void>;
+  prepareSave: () => Promise<boolean>;
   requestExportSnapshot: () => Promise<{ text: string; environment?: ExportStyleEnvironment }>;
   rejectPendingExportSnapshots: (reason: Error) => void;
   refreshGitBaseline: (options?: RefreshGitBaselineOptions) => void;
@@ -477,8 +478,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     console.error(`[MEO panelSession] ${contextLabel}`, error);
   };
 
-  const runBackground = (promise: Promise<unknown>, contextLabel: string): void => {
-    void promise.catch((error) => {
+  const runBackground = (promise: PromiseLike<unknown>, contextLabel: string): void => {
+    void Promise.resolve(promise).catch((error) => {
       reportBackgroundError(contextLabel, error);
     });
   };
@@ -514,6 +515,30 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       pendingDraftText = null;
     }
     return applied;
+  };
+
+  const prepareSave = async (): Promise<boolean> => {
+    isApplyingOwnChange = true;
+    applyGeneration += 1;
+    const saveGen = applyGeneration;
+    try {
+      let ready = true;
+      await enqueue(async () => {
+        const appliedDraft = await applyPendingDraftIfNeeded();
+        if (appliedDraft) {
+          noteOwnAppliedText();
+          await sendDocChanged();
+        } else if (pendingDraftText !== null) {
+          await sendDocChanged();
+          ready = false;
+        }
+      });
+      return ready;
+    } finally {
+      if (saveGen === applyGeneration) {
+        isApplyingOwnChange = false;
+      }
+    }
   };
 
   const clearRememberedViewPosition = async (): Promise<void> => {
@@ -1001,6 +1026,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     gitDocumentState,
     getMode: () => mode,
     ensureInitDelivered,
+    prepareSave,
     requestExportSnapshot,
     rejectPendingExportSnapshots,
     refreshGitBaseline,
@@ -1163,25 +1189,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         pendingDraftText = raw.text;
         return;
       case 'saveDocument':
-        isApplyingOwnChange = true;
-        applyGeneration += 1;
-        const saveGen = applyGeneration;
-        try {
-          await enqueue(async () => {
-            const appliedDraft = await applyPendingDraftIfNeeded();
-            if (appliedDraft) {
-              noteOwnAppliedText();
-              await sendDocChanged();
-            } else if (pendingDraftText !== null) {
-              await sendDocChanged();
-              return;
-            }
-            await document.save();
-          });
-        } finally {
-          if (saveGen === applyGeneration) {
-            isApplyingOwnChange = false;
-          }
+        if (!await prepareSave()) {
+          return;
+        }
+        if (panel.active) {
+          // The workbench must save the custom editor so it can clear its dirty state.
+          await vscode.commands.executeCommand('workbench.action.files.save');
+        } else {
+          // Focus may have moved while the webview changes were being applied.
+          await document.save();
         }
         return;
       case 'requestReload':
@@ -1213,7 +1229,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   });
 
   const documentChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
-    if (event.document.uri.toString() !== documentKey) {
+    if (event.document.uri.toString() !== documentKey || event.document !== document.textDocument) {
       return;
     }
 
@@ -1238,12 +1254,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }), 'sendDocChanged');
   });
 
-  const localChangeSubscription = document.onDidChangeContent(() => {
+  const localChangeSubscription = document.onDidChangeContent((kind) => {
     if (document.isSynchronized) {
       return;
     }
     scheduleSpellCheck();
-    if (isApplyingOwnChange) {
+    if (isApplyingOwnChange && kind === 'edit') {
       return;
     }
     runBackground(enqueue(async () => {

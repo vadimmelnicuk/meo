@@ -2,43 +2,89 @@ import * as vscode from 'vscode';
 
 export class MarkdownCustomDocument implements vscode.CustomDocument {
   private text: string;
+  private savedText: string;
   private localVersion = 1;
+  // VS Code may close this model while the custom editor is still open.
+  private backingTextDocument: vscode.TextDocument | undefined;
   private onDisposed?: () => void;
-  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly changeEmitter = new vscode.EventEmitter<'edit' | 'external'>();
   readonly onDidChangeContent = this.changeEmitter.event;
 
   constructor(
     readonly uri: vscode.Uri,
     text: string,
-    readonly textDocument: vscode.TextDocument | undefined
+    textDocument: vscode.TextDocument | undefined,
+    savedText = text
   ) {
     this.text = text;
+    this.savedText = savedText;
+    this.backingTextDocument = textDocument;
   }
 
   static async open(
     uri: vscode.Uri,
     openContext?: vscode.CustomDocumentOpenContext
   ): Promise<MarkdownCustomDocument> {
-    const textDocument = await tryOpenWorkspaceTextDocument(uri);
-    let text = textDocument ? textDocument.getText() : await readFileText(uri);
+    let textDocument = await tryOpenWorkspaceTextDocument(uri);
+    let text: string;
+    try {
+      text = textDocument ? textDocument.getText() : await readFileText(uri);
+    } catch (error) {
+      if (!textDocument?.isClosed) {
+        throw error;
+      }
+      textDocument = undefined;
+      text = await readFileText(uri);
+    }
+    const savedText = uri.scheme === 'file' && textDocument
+      ? await readFileText(uri).catch(() => text)
+      : text;
 
     if (openContext?.backupId) {
+      let backupText: string | undefined;
       try {
         const backupUri = vscode.Uri.parse(openContext.backupId);
-        text = Buffer.from(await vscode.workspace.fs.readFile(backupUri)).toString('utf8');
-        if (textDocument && textDocument.getText() !== text) {
-          await replaceWorkspaceDocumentText(textDocument, text);
-        }
+        backupText = Buffer.from(await vscode.workspace.fs.readFile(backupUri)).toString('utf8');
       } catch {
-        // Keep the on-disk text if the backup cannot be restored.
+        // Keep the current text if the backup cannot be read.
+      }
+      if (backupText !== undefined) {
+        text = backupText;
+      }
+      if (backupText !== undefined && textDocument) {
+        try {
+          if (textDocument.getText() !== text && !await replaceWorkspaceDocumentText(textDocument, text)) {
+            textDocument = undefined;
+          }
+        } catch {
+          // Keep the backup in the file-backed model if the text model closes.
+          textDocument = undefined;
+        }
       }
     }
 
-    return new MarkdownCustomDocument(uri, text, textDocument);
+    return new MarkdownCustomDocument(uri, text, textDocument, savedText);
   }
 
   bindLifecycle(onDisposed: () => void): void {
     this.onDisposed = onDisposed;
+  }
+
+  get textDocument(): vscode.TextDocument | undefined {
+    const textDocument = this.backingTextDocument;
+    if (textDocument?.isClosed) {
+      this.detachTextDocument(textDocument);
+      return undefined;
+    }
+    return textDocument;
+  }
+
+  detachTextDocument(textDocument: vscode.TextDocument): void {
+    if (this.backingTextDocument !== textDocument) {
+      return;
+    }
+    this.localVersion = Math.max(this.localVersion, textDocument.version);
+    this.backingTextDocument = undefined;
   }
 
   get isSynchronized(): boolean {
@@ -58,22 +104,25 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
   }
 
   positionAt(offset: number): vscode.Position {
-    if (this.textDocument) {
-      return this.textDocument.positionAt(offset);
+    const textDocument = this.textDocument;
+    if (textDocument) {
+      return textDocument.positionAt(offset);
     }
     return positionAtOffset(this.text, offset);
   }
 
   offsetAt(position: vscode.Position): number {
-    if (this.textDocument) {
-      return this.textDocument.offsetAt(position);
+    const textDocument = this.textDocument;
+    if (textDocument) {
+      return textDocument.offsetAt(position);
     }
     return offsetAtPosition(this.text, position);
   }
 
   lineAt(line: number): { text: string; range: vscode.Range } {
-    if (this.textDocument) {
-      const info = this.textDocument.lineAt(line);
+    const textDocument = this.textDocument;
+    if (textDocument) {
+      const info = textDocument.lineAt(line);
       return { text: info.text, range: info.range };
     }
     const start = offsetAtPosition(this.text, new vscode.Position(line, 0));
@@ -87,13 +136,42 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
 
   async save(destination?: vscode.Uri): Promise<void> {
     const target = destination ?? this.uri;
-    if (this.textDocument && target.toString() === this.uri.toString()) {
-      await this.textDocument.save();
-      this.text = this.textDocument.getText();
-      return;
+    const textDocument = this.textDocument;
+    if (textDocument && target.toString() === this.uri.toString()) {
+      try {
+        const saved = await textDocument.save();
+        if (!textDocument.isClosed) {
+          if (!saved && textDocument.isDirty) {
+            throw new Error(`Failed to save ${this.uri.fsPath || this.uri.toString()}`);
+          }
+          this.text = textDocument.getText();
+          this.savedText = this.text;
+          return;
+        }
+        this.detachTextDocument(textDocument);
+      } catch (error) {
+        if (!textDocument.isClosed) {
+          throw error;
+        }
+        this.detachTextDocument(textDocument);
+      }
     }
 
-    await vscode.workspace.fs.writeFile(target, Buffer.from(this.getText(), 'utf8'));
+    const text = this.getText();
+    if (target.toString() === this.uri.toString() && this.uri.scheme === 'file') {
+      const diskText = await readFileText(target);
+      if (diskText !== this.savedText) {
+        if (diskText !== text) {
+          throw new Error(`Cannot save ${this.uri.fsPath}: the file changed outside MEO.`);
+        }
+        this.savedText = diskText;
+        return;
+      }
+    }
+    await vscode.workspace.fs.writeFile(target, Buffer.from(text, 'utf8'));
+    if (target.toString() === this.uri.toString()) {
+      this.savedText = text;
+    }
   }
 
   async revert(): Promise<void> {
@@ -103,10 +181,14 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
 
     const diskText = await readFileText(this.uri);
     if (diskText === this.getText()) {
+      this.savedText = diskText;
       return;
     }
 
-    await this.replaceFull(diskText);
+    if (!await this.replaceFull(diskText)) {
+      throw new Error(`Failed to revert ${this.uri.fsPath || this.uri.toString()}`);
+    }
+    this.savedText = diskText;
   }
 
   async backup(destination: vscode.Uri): Promise<vscode.CustomDocumentBackup> {
@@ -128,38 +210,60 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
       return true;
     }
 
-    if (this.textDocument) {
-      const applied = await replaceWorkspaceDocumentText(this.textDocument, nextText);
-      if (applied) {
-        this.text = this.textDocument.getText();
+    const textDocument = this.textDocument;
+    if (textDocument) {
+      try {
+        const applied = await replaceWorkspaceDocumentText(textDocument, nextText);
+        if (applied) {
+          this.text = textDocument.getText();
+          return true;
+        }
+        if (!textDocument.isClosed) {
+          return false;
+        }
+      } catch (error) {
+        if (!textDocument.isClosed) {
+          throw error;
+        }
       }
-      return applied;
+      this.detachTextDocument(textDocument);
     }
 
     this.text = nextText;
     this.localVersion += 1;
-    this.changeEmitter.fire();
+    this.changeEmitter.fire('edit');
     return true;
   }
 
   async applyReplacements(replacements: Array<{ startOffset: number; endOffset: number; insert: string }>): Promise<boolean> {
-    if (this.textDocument) {
-      const edit = new vscode.WorkspaceEdit();
-      for (const replacement of replacements) {
-        edit.replace(
-          this.uri,
-          new vscode.Range(
-            this.textDocument.positionAt(replacement.startOffset),
-            this.textDocument.positionAt(replacement.endOffset)
-          ),
-          replacement.insert
-        );
+    const textDocument = this.textDocument;
+    if (textDocument) {
+      try {
+        const edit = new vscode.WorkspaceEdit();
+        for (const replacement of replacements) {
+          edit.replace(
+            this.uri,
+            new vscode.Range(
+              textDocument.positionAt(replacement.startOffset),
+              textDocument.positionAt(replacement.endOffset)
+            ),
+            replacement.insert
+          );
+        }
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (applied) {
+          this.text = textDocument.getText();
+          return true;
+        }
+        if (!textDocument.isClosed) {
+          return false;
+        }
+      } catch (error) {
+        if (!textDocument.isClosed) {
+          throw error;
+        }
       }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (applied) {
-        this.text = this.textDocument.getText();
-      }
-      return applied;
+      this.detachTextDocument(textDocument);
     }
 
     let nextText = this.text;
@@ -169,15 +273,42 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
     }
     this.text = nextText;
     this.localVersion += 1;
-    this.changeEmitter.fire();
+    this.changeEmitter.fire('edit');
     return true;
   }
 
-  notifyExternalChange(): void {
-    if (this.textDocument) {
-      this.text = this.textDocument.getText();
+  notifyExternalChange(textDocument: vscode.TextDocument): void {
+    if (this.backingTextDocument !== textDocument) {
+      return;
     }
-    this.changeEmitter.fire();
+    if (textDocument.isClosed) {
+      this.detachTextDocument(textDocument);
+      return;
+    }
+    this.text = textDocument.getText();
+    this.changeEmitter.fire('edit');
+  }
+
+  noteSavedTextDocument(textDocument: vscode.TextDocument): void {
+    if (this.backingTextDocument !== textDocument || textDocument.isClosed) {
+      return;
+    }
+    this.savedText = textDocument.getText();
+  }
+
+  async refreshFromDisk(): Promise<void> {
+    if (this.uri.scheme !== 'file' || this.textDocument) {
+      return;
+    }
+    const savedText = this.savedText;
+    const diskText = await readFileText(this.uri);
+    if (diskText === savedText || this.textDocument || this.savedText !== savedText || this.text !== savedText) {
+      return;
+    }
+    this.text = diskText;
+    this.savedText = diskText;
+    this.localVersion += 1;
+    this.changeEmitter.fire('external');
   }
 
   dispose(): void {
@@ -188,7 +319,8 @@ export class MarkdownCustomDocument implements vscode.CustomDocument {
 
 export async function tryOpenWorkspaceTextDocument(uri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
   try {
-    return await vscode.workspace.openTextDocument(uri);
+    const textDocument = await vscode.workspace.openTextDocument(uri);
+    return textDocument.isClosed ? undefined : textDocument;
   } catch {
     return undefined;
   }

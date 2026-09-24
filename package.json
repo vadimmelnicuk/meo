@@ -795,6 +795,7 @@
   },
   "scripts": {
     "install:all": "bun install && (cd webview && bun install)",
+    "test:core": "bun test scripts/documentLifecycle.test.mjs",
     "typecheck:webview": "tsc -p webview/tsconfig.json --noEmit",
     "build": "bun run build:webview && bun run build:extension",
     "build:webview": "rm -rf webview/dist && mkdir -p webview/dist webview/dist/katex && bun build webview/src/index.ts --target=browser --format=esm --splitting --minify --outdir=webview/dist && cp webview/src/styles.css webview/dist/index.css && cp node_modules/mermaid/dist/mermaid.min.js webview/dist/mermaid.min.js && cp node_modules/katex/dist/katex.min.css webview/dist/katex/katex.min.css && cp -R node_modules/katex/dist/fonts webview/dist/katex/fonts",

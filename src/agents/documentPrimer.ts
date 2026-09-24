@@ -12,13 +12,19 @@ type AgentReviewDocumentPrimerDeps = {
 
 export class AgentReviewDocumentPrimer {
   private readonly primedKeys = new Set<string>();
-  private readonly inFlight = new Map<string, Promise<void>>();
+  private readonly inFlight = new Map<string, { run: Promise<void>; forceNative: boolean }>();
   private primingDepth = 0;
 
   constructor(private readonly deps: AgentReviewDocumentPrimerDeps) {}
 
   get isPriming(): boolean {
     return this.primingDepth > 0;
+  }
+
+  async whenIdle(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled(Array.from(this.inFlight.values(), (flight) => flight.run));
+    }
   }
 
   async ensureReady(uri: vscode.Uri, options?: { forceNative?: boolean }): Promise<void> {
@@ -37,19 +43,21 @@ export class AgentReviewDocumentPrimer {
     }
 
     const existing = this.inFlight.get(key);
-    if (existing) {
-      await existing;
-      if (!forceNative || this.primedKeys.has(key)) {
-        return;
-      }
+    if (existing && (!forceNative || existing.forceNative)) {
+      await existing.run;
+      return;
     }
 
-    const run = this.prime(uri, key, forceNative);
-    this.inFlight.set(key, run);
+    // A review diff can require native priming while a regular prime is still running.
+    const run = existing
+      ? existing.run.then(() => this.prime(uri, key, true))
+      : this.prime(uri, key, forceNative);
+    const flight = { run, forceNative };
+    this.inFlight.set(key, flight);
     try {
       await run;
     } finally {
-      if (this.inFlight.get(key) === run) {
+      if (this.inFlight.get(key) === flight) {
         this.inFlight.delete(key);
       }
     }
