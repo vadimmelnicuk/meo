@@ -1437,6 +1437,18 @@ body {
   border-radius: 0.35em;
 }
 
+/*
+ * VS Code injects a default `code { color: var(--vscode-textPreformat-foreground) }`
+ * rule into every webview. Inline code produced by a CodeMirror mark decoration is a
+ * <span> and is unaffected, but widget-rendered content builds real <code> elements,
+ * and a rule matching the element directly always wins over the colour inherited from
+ * its container. Themes that leave `textPreformat.foreground` at a dark default render
+ * that text unreadable, so restore the colour on the <code> elements we build.
+ */
+.cm-editor code.meo-md-inline-code {
+  color: var(--meo-token-monospace-color, var(--meo-foreground));
+}
+
 .cm-editor.meo-mode-live .meo-md-inline-code,
 .cm-editor.meo-mode-live .meo-md-inline-code * {
   font-family: var(--meo-font-source);
@@ -1899,6 +1911,7 @@ body {
   font-family: var(--meo-font-source);
   font-size: var(--meo-active-editor-font-size);
   font-weight: var(--meo-font-source-weight);
+  color: inherit;
 }
 
 .cm-editor .meo-mermaid-error-badge {
