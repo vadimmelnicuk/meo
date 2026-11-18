@@ -1370,6 +1370,54 @@ export function createEditor({
     }
   };
 
+  // Incremented whenever a new scroll intent starts so stale restore/settle loops stop.
+  let scrollIntentToken = 0;
+  const REVEAL_SETTLE_MAX_FRAMES = 12;
+  const REVEAL_SETTLE_STABLE_FRAMES = 2;
+
+  // Off-screen line heights are estimates (especially in Live mode, where headings, images,
+  // tables and diagrams render at very different heights), so a single scrollIntoView can land
+  // off target once those lines get measured. Re-check for a few frames and re-center.
+  const scheduleRevealSettle = (position: number, y: 'start' | 'center') => {
+    const token = ++scrollIntentToken;
+    let frames = 0;
+    let stableFrames = 0;
+    const check = () => {
+      if (!view || token !== scrollIntentToken || ++frames > REVEAL_SETTLE_MAX_FRAMES) {
+        return;
+      }
+      view.requestMeasure({
+        read(editorView) {
+          const targetPos = Math.max(0, Math.min(position, editorView.state.doc.length));
+          const coords = editorView.coordsAtPos(targetPos);
+          const scrollerRect = editorView.scrollDOM.getBoundingClientRect();
+          if (scrollerRect.height <= 0) {
+            return { inView: true };
+          }
+          return {
+            inView: !!coords && coords.top >= scrollerRect.top && coords.bottom <= scrollerRect.bottom
+          };
+        },
+        write(measure, editorView) {
+          if (token !== scrollIntentToken) {
+            return;
+          }
+          if (measure.inView) {
+            stableFrames += 1;
+            if (stableFrames >= REVEAL_SETTLE_STABLE_FRAMES) {
+              return;
+            }
+          } else {
+            stableFrames = 0;
+            editorView.dispatch({ effects: EditorView.scrollIntoView(position, { y }) });
+          }
+          window.requestAnimationFrame(check);
+        }
+      });
+    };
+    window.requestAnimationFrame(check);
+  };
+
   const applyRevealSelection = (anchor, head = anchor, { focusEditor = true, align = 'center' } = {}) => {
     const max = view.state.doc.length;
     const nextAnchor = Math.max(0, Math.min(anchor, max));
@@ -1381,6 +1429,7 @@ export function createEditor({
       view.dispatch({
         effects: EditorView.scrollIntoView(nextAnchor, { y })
       });
+      scheduleRevealSettle(nextAnchor, y);
       if (focusEditor) {
         view.focus();
       }
@@ -1391,6 +1440,7 @@ export function createEditor({
       selection: { anchor: nextAnchor, head: nextHead },
       effects: EditorView.scrollIntoView(nextAnchor, { y })
     });
+    scheduleRevealSettle(nextAnchor, y);
     if (focusEditor) {
       view.focus();
     }
@@ -1445,9 +1495,13 @@ export function createEditor({
   const restoreTopVisibleLine = (lineNumber, lineOffset = 0, { syncCursor = true } = {}) => {
     const targetLineNumber = Math.min(Math.max(1, Math.floor(lineNumber || 1)), view.state.doc.lines);
     const targetOffset = normalizeTopLineOffset(lineOffset);
+    const token = ++scrollIntentToken;
     let attempts = 0;
     const restoreScroll = () => {
-      if (!view || ++attempts > SCROLL_RESTORE_MAX_ATTEMPTS) {
+      if (!view || token !== scrollIntentToken) {
+        return;
+      }
+      if (++attempts > SCROLL_RESTORE_MAX_ATTEMPTS) {
         if (syncCursor && view) {
           syncCursorToTopVisibleLine();
         }

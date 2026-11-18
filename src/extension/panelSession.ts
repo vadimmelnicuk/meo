@@ -37,6 +37,7 @@ import type { ThemeSettings } from '../shared/themeDefaults';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { OutlinePosition } from '../shared/extensionConfig';
 import { cspellReplacementEdit } from '../spell/cspellCodeActions';
+import { resolveSearchViewRevealForDocument } from './searchReveal';
 import {
   collectMeoSpellDiagnostics,
   collectMeoSpellSuggestions,
@@ -351,6 +352,7 @@ type WebviewMessage =
   | OpenGitWorktreeForLineMessage
   | SaveImageFromClipboardMessage
   | RequestDiagnosticSuggestionsMessage
+  | { type: 'requestSearchReveal' }
   | { type: 'ready' };
 
 type RefreshGitBaselineOptions = {
@@ -454,6 +456,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   let pendingGitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentRevealSelectionKey: string | null = null;
   let pendingRevealSelection: RevealSelectionPayload | null = null;
+  let lastSearchRevealKey: string | null = null;
+  let searchRevealInFlight = false;
   let pendingRestoreTopLine: number | null = null;
   let pendingRestoreTopLineOffset = 0;
   let pendingDraftText: string | null = null;
@@ -953,6 +957,25 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     await postRevealSelection(selection);
   };
 
+  // Custom editors never receive the range of a result clicked in the global Search view,
+  // so recover it from the Search view and reveal it like the text editor would.
+  const revealSearchViewSelection = async (): Promise<void> => {
+    if (disposed || searchRevealInFlight || findEditorForDocumentReveal()) {
+      return;
+    }
+    searchRevealInFlight = true;
+    try {
+      const range = await resolveSearchViewRevealForDocument(document.uri, () => document.getText());
+      if (disposed || !range || range.key === lastSearchRevealKey) {
+        return;
+      }
+      lastSearchRevealKey = range.key;
+      await postRevealSelection({ anchor: range.anchor, head: range.head });
+    } finally {
+      searchRevealInFlight = false;
+    }
+  };
+
   const findEditorForDocumentReveal = (): vscode.TextEditor | undefined => {
     const active = vscode.window.activeTextEditor;
     if (isTextEditorForDocument(active)) {
@@ -1045,6 +1068,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await flushPendingRevealSelection();
         scheduleSpellCheck(0);
         refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_STARTUP_DELAY_MS });
+        return;
+      case 'requestSearchReveal':
+        await revealSearchViewSelection();
         return;
       case 'setMode':
         mode = raw.mode;
@@ -1313,6 +1339,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_REFRESH_DELAY_MS });
       runBackground(flushPendingRevealSelection(), 'flushPendingRevealSelection');
       runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.viewState');
+      runBackground(revealSearchViewSelection(), 'revealSearchViewSelection.viewState');
       runBackground(postFocusEditor(), 'postFocusEditor');
     }
     onPanelViewStateChanged();
@@ -1324,6 +1351,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
 
   refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_STARTUP_DELAY_MS });
   runBackground(sendRevealSelectionForEditor(findEditorForDocumentReveal()), 'sendRevealSelectionForEditor.startup');
+  runBackground(revealSearchViewSelection(), 'revealSearchViewSelection.startup');
 
   const dispose = (): void => {
     if (disposed) {

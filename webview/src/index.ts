@@ -1971,8 +1971,18 @@ window.addEventListener('visibilitychange', () => {
   scheduleEditorSurfaceRecovery();
 });
 
+// Focus that is not caused by a click inside the webview usually means VS Code focused this
+// editor (e.g. a double-clicked global Search result); ask the host to reveal that result.
+let lastWebviewPointerDownAt = 0;
+window.addEventListener('pointerdown', () => {
+  lastWebviewPointerDownAt = Date.now();
+}, true);
+
 window.addEventListener('focus', () => {
   scheduleEditorSurfaceRecovery();
+  if (Date.now() - lastWebviewPointerDownAt > 300) {
+    vscode.postMessage({ type: 'requestSearchReveal' });
+  }
 });
 
 const forceFlushChanges = () => {

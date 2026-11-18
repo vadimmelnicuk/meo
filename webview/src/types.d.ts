@@ -8,6 +8,7 @@ interface VsCodeWebviewApi {
 
 type WebviewMessage =
   | { type: 'ready' }
+  | { type: 'requestSearchReveal' }
   | { type: 'applyChanges'; content?: string; baseVersion: number; changes?: { from: number; to: number; insert: string }[] }
   | { type: 'draftChanged'; text: string | null }
   | { type: 'setMode'; mode: 'live' | 'source' }
